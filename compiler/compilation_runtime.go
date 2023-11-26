@@ -102,6 +102,9 @@ func (r *CompilationRuntime) compile(ident *definition.FileIdentifer, content st
 	// compile imports
 	for i, other := range importor.Imports {
 		otherUnit, err, warning := r.Compile(other)
+		if otherUnit == nil && err == nil && warning == nil {
+			continue
+		}
 		if warning != nil {
 			var w definition.TopLevelWarning
 			topLevelWarning, ok := warning.(definition.TopLevelWarning)

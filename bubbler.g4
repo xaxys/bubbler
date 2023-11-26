@@ -140,7 +140,7 @@ value: VALUE;
 
 constant:
 //    fullIdent
-    | ( SUB | ADD )? intLit
+    ( SUB | ADD )? intLit
     | ( SUB | ADD )? floatLit
     | strLit
     | boolLit
