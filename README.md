@@ -6,6 +6,8 @@ Bubbler is a proto generator optimized for IoT devices. It compiles the `.bb` pr
 
 Bubbler's proto powerful, and can be non-byte-aligned, which is useful for IoT devices with limited resources. Explained below.
 
+Also, You may need syntax highlighting for `.bb` files, see [bubbler-vscode](https://github.com/xaxys/bubbler-vscode), or install it from [VSCode Marketplace](https://marketplace.visualstudio.com/items?itemName=xaxys.Bubbler).
+
 Warning: Bubbler is still in development and is not ready for production use.
 
 ## Installation

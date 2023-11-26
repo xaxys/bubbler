@@ -6,6 +6,8 @@ Bubbler 是一个专为物联网设备优化的协议生成器。它编译 `.bb`
 
 Bubbler 的协议功能强大，而且可以是非字节对齐的，这对于资源有限的物联网设备非常有用。下面会详细解释。
 
+另外，你可能需要 `.bb` 文件的语法高亮，可以查看 [bubbler-vscode](https://github.com/xaxys/bubbler-vscode)，或者从 [VSCode Marketplace](https://marketplace.visualstudio.com/items?itemName=xaxys.Bubbler) 安装。
+
 警告：Bubbler 仍在开发中，尚未准备好用于生产。
 
 ## 安装
