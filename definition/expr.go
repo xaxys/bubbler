@@ -79,8 +79,20 @@ func (e ExprOp) String() string {
 
 // ==================== Expr ====================
 
+type ExprKindID int
+
+const (
+	ExprKindID_UnopExpr ExprKindID = iota
+	ExprKindID_BinopExpr
+	ExprKindID_CastExpr
+	ExprKindID_TenaryExpr
+	ExprKindID_ConstantExpr
+	ExprKindID_ValueExpr
+)
+
 type Expr interface {
 	Position
+	GetExprKind() ExprKindID
 	GetExprType() *BasicType
 }
 
@@ -89,6 +101,10 @@ type UnopExpr struct {
 	ExprType *BasicType
 	Op       ExprOp
 	Expr1    Expr
+}
+
+func (u UnopExpr) GetExprKind() ExprKindID {
+	return ExprKindID_UnopExpr
 }
 
 func (u UnopExpr) GetExprType() *BasicType {
@@ -107,6 +123,10 @@ type BinopExpr struct {
 	Expr2    Expr
 }
 
+func (b BinopExpr) GetExprKind() ExprKindID {
+	return ExprKindID_BinopExpr
+}
+
 func (b BinopExpr) GetExprType() *BasicType {
 	return b.ExprType
 }
@@ -119,6 +139,10 @@ type CastExpr struct {
 	BasePosition
 	ToType *BasicType
 	Expr1  Expr
+}
+
+func (c CastExpr) GetExprKind() ExprKindID {
+	return ExprKindID_CastExpr
 }
 
 func (c CastExpr) GetExprType() *BasicType {
@@ -138,6 +162,10 @@ type TenaryExpr struct {
 	Expr2 Expr
 }
 
+func (t TenaryExpr) GetExprKind() ExprKindID {
+	return ExprKindID_TenaryExpr
+}
+
 func (t TenaryExpr) GetExprType() *BasicType {
 	return t.Expr1.GetExprType()
 }
@@ -152,6 +180,10 @@ type ConstantExpr struct {
 	ConstantValue Literal
 }
 
+func (c ConstantExpr) GetExprKind() ExprKindID {
+	return ExprKindID_ConstantExpr
+}
+
 func (c ConstantExpr) GetExprType() *BasicType {
 	return c.ConstantType
 }
@@ -163,6 +195,10 @@ func (c ConstantExpr) String() string {
 type ValueExpr struct {
 	BasePosition
 	ValueType *BasicType
+}
+
+func (v ValueExpr) GetExprKind() ExprKindID {
+	return ExprKindID_ValueExpr
 }
 
 func (v ValueExpr) GetExprType() *BasicType {

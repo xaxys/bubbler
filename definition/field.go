@@ -8,8 +8,18 @@ import (
 
 // ==================== Field ====================
 
+type FieldKindID int
+
+const (
+	FieldKindID_Normal FieldKindID = iota
+	FieldKindID_Void
+	FieldKindID_Embedded
+	FieldKindID_Constant
+)
+
 type Field interface {
 	Position
+	GetFieldKind() FieldKindID
 	GetFieldUniqueName() string
 	GetFieldBitSize() int64
 	GetFieldBelongs() *Struct
@@ -28,6 +38,10 @@ type NormalField struct {
 	FieldMethods []*Method
 	FieldOptions *util.OrderedMap[string, *Option]
 	FromEmbedded *EmbeddedField
+}
+
+func (f NormalField) GetFieldKind() FieldKindID {
+	return FieldKindID_Normal
 }
 
 func (f NormalField) ShortString() string {
@@ -108,6 +122,10 @@ type VoidField struct {
 	FromEmbedded *EmbeddedField
 }
 
+func (f VoidField) GetFieldKind() FieldKindID {
+	return FieldKindID_Void
+}
+
 func (f VoidField) ShortString() string {
 	return fmt.Sprintf("void [%s]", util.ToSizeString(f.FieldBitSize))
 }
@@ -174,6 +192,10 @@ type EmbeddedField struct {
 	FieldBelongs *Struct
 	FieldOptions *util.OrderedMap[string, *Option]
 	FromEmbedded *EmbeddedField
+}
+
+func (f EmbeddedField) GetFieldKind() FieldKindID {
+	return FieldKindID_Embedded
 }
 
 func (f EmbeddedField) ShortString() string {
@@ -250,6 +272,10 @@ type ConstantField struct {
 	FieldBelongs  *Struct
 	FieldOptions  *util.OrderedMap[string, *Option]
 	FromEmbedded  *EmbeddedField
+}
+
+func (f ConstantField) GetFieldKind() FieldKindID {
+	return FieldKindID_Constant
 }
 
 func (f ConstantField) ShortString() string {

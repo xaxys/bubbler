@@ -51,6 +51,26 @@ func (t TypeID) IsNumber() bool {
 	return t.IsInt() || t.IsUint() || t.IsFloat()
 }
 
+func (t TypeID) IsArray() bool {
+	return t == TypeID_Array
+}
+
+func (t TypeID) IsBytes() bool {
+	return t == TypeID_Bytes
+}
+
+func (t TypeID) IsString() bool {
+	return t == TypeID_String
+}
+
+func (t TypeID) IsStruct() bool {
+	return t == TypeID_Struct
+}
+
+func (t TypeID) IsEnum() bool {
+	return t == TypeID_Enum
+}
+
 func (t TypeID) String() string {
 	switch t {
 	case TypeID_Bool:
