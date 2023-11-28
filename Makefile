@@ -10,7 +10,7 @@ ifeq ($(OS),Windows_NT)  # is Windows_NT on XP, 2000, 7, Vista, 10...
 	BUILD_TAGS := $(shell git describe --tags --always --dirty="-dev")
 	BUILD_TIME := $(shell echo %date% %time%)
 	GIT_COMMIT := $(shell git rev-parse --short HEAD)
-	GO_VERSION := $(shell go version)
+	GO_VERSION := $(subst go version ,,$(shell go version))
 	GOPATH     := $(subst ;,,$(shell go env GOPATH))
 	RM_CMD_1   := del /s /q
 	RM_CMD_2   := 
@@ -23,7 +23,7 @@ else
 	BUILD_TAGS := $(shell git describe --tags --always --dirty="-dev")
 	BUILD_TIME := $(shell date --utc)
 	GIT_COMMIT := $(shell git rev-parse --short HEAD)
-	GO_VERSION := $(shell go version)
+	GO_VERSION := $(subst go version ,,$(shell go version))
 	GOPATH     := $(shell go env GOPATH)
 	RM_CMD_1   := find . -type f -name
 	RM_CMD_2   := -delete
