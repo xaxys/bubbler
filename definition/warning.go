@@ -3,6 +3,7 @@ package definition
 import (
 	"fmt"
 
+	"github.com/gookit/color"
 	"github.com/xaxys/bubbler/util"
 )
 
@@ -20,7 +21,12 @@ type GeneralWarning struct {
 }
 
 func (w GeneralWarning) String() string {
-	return fmt.Sprintf("%s: warning: %s", w.GetPositionString(), w.Warning.Error())
+	return fmt.Sprintf(
+		"%s %s %s",
+		color.FgLightWhite.Sprintf("%s:", w.GetPositionString()),
+		color.FgYellow.Render("warning:"),
+		w.Warning,
+	)
 }
 
 func (w GeneralWarning) Error() string {
@@ -36,7 +42,12 @@ type CompileWarning struct {
 }
 
 func (w CompileWarning) String() string {
-	return fmt.Sprintf("%s: compile warning: %s", w.GetPositionString(), w.Warning.Error())
+	return fmt.Sprintf(
+		"%s %s %s",
+		color.FgLightWhite.Sprintf("%s:", w.GetPositionString()),
+		color.FgYellow.Render("warning:"),
+		w.Warning,
+	)
 }
 
 func (w CompileWarning) Error() string {
@@ -52,7 +63,11 @@ type ArithTruncationWarning struct {
 }
 
 func (w ArithTruncationWarning) String() string {
-	return fmt.Sprintf("'%s' may truncated from '%s' to '%s', please mind the warning of compiler in generated code. Use cast expression if necessary.", w.Expr, w.From, w.To)
+	return fmt.Sprintf("'%s' may truncated from '%s' to '%s', please mind the warning of compiler in generated code. Use cast expression if necessary.",
+		color.FgLightWhite.Render(w.Expr),
+		color.FgLightWhite.Render(w.From),
+		color.FgLightWhite.Render(w.To),
+	)
 }
 
 func (w ArithTruncationWarning) Error() string {
@@ -68,7 +83,11 @@ type ArithOverflowWarning struct {
 }
 
 func (w ArithOverflowWarning) String() string {
-	return fmt.Sprintf("'%s' may overflowed from '%s' to '%s', please mind the warning of compiler in generated code. Use cast expression if necessary.", w.Expr, w.From, w.To)
+	return fmt.Sprintf("'%s' may overflowed from '%s' to '%s', please mind the warning of compiler in generated code. Use cast expression if necessary.",
+		color.FgLightWhite.Render(w.Expr),
+		color.FgLightWhite.Render(w.From),
+		color.FgLightWhite.Render(w.To),
+	)
 }
 
 func (w ArithOverflowWarning) Error() string {
@@ -84,7 +103,11 @@ type ArithSignToUnsignWarning struct {
 }
 
 func (w ArithSignToUnsignWarning) String() string {
-	return fmt.Sprintf("'%s' may lost data from '%s' to '%s', please mind the warning of compiler in generated code. Use cast expression if necessary.", w.Expr, w.From, w.To)
+	return fmt.Sprintf("'%s' may lost data from '%s' to '%s', please mind the warning of compiler in generated code. Use cast expression if necessary.",
+		color.FgLightWhite.Render(w.Expr),
+		color.FgLightWhite.Render(w.From),
+		color.FgLightWhite.Render(w.To),
+	)
 }
 
 func (w ArithSignToUnsignWarning) Error() string {
@@ -100,7 +123,10 @@ type ImportingWarning struct {
 
 func (w ImportingWarning) String() string {
 	str := "\n" + util.IndentSpace8(w.Warning)
-	return fmt.Sprintf("warnings occurred while importing '%s':%s", w.File.Name, str)
+	return fmt.Sprintf("warnings occurred while importing '%s': %s",
+		color.FgLightWhite.Render(w.File.Name),
+		str,
+	)
 }
 
 func (w ImportingWarning) Error() string {
@@ -114,9 +140,29 @@ type OptionUnknownWarning struct {
 }
 
 func (w OptionUnknownWarning) String() string {
-	return fmt.Sprintf("unknown option '%s'", w.OptionName)
+	return fmt.Sprintf("unknown option '%s'",
+		color.FgLightWhite.Render(w.OptionName),
+	)
 }
 
 func (w OptionUnknownWarning) Error() string {
+	return w.String()
+}
+
+// --------------------
+
+type NameStyleWarning struct {
+	Name string
+	Msg  string
+}
+
+func (w NameStyleWarning) String() string {
+	return fmt.Sprintf("unrecommended name style '%s': %s",
+		color.FgLightWhite.Render(w.Name),
+		w.Msg,
+	)
+}
+
+func (w NameStyleWarning) Error() string {
 	return w.String()
 }

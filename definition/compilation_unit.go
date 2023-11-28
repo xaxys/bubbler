@@ -10,7 +10,8 @@ import (
 type CompilationUnit struct {
 	UnitName *FileIdentifer
 	Imports  *util.OrderedMap[string, *CompilationUnit]
-	Types    *util.OrderedMap[string, CustomType]
+	Types    *util.OrderedMap[string, CustomType] // Types contains all the top-level typedefs (inner typedefs excluded)
+	Names    *util.OrderedMap[string, Position]   // Names contains all the names (inner typedefs' name included)
 }
 
 func NewCompilationUnit(name *FileIdentifer) *CompilationUnit {
@@ -18,6 +19,7 @@ func NewCompilationUnit(name *FileIdentifer) *CompilationUnit {
 		UnitName: name,
 		Imports:  util.NewOrderedMap[string, *CompilationUnit](),
 		Types:    util.NewOrderedMap[string, CustomType](),
+		Names:    util.NewOrderedMap[string, Position](),
 	}
 }
 
@@ -78,5 +80,11 @@ func (c CompilationUnit) String() string {
 	}
 	types += "    ]"
 
-	return fmt.Sprintf("CompilationUnit {\n    UnitName: %s\n    Imports: %s\n    Types: %s\n}", c.UnitName, imports, types)
+	names := "[\n"
+	for _, name := range c.Names.Keys() {
+		names += util.IndentSpace8(name) + "\n"
+	}
+	names += "    ]"
+
+	return fmt.Sprintf("CompilationUnit {\n    UnitName: %s\n    Imports: %s\n    Types: %s\n	Names: %s\n}", c.UnitName, imports, types, names)
 }

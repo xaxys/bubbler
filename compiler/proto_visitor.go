@@ -36,7 +36,7 @@ func (v *ProtoVisitor) VisitProto(ctx *parser.ProtoContext) any {
 		case error:
 			return val
 		case definition.CustomType:
-			v.Unit.Types.Put(val.GetTypeName(), val)
+			v.Unit.Types.MustPut(val.GetTypeName(), val)
 		default:
 			panic("unreachable")
 		}
@@ -59,8 +59,18 @@ func (v *ProtoVisitor) VisitTopLevelDef(ctx *parser.TopLevelDefContext) any {
 
 // VisitStructDef returns Struct or error
 func (v *ProtoVisitor) VisitStructDef(ctx *parser.StructDefContext) any {
-	name := ctx.StructName().Accept(v).(string)
-	if v.Unit.Types.Has(name) {
+	name := ""
+	nameRet := ctx.StructName().Accept(v)
+	switch val := nameRet.(type) {
+	case error:
+		return val
+	case string:
+		name = val
+	default:
+		panic("unreachable")
+	}
+
+	if v.Unit.Names.Has(name) {
 		pos := definition.BasePosition{
 			File:   v.Unit.UnitName.Path,
 			Line:   ctx.StructName().GetStart().GetLine(),
@@ -69,11 +79,18 @@ func (v *ProtoVisitor) VisitStructDef(ctx *parser.StructDefContext) any {
 		return &definition.CompileError{
 			Position: pos,
 			Err: &definition.DefinitionDuplicateError{
-				PrevDef: v.Unit.Types.MustGet(name),
+				PrevDef: v.Unit.Names.MustGet(name),
 				DefName: name,
 			},
 		}
 	}
+
+	// reserve name
+	v.Unit.Names.Put(name, &definition.BasePosition{
+		File:   v.Unit.UnitName.Path,
+		Line:   ctx.StructName().GetStart().GetLine(),
+		Column: ctx.StructName().GetStart().GetColumn(),
+	})
 
 	size := int64(0)
 	if ctx.Size_() != nil {
@@ -192,7 +209,21 @@ func (v *ProtoVisitor) VisitStructDef(ctx *parser.StructDefContext) any {
 }
 
 func (v *ProtoVisitor) VisitStructName(ctx *parser.StructNameContext) any {
-	return ctx.Ident().Accept(v)
+	name := ctx.Ident().Accept(v).(string)
+	if !util.IsCapitalized(name) {
+		return &definition.CompileError{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.Ident().GetStart().GetLine(),
+				Column: ctx.Ident().GetStart().GetColumn(),
+			},
+			Err: &definition.NameStyleError{
+				Name: name,
+				Msg:  "struct name must be Capitalized, recommended to use PascalCase",
+			},
+		}
+	}
+	return name
 }
 
 func (v *ProtoVisitor) VisitStructBody(ctx *parser.StructBodyContext) any {
@@ -342,7 +373,18 @@ func (v *ProtoVisitor) VisitFieldNormal(ctx *parser.FieldNormalContext) any {
 		panic("unreachable")
 	}
 
-	name := ctx.FieldName().Accept(v).(string)
+	var name string
+	if ctx.FieldName() != nil {
+		nameRet := ctx.FieldName().Accept(v)
+		switch val := nameRet.(type) {
+		case error:
+			return val
+		case string:
+			name = val
+		default:
+			panic("unreachable")
+		}
+	}
 
 	size := int64(0)
 	if ctx.Size_() != nil {
@@ -598,7 +640,15 @@ func (v *ProtoVisitor) VisitFieldConstant(ctx *parser.FieldConstantContext) any 
 
 	var name string
 	if ctx.FieldName() != nil {
-		name = ctx.FieldName().Accept(v).(string)
+		nameRet := ctx.FieldName().Accept(v)
+		switch val := nameRet.(type) {
+		case error:
+			return val
+		case string:
+			name = val
+		default:
+			panic("unreachable")
+		}
 	}
 
 	size := int64(0)
@@ -761,7 +811,57 @@ func (v *ProtoVisitor) VisitByteSize(ctx *parser.ByteSizeContext) any {
 }
 
 func (v *ProtoVisitor) VisitFieldName(ctx *parser.FieldNameContext) any {
-	return ctx.Ident().Accept(v)
+	name := ctx.Ident().Accept(v).(string)
+	if !util.IsUncapitalized(name) {
+		return &definition.CompileError{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.Ident().GetStart().GetLine(),
+				Column: ctx.Ident().GetStart().GetColumn(),
+			},
+			Err: &definition.NameStyleError{
+				Name: name,
+				Msg:  "struct name must be uncapitalized, recommended to use snake_case",
+			},
+		}
+	}
+	case1 := name
+	for case1 != util.Tosnake_case(util.ToPascalCase(case1)) {
+		case1 = util.Tosnake_case(util.ToPascalCase(case1))
+	}
+	case2 := name
+	for case2 != util.Tosnake_case(util.TocamelCase(case2)) {
+		case2 = util.Tosnake_case(util.TocamelCase(case2))
+	}
+	if name != case1 {
+		warn := &definition.CompileWarning{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.Ident().GetStart().GetLine(),
+				Column: ctx.Ident().GetStart().GetColumn(),
+			},
+			Warning: &definition.NameStyleWarning{
+				Name: name,
+				Msg:  fmt.Sprintf("non-standard snake_case detected. use '%s' instead.", case1),
+			},
+		}
+		v.Warning = errors.Join(v.Warning, warn)
+	}
+	if case1 != case2 {
+		warn := &definition.GeneralWarning{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.Ident().GetStart().GetLine(),
+				Column: ctx.Ident().GetStart().GetColumn(),
+			},
+			Warning: &definition.NameStyleWarning{
+				Name: name,
+				Msg:  fmt.Sprintf("non-identical detected while converting to camelCase '%s' and PascalCase '%s'. Please contact the author for further help.", case2, case1),
+			},
+		}
+		v.Warning = errors.Join(v.Warning, warn)
+	}
+	return name
 }
 
 func (v *ProtoVisitor) VisitFieldOptions(ctx *parser.FieldOptionsContext) any {
@@ -937,7 +1037,15 @@ func (v *MethodVisitor) VisitFieldMethod(ctx *parser.FieldMethodContext) any {
 
 	name := ""
 	if ctx.MethodName() != nil {
-		name = ctx.MethodName().Accept(v).(string)
+		nameRet := ctx.MethodName().Accept(v)
+		switch val := nameRet.(type) {
+		case error:
+			return val
+		case string:
+			name = val
+		default:
+			panic("unreachable")
+		}
 	}
 
 	var type_ *definition.BasicType
@@ -980,7 +1088,49 @@ func (v *MethodVisitor) VisitFieldMethod(ctx *parser.FieldMethodContext) any {
 }
 
 func (v *MethodVisitor) VisitMethodName(ctx *parser.MethodNameContext) any {
-	return ctx.Ident().Accept(v)
+	name := ctx.Ident().Accept(v).(string)
+	if !util.IsUncapitalized(name) {
+		return &definition.CompileError{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.Ident().GetStart().GetLine(),
+				Column: ctx.Ident().GetStart().GetColumn(),
+			},
+			Err: &definition.NameStyleError{
+				Name: name,
+				Msg:  "method name must be uncapitalized, recommended to use snake_case",
+			},
+		}
+	}
+	if name != util.Tosnake_case(util.ToPascalCase(name)) {
+		warn := &definition.CompileWarning{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.Ident().GetStart().GetLine(),
+				Column: ctx.Ident().GetStart().GetColumn(),
+			},
+			Warning: &definition.NameStyleWarning{
+				Name: name,
+				Msg:  fmt.Sprintf("non-identical detected while converting to PascalCase and converting back to snake_case '%s' -> '%s'. This may cause unexpected behavior in generated code. (such as Go, C#, etc.) ", name, util.Tosnake_case(util.ToPascalCase(name))),
+			},
+		}
+		v.Warning = errors.Join(v.Warning, warn)
+	}
+	if name != util.Tosnake_case(util.TocamelCase(name)) {
+		warn := &definition.CompileWarning{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.Ident().GetStart().GetLine(),
+				Column: ctx.Ident().GetStart().GetColumn(),
+			},
+			Warning: &definition.NameStyleWarning{
+				Name: name,
+				Msg:  fmt.Sprintf("non-identical detected while converting to camelCase and converting back to snake_case '%s' -> '%s'. This may cause unexpected behavior in generated code. (such as Java, JavaScript, etc.) ", name, util.Tosnake_case(util.TocamelCase(name))),
+			},
+		}
+		v.Warning = errors.Join(v.Warning, warn)
+	}
+	return name
 }
 
 // ==================== Expr ====================
@@ -1860,8 +2010,18 @@ func (v *ProtoVisitor) VisitEnumType(ctx *parser.EnumTypeContext) any {
 // ==================== Enum ====================
 
 func (v *ProtoVisitor) VisitEnumDef(ctx *parser.EnumDefContext) any {
-	name := ctx.EnumName().Accept(v).(string)
-	if v.Unit.Types.Has(name) {
+	name := ""
+	nameRet := ctx.EnumName().Accept(v)
+	switch val := nameRet.(type) {
+	case error:
+		return val
+	case string:
+		name = val
+	default:
+		panic("unreachable")
+	}
+
+	if v.Unit.Names.Has(name) {
 		pos := definition.BasePosition{
 			File:   v.Unit.UnitName.Path,
 			Line:   ctx.EnumName().GetStart().GetLine(),
@@ -1870,11 +2030,18 @@ func (v *ProtoVisitor) VisitEnumDef(ctx *parser.EnumDefContext) any {
 		return &definition.CompileError{
 			Position: pos,
 			Err: &definition.DefinitionDuplicateError{
-				PrevDef: v.Unit.Types.MustGet(name),
+				PrevDef: v.Unit.Names.MustGet(name),
 				DefName: name,
 			},
 		}
 	}
+
+	// reserve name
+	v.Unit.Names.Put(name, &definition.BasePosition{
+		File:   v.Unit.UnitName.Path,
+		Line:   ctx.EnumName().GetStart().GetLine(),
+		Column: ctx.EnumName().GetStart().GetColumn(),
+	})
 
 	size := int64(0)
 	sizeRet := ctx.Size_().Accept(v)
@@ -1986,6 +2153,20 @@ func (v *ProtoVisitor) VisitEnumElement(ctx *parser.EnumElementContext) any {
 
 func (v *ProtoVisitor) VisitEnumField(ctx *parser.EnumFieldContext) any {
 	name := ctx.Ident().Accept(v).(string)
+	if !util.IsCapitalized(name) {
+		return &definition.CompileError{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.Ident().GetStart().GetLine(),
+				Column: ctx.Ident().GetStart().GetColumn(),
+			},
+			Err: &definition.NameStyleError{
+				Name: name,
+				Msg:  "enum value name must be Capitalized, recommended to use CAPITALS_WITH_UNDERSCORES",
+			},
+		}
+	}
+
 	value := int64(-1)
 	if ctx.IntLit() != nil {
 		ret := ctx.IntLit().Accept(v)
@@ -2017,7 +2198,21 @@ func (v *ProtoVisitor) VisitEnumField(ctx *parser.EnumFieldContext) any {
 }
 
 func (v *ProtoVisitor) VisitEnumName(ctx *parser.EnumNameContext) any {
-	return ctx.Ident().Accept(v)
+	name := ctx.Ident().Accept(v).(string)
+	if !util.IsCapitalized(name) {
+		return &definition.CompileError{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.Ident().GetStart().GetLine(),
+				Column: ctx.Ident().GetStart().GetColumn(),
+			},
+			Err: &definition.NameStyleError{
+				Name: name,
+				Msg:  "enum name must be Capitalized, recommended to use PascalCase",
+			},
+		}
+	}
+	return name
 }
 
 // TODO: parse enum options
