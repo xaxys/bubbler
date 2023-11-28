@@ -76,7 +76,7 @@ The number in the square brackets after the enumeration type name indicates the 
 
 Use the `struct` keyword to define data structures. The definition of a data structure includes the structure name and a series of fields. For example:
 
-```bubbler
+```c
 struct Frame[20] {
     FrameType opcode;
     struct some_embed[1] {
@@ -91,6 +91,8 @@ struct Frame[20] {
 
 In this example, `Frame` is a data structure with three fields: `opcode`, `some_embed`, and `payload`. `opcode` is of type `FrameType`, `some_embed` is an anonymous embedded data structure, and `payload` is of type `uint8`.
 
+Please note that Bubbler does not have the concept of scope (to accommodate the C language), so the names `Frame` and `some_embed` as data structure names are not allowed to be duplicated globally, even if `some_embed` is an anonymous embedded data structure.
+
 ### Field Types
 
 The Bubbler protocol supports four types of fields: regular fields, anonymous embedded fields, constant fields, and empty fields.
@@ -104,7 +106,7 @@ The Bubbler protocol supports four types of fields: regular fields, anonymous em
 
 Regular fields consist of a type name, field name, and field width. For example:
 
-```bubbler
+```c
 struct Frame {
     RovlinkFrameType opcode;
 };
@@ -130,7 +132,7 @@ However, for fields of `struct` type, the field width must be equal to the width
 
 Anonymous embedded fields are nameless data structures that can contain multiple subfields. For example:
 
-```bubbler
+```c
 struct Frame {
     int64 myInt48[6];
     struct some_embed[1] {
@@ -184,7 +186,7 @@ struct Frame {
 
 Constant fields are fields with a fixed value, its value is determined at the time of definition and cannot be modified. For example:
 
-```bubbler
+```c
 struct Frame {
     uint8 FRAME_HEADER = 0xAA;
 };
@@ -198,7 +200,7 @@ The value of the constant field will be ignored during encoding and checked duri
 
 Empty fields are fields without a name and type, they only have a width. Empty fields are often used for padding or aligning data structures. For example:
 
-```bubbler
+```c
 struct Frame {
     void [#2];
 };
@@ -210,7 +212,7 @@ In this example, `void [#2]` is an empty field that occupies 2 bits of space.
 
 Field options are used to specify additional attributes of a field. For example, you can use the `order` option to specify the byte order of an array:
 
-```bubbler
+```c
 struct AnotherTest {
     int8<2> arr [order = "big"];
 }
@@ -222,7 +224,7 @@ In this example, the byte order of the `arr` field is set to big-endian.
 
 You can define custom getter and setter methods for a field to perform specific operations when reading or writing field values. For example:
 
-```bubbler
+```c
 struct SensorTemperatureData {
     uint16 temperature[2] {
         get(float64): value / 10 - 40;

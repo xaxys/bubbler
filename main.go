@@ -49,7 +49,7 @@ func printBanner() {
 	fmt.Println("  bubbler -t c -o gen.c example.bb")
 	fmt.Println("  bubbler -t dump example.bb")
 	fmt.Println()
-	fmt.Println("For more information, please visit: blah blah blah")
+	fmt.Println("For more information, please visit: https://github.com/xaxys/bubbler")
 	fmt.Println()
 }
 

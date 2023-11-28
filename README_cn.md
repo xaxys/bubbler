@@ -76,7 +76,7 @@ enum FrameType[1] {
 
 使用 `struct` 关键字定义数据结构。数据结构的定义包括结构名称和一系列的字段。例如：
 
-```bubbler
+```c
 struct Frame[20] {
     FrameType opcode;
     struct some_embed[1] {
@@ -91,6 +91,8 @@ struct Frame[20] {
 
 在这个例子中，`Frame` 是一个数据结构，它有三个字段：`opcode`、`some_embed` 和 `payload`。`opcode` 的类型是 `FrameType`，`some_embed` 是一个匿名内嵌的数据结构，`payload` 的类型是 `uint8`。
 
+请注意，Bubbler中并无作用域的概念（为了适应 C 语言），所以 `Frame` 和 `some_embed` 作为数据结构名称，在全局都不允许重名，哪怕 `some_embed` 是一个匿名内嵌的数据结构。
+
 ### 字段类型
 
 Bubbler 协议支持四种字段类型：普通字段、匿名内嵌字段、常量字段和空字段。
@@ -104,7 +106,7 @@ Bubbler 协议支持四种字段类型：普通字段、匿名内嵌字段、常
 
 普通字段由类型名、字段名和字段宽度构成。例如：
 
-```bubbler
+```c
 struct Frame {
     RovlinkFrameType opcode;
 };
@@ -130,7 +132,7 @@ struct Frame[20] {
 
 匿名内嵌字段是一个没有名字的数据结构，它可以包含多个子字段。例如：
 
-```bubbler
+```c
 struct Frame {
     int64 myInt48[6];
     struct some_embed[1] {
@@ -184,7 +186,7 @@ struct Frame {
 
 常量字段是一个固定值的字段，它的值在定义时就已经确定，不能被修改。例如：
 
-```bubbler
+```c
 struct Frame {
     uint8 FRAME_HEADER = 0xAA;
 };
@@ -198,7 +200,7 @@ struct Frame {
 
 空字段是一个没有名字和类型的字段，它只有宽度。空字段通常用于填充或对齐数据结构。例如：
 
-```bubbler
+```c
 struct Frame {
     void [#2];
 };
@@ -206,12 +208,11 @@ struct Frame {
 
 在这个例子中，`void [#2]` 是一个空字段，它占用了 2 比特的空间。
 
-
 ### 字段选项
 
 字段选项用于指定字段的额外属性。例如，可以使用 `order` 选项指定数组的字节顺序：
 
-```bubbler
+```c
 struct AnotherTest {
     int8<2> arr [order = "big"];
 }
