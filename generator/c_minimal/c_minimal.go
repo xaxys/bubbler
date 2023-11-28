@@ -128,7 +128,7 @@ var structTemplate = `
 {{- define "constantField" -}}
 	{{- $pos := .Pos -}}
 	{{- $field := .Field -}}
-	{{- $fieldName := .Field.FieldName -}}
+	{{- $fieldName := Tosnake_case .Field.FieldName -}}
 	// {{ $pos }} ConstantField: {{ $field.ShortString }}
 	{{ if $fieldName }}
 		{{- $tyStr := generateType $field.FieldType -}}
@@ -151,7 +151,7 @@ var structTemplate = `
 {{- define "normalField" -}}
 	{{- $pos := .Pos -}}
 	{{- $field := .Field -}}
-	{{- $fieldName := .Field.FieldName -}}
+	{{- $fieldName := Tosnake_case .Field.FieldName -}}
 	// {{ $pos }} NormalField: {{ $field.ShortString }}
 	{{ if $field.FieldType.GetTypeID.IsArray }}
 		{{- $arrayType := $field.FieldType.ElementType -}}
@@ -161,7 +161,7 @@ var structTemplate = `
 	{{- else }}
 		{{- $tyStr := generateType $field.FieldType -}}
 		{{ $tyStr }} {{ $fieldName }};
-	{{- end }}
+	{{- end -}}
 {{- end -}}
 
 {{- define "field" -}}
@@ -175,7 +175,7 @@ var structTemplate = `
 		{{- template "normalField" . }}
 	{{- else }}
 		{{- panic "unreachable" }}
-	{{- end }}
+	{{- end -}}
 {{- end -}}
 
 {{- define "structConst" -}}
@@ -197,7 +197,6 @@ struct {{ $structDef.StructName }} {
 func (g *CMinimalGenerator) generateStruct(structDef *definition.Struct) *GeneratedType {
 	funcMap := template.FuncMap{
 		"generateType": g.generateType,
-		"panic":        func(v any) error { panic(v) },
 	}
 
 	fields := []string{}
@@ -240,14 +239,7 @@ func (g *CMinimalGenerator) generateStruct(structDef *definition.Struct) *Genera
 
 	funcStr := g.generateEncoder(structDef) + "\n" + g.generateDecoder(structDef)
 
-	for _, field := range structDef.StructFields {
-		if val, ok := field.(*definition.NormalField); ok {
-			methodsStr := g.generateMethods(structDef, val)
-			if methodsStr != "" {
-				funcStr += methodsStr
-			}
-		}
-	}
+	funcStr += g.generateStructMethods(structDef)
 
 	code := &GeneratedType{
 		GeneratedConst: constStr,
@@ -295,7 +287,7 @@ func (g *CMinimalGenerator) generateEncoder(structDef *definition.Struct) string
 	}
 
 	str := fmt.Sprintf("// Encoder: %s\n", structDef.StructName)
-	str += fmt.Sprintf("static void %s_Encode(struct %s* structPtr, void* data) {\n", structDef.StructName, structDef.StructName)
+	str += fmt.Sprintf("static void %s_encode(struct %s* structPtr, void* data) {\n", structDef.StructName, structDef.StructName)
 	encodeStr := ""
 	startBits := int64(0)
 	for _, field := range structDef.StructFields {
@@ -335,7 +327,7 @@ func (g *CMinimalGenerator) generateEncoder(structDef *definition.Struct) string
 			encodeStr += fmt.Sprintf("// %s %s\n", pos, val.ShortString())
 			switch ty := val.FieldType.(type) {
 			case *definition.Struct:
-				encodeStr += fmt.Sprintf("%s_Encode(&(structPtr->%s), ((uint8_t*)data) + %d);\n", ty.StructName, val.FieldName, from/8)
+				encodeStr += fmt.Sprintf("%s_encode(&(structPtr->%s), ((uint8_t*)data) + %d);\n", ty.StructName, val.FieldName, from/8)
 			case *definition.BasicType, *definition.Enum:
 				tySize := (ty.GetTypeBitSize() + 7) / 8
 				fieldSize := (val.FieldBitSize + 7) / 8
@@ -442,7 +434,7 @@ func (g *CMinimalGenerator) generateDecoder(structDef *definition.Struct) string
 	// }
 
 	str := fmt.Sprintf("// Decoder: %s\n", structDef.StructName)
-	str += fmt.Sprintf("static bool %s_Decode(void* data, struct %s* structPtr) {\n", structDef.StructName, structDef.StructName)
+	str += fmt.Sprintf("static bool %s_decode(void* data, struct %s* structPtr) {\n", structDef.StructName, structDef.StructName)
 	decodeStr := ""
 	startBits := int64(0)
 	for fieldIndex, field := range structDef.StructFields {
@@ -507,7 +499,7 @@ func (g *CMinimalGenerator) generateDecoder(structDef *definition.Struct) string
 
 			switch ty := val.FieldType.(type) {
 			case *definition.Struct:
-				decodeStr += fmt.Sprintf("if (!%s_Decode((void*)((uint8_t*)data + %d), &(%s))) return false;\n", ty.StructName, from/8, name)
+				decodeStr += fmt.Sprintf("if (!%s_decode((void*)((uint8_t*)data + %d), &(%s))) return false;\n", ty.StructName, from/8, name)
 
 			case *definition.BasicType, *definition.Enum:
 				tySize := (ty.GetTypeBitSize() + 7) / 8
@@ -605,136 +597,119 @@ func (g *CMinimalGenerator) generateDecoder(structDef *definition.Struct) string
 	return str
 }
 
-func (g *CMinimalGenerator) generateMethods(structDef *definition.Struct, fieldDef *definition.NormalField) string {
-
-	structTypeStr := fmt.Sprintf("struct %s*", structDef.StructName)
-
-	genGet := func(name string, retType definition.Type, expr definition.Expr) string {
-		str := fmt.Sprintf("// Getter: %s_%s\n", structDef.StructName, name)
-		retTypeStr := g.generateType(retType)
-		str += fmt.Sprintf("static %s %s_%s(%s value) {\n", retTypeStr, structDef.StructName, name, structTypeStr)
-		exprStr := g.generateExpr(expr, fmt.Sprintf("value->%s", fieldDef.FieldName))
-		exprStr = fmt.Sprintf("return %s;\n", exprStr)
-		exprStr = util.IndentSpace4(exprStr)
-		str += exprStr
-		str += fmt.Sprintf("}\n")
-		return str
-	}
-
-	genSet := func(name string, paramType definition.Type, expr definition.Expr) string {
-		str := fmt.Sprintf("// Setter: %s_%s\n", structDef.StructName, name)
-		paramTypeStr := g.generateType(paramType)
-		str += fmt.Sprintf("static void %s_%s(%s structPtr, %s value) {\n", structDef.StructName, name, structTypeStr, paramTypeStr)
-		exprStr := g.generateExpr(expr, "value")
-		exprStr = fmt.Sprintf("%s = %s;\n", fmt.Sprintf("structPtr->%s", fieldDef.FieldName), exprStr)
-		exprStr = util.IndentSpace4(exprStr)
-		str += exprStr
-		str += fmt.Sprintf("}\n")
-		return str
-	}
-
-	if fieldDef.FieldMethods == nil {
-		return ""
-	}
-
-	str := fmt.Sprintf("// Methods: %s\n", fieldDef.ShortString())
-	for _, method := range fieldDef.FieldMethods {
-		switch method.MethodKind {
-		case definition.MethodKindID_Get:
-			var name string
-			if method.MethodName == "" {
-				name = fmt.Sprintf("Get_%s", fieldDef.FieldName)
-			} else {
-				name = fmt.Sprintf("Get_%s_%s", fieldDef.FieldName, method.MethodName)
-			}
-			str += genGet(name, method.MethodParamType, method.MethodExpr) + "\n"
-		case definition.MethodKindID_Set:
-			var name string
-			if method.MethodName == "" {
-				name = fmt.Sprintf("Set_%s", fieldDef.FieldName)
-			} else {
-				name = fmt.Sprintf("Set_%s_%s", fieldDef.FieldName, method.MethodName)
-			}
-			str += genSet(name, method.MethodParamType, method.MethodExpr) + "\n"
-		default:
-			panic("unreachable")
-		}
-	}
-	return str
+var methodsTemplate = `
+{{- define "defaultGetter" -}}
+{{- $returnType := generateType .ReturnType -}}
+{{- $fieldName := Tosnake_case .FieldDef.FieldName -}}
+{{- $valueReplacement := printf "structPtr->%s" $fieldName -}}
+{{- $expr := generateExpr .Expr $valueReplacement -}}
+// DefaultGetter: {{ .StructName }}_get_{{ $fieldName }}
+static {{ $returnType }} {{ .StructName }}_get_{{ $fieldName }}(struct {{ .StructName }}* structPtr) {
+	return {{ $expr }};
 }
 
-// var methodsTemplate = `
-// {{- define "genGet" -}}
-// // Getter: {{.StructName}}_{{.Name}}
-// static {{.ReturnType}} {{.StructName}}_{{.Name}}({{.StructType}} value) {
-//     {{- .Expr := .Expr -}}
-//     {{- .ExprStr := generateExpr .Expr (printf "value->%s" .FieldName) -}}
-//     return {{ .ExprStr }};
-// }
+{{ end -}}
 
-// {{- end -}}
+{{- define "defaultSetter" -}}
+{{- $paramType := generateType .ParamType -}}
+{{- $fieldName := Tosnake_case .FieldDef.FieldName -}}
+{{- $expr := generateExpr .Expr "value" -}}
+// DefaultSetter: {{ .StructName }}_set_{{ $fieldName }}
+static void {{ .StructName }}_set_{{ $fieldName }}(struct {{ .StructName }}* structPtr, {{ $paramType }} value) {
+	structPtr->{{ $fieldName }} = {{ $expr }};
+}
 
-// {{- define "genSet" -}}
-// // Setter: {{.StructName}}_{{.Name}}
-// static void {{.StructName}}_{{.Name}}({{.StructType}} structPtr, {{.ParamType}} value) {
-//     {{- .Expr := .Expr -}}
-//     {{- .ExprStr := generateExpr .Expr "value" -}}
-//     {{- $field := printf "structPtr->%s" .FieldName -}}
-//     {{- $assignment := printf "%s = %s;" $field .ExprStr -}}
-//     {{- $indentedAssignment := indentSpace4 $assignment -}}
-//     {{- $indentedAssignment }}
-// }
+{{ end -}}
 
-// {{- end -}}
+{{- define "customGetter" -}}
+{{- $returnType := generateType .ReturnType -}}
+{{- $fieldName := Tosnake_case .FieldDef.FieldName -}}
+{{- $valueReplacement := printf "structPtr->%s" $fieldName -}}
+{{- $expr := generateExpr .Expr $valueReplacement -}}
+// CustomGetter: {{ .StructName }}_get_{{ $fieldName }}_{{ .Name }}
+static {{ $returnType }} {{ .StructName }}_get_{{ $fieldName }}_{{ .Name }}(struct {{ .StructName }}* structPtr) {
+	return {{ $expr }};
+}
 
-// {{- range $fieldDef := .StructDef.NormalFields }}
-//     {{- if $fieldDef.FieldMethods }}
-//         {{- $structTypeStr := printf "struct %s*" $fieldDef.StructDef.StructName }}
-//         {{- $methodsStr := printf "// Methods: %s\n" $fieldDef.ShortString }}
-//         {{- range $method := $fieldDef.FieldMethods }}
-//             {{- if eq $method.MethodKind .MethodKindID_Get }}
-//                 {{- $name := if $method.MethodName }}{{ printf "Get_%s_%s" $fieldDef.FieldName $method.MethodName }}{{ else }}{{ printf "Get_%s" $fieldDef.FieldName }}{{ end }}
-//                 {{- $getStr := template "genGet" (dict "StructName" $fieldDef.StructDef.StructName "Name" $name "ReturnType" (generateType $method.MethodParamType) "StructType" $structTypeStr "Expr" $method.MethodExpr "FieldName" $fieldDef.FieldName) }}
-//                 {{- $methodsStr = printf "%s\n%s\n" $methodsStr $getStr }}
-//             {{- else if eq $method.MethodKind .MethodKindID_Set }}
-//                 {{- $name := if $method.MethodName }}{{ printf "Set_%s_%s" $fieldDef.FieldName $method.MethodName }}{{ else }}{{ printf "Set_%s" $fieldDef.FieldName }}{{ end }}
-//                 {{- $setStr := template "genSet" (dict "StructName" $fieldDef.StructDef.StructName "Name" $name "ParamType" (generateType $method.MethodParamType) "StructType" $structTypeStr "Expr" $method.MethodExpr "FieldName" $fieldDef.FieldName) }}
-//                 {{- $methodsStr = printf "%s\n%s\n" $methodsStr $setStr }}
-//             {{- else }}
-//                 {{- panic "unreachable" }}
-//             {{- end }}
-//         {{- end }}
-//         {{- $methodsStr }}
-//     {{- end }}
-// {{- end }}
-// `
+{{ end -}}
 
-// func (g *CMinimalGenerator) generateMethods(structDef *definition.Struct, fieldDef *definition.NormalField) string {
-//     funcMap := template.FuncMap{
-//         "generateExpr": g.generateExpr,
-//         "generateType": g.generateType,
-//         "indentSpace4": util.IndentSpace4,
-//     }
+{{- define "customSetter" -}}
+{{- $paramType := generateType .ParamType -}}
+{{- $fieldName := Tosnake_case .FieldDef.FieldName -}}
+{{- $expr := generateExpr .Expr "value" -}}
+// CustomSetter: {{ .StructName }}_set_{{ $fieldName }}_{{ .Name }}
+static void {{ .StructName }}_set_{{ $fieldName }}_{{ .Name }}(struct {{ .StructName }}* structPtr, {{ $paramType }} value) {
+	structPtr->{{ $fieldName }} = {{ $expr }};
+}
 
-//     tmpl := template.New("methods").Funcs(funcMap)
-//     tmpl, err := tmpl.Parse(methodsTemplate)
-//     if err != nil {
-//         panic(err)
-//     }
+{{ end -}}
 
-//     var buf bytes.Buffer
-//     data := map[string]interface{}{
-//         "StructDef": structDef,
-//         "FieldDef":  fieldDef,
-//     }
+{{- define "fieldMethods" -}}
+{{- $structName := .StructName -}}
+{{- $fieldDef := .FieldDef -}}
+{{- $methodKindID_Get := .MethodKindID_Get -}}
+{{- $methodKindID_Set := .MethodKindID_Set -}}
+{{- if gt (len .FieldDef.FieldMethods) 0 }}
+// FieldMethods: {{ .StructName }}.{{ Tosnake_case .FieldDef.FieldName }}
+{{ end -}}
+{{ range $method := .FieldDef.FieldMethods }}
+	{{- if eq $method.MethodKind $methodKindID_Get }}
+		{{- if $method.MethodName }}
+			{{- $getterData := dict "StructName" $structName "FieldDef" $fieldDef "ReturnType" $method.MethodParamType "Expr" $method.MethodExpr "Name" $method.MethodName }}
+			{{- template "customGetter" $getterData }}
+		{{- else }}
+			{{- $getterData := dict "StructName" $structName "FieldDef" $fieldDef "ReturnType" $method.MethodParamType "Expr" $method.MethodExpr }}
+			{{- template "defaultGetter" $getterData }}
+		{{- end }}
+	{{- else if eq $method.MethodKind $methodKindID_Set }}
+		{{- if $method.MethodName }}
+			{{- $setterData := dict "StructName" $structName "FieldDef" $fieldDef "ParamType" $method.MethodParamType "Expr" $method.MethodExpr "Name" $method.MethodName }}
+			{{- template "customSetter" $setterData }}
+		{{- else }}
+			{{- $setterData := dict "StructName" $structName "FieldDef" $fieldDef "ParamType" $method.MethodParamType "Expr" $method.MethodExpr }}
+			{{- template "defaultSetter" $setterData }}
+		{{- end }}
+	{{- else }}
+		{{- panic "unreachable" }}
+	{{- end -}}
+{{- end -}}
+{{- end -}}
 
-//     err = tmpl.Execute(&buf, data)
-//     if err != nil {
-//         panic(err)
-//     }
+{{- define "structMethods" -}}
+{{- $structName := .StructDef.StructName -}}
+{{- $fieldKindID_Constant := .FieldKindID_Constant -}}
+{{- $fieldKindID_Void := .FieldKindID_Void -}}
+{{- $fieldKindID_Embedded := .FieldKindID_Embedded -}}
+{{- $fieldKindID_Normal := .FieldKindID_Normal -}}
+{{- $methodKindID_Get := .MethodKindID_Get -}}
+{{- $methodKindID_Set := .MethodKindID_Set -}}
+{{- range $field := .StructDef.StructFields }}
+	{{- if eq $field.GetFieldKind $fieldKindID_Normal }}
+		{{- template "fieldMethods" dict "StructName" $structName "FieldDef" $field "MethodKindID_Get" $methodKindID_Get "MethodKindID_Set" $methodKindID_Set }}
+	{{- end -}}
+{{- end -}}
+{{- end -}}
+`
 
-//     return buf.String()
-// }
+func (g *CMinimalGenerator) generateStructMethods(structDef *definition.Struct) string {
+	funcMap := template.FuncMap{
+		"generateExpr": g.generateExpr,
+		"generateType": g.generateType,
+	}
+
+	data := map[string]interface{}{
+		"StructDef":            structDef,
+		"FieldKindID_Constant": definition.FieldKindID_Constant,
+		"FieldKindID_Void":     definition.FieldKindID_Void,
+		"FieldKindID_Embedded": definition.FieldKindID_Embedded,
+		"FieldKindID_Normal":   definition.FieldKindID_Normal,
+		"MethodKindID_Get":     definition.MethodKindID_Get,
+		"MethodKindID_Set":     definition.MethodKindID_Set,
+	}
+
+	methodsStr := util.ExecuteTemplate(methodsTemplate, "structMethods", funcMap, data)
+	return methodsStr
+}
 
 var exprTemplate = `
 {{- define "unopExpr" -}}
@@ -792,7 +767,6 @@ func (g *CMinimalGenerator) generateExpr(expr definition.Expr, valueReplacement 
 	funcMap := template.FuncMap{
 		"generateExpr": g.generateExpr,
 		"generateType": g.generateType,
-		"panic":        func(v any) error { panic(v) },
 	}
 
 	data := map[string]interface{}{

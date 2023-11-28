@@ -84,6 +84,11 @@ func (m *OrderedMap[K, V]) Remove(key K) {
 	if index, ok := m.index[key]; ok {
 		delete(m.index, key)
 		m.entries = append(m.entries[:index], m.entries[index+1:]...)
+		for i := index; i < len(m.entries); i++ {
+			if m.entries[i].Key != m.defaultK {
+				m.index[m.entries[i].Key] = i
+			}
+		}
 	}
 }
 
