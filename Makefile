@@ -15,6 +15,7 @@ ifeq ($(OS),Windows_NT)  # is Windows_NT on XP, 2000, 7, Vista, 10...
 	RM_CMD_1   := del /s /q
 	RM_CMD_2   := 
 	EXPORT     := set
+	SCRIPT_EXT := .bat
 else
 	GO		   ?= go
     PWD 	   := ${CURDIR}
@@ -27,6 +28,7 @@ else
 	RM_CMD_1   := find . -type f -name
 	RM_CMD_2   := -delete
 	EXPORT     := export
+	SCRIPT_EXT := .sh
 endif
 
 define exec-cmd
@@ -39,7 +41,7 @@ all: build
 gen:
 	@echo Generating $(PACKAGE_NAME) ...
 #	@$(foreach file, $(GEN_FILES), $(call exec-cmd, $(GO) run $(file)))
-	@$(call exec-cmd, $(PWD)/tools/gen.bat)
+	@$(call exec-cmd, $(PWD)/tools/gen$(SCRIPT_EXT))
 
 build: gen
 	@echo Building $(PACKAGE_NAME) ...
