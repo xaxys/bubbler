@@ -1102,7 +1102,15 @@ func (v *MethodVisitor) VisitMethodName(ctx *parser.MethodNameContext) any {
 			},
 		}
 	}
-	if name != util.Tosnake_case(util.ToPascalCase(name)) {
+	case1 := name
+	for case1 != util.Tosnake_case(util.ToPascalCase(case1)) {
+		case1 = util.Tosnake_case(util.ToPascalCase(case1))
+	}
+	case2 := name
+	for case2 != util.Tosnake_case(util.TocamelCase(case2)) {
+		case2 = util.Tosnake_case(util.TocamelCase(case2))
+	}
+	if name != case1 {
 		warn := &definition.CompileWarning{
 			Position: definition.BasePosition{
 				File:   v.Unit.UnitName.Path,
@@ -1111,13 +1119,13 @@ func (v *MethodVisitor) VisitMethodName(ctx *parser.MethodNameContext) any {
 			},
 			Warning: &definition.NameStyleWarning{
 				Name: name,
-				Msg:  fmt.Sprintf("non-identical detected while converting to PascalCase and converting back to snake_case '%s' -> '%s'. This may cause unexpected behavior in generated code. (such as Go, C#, etc.) ", name, util.Tosnake_case(util.ToPascalCase(name))),
+				Msg:  fmt.Sprintf("non-standard snake_case detected. use '%s' instead.", case1),
 			},
 		}
 		v.Warning = errors.Join(v.Warning, warn)
 	}
-	if name != util.Tosnake_case(util.TocamelCase(name)) {
-		warn := &definition.CompileWarning{
+	if case1 != case2 {
+		warn := &definition.GeneralWarning{
 			Position: definition.BasePosition{
 				File:   v.Unit.UnitName.Path,
 				Line:   ctx.Ident().GetStart().GetLine(),
@@ -1125,7 +1133,7 @@ func (v *MethodVisitor) VisitMethodName(ctx *parser.MethodNameContext) any {
 			},
 			Warning: &definition.NameStyleWarning{
 				Name: name,
-				Msg:  fmt.Sprintf("non-identical detected while converting to camelCase and converting back to snake_case '%s' -> '%s'. This may cause unexpected behavior in generated code. (such as Java, JavaScript, etc.) ", name, util.Tosnake_case(util.TocamelCase(name))),
+				Msg:  fmt.Sprintf("non-identical detected while converting to camelCase '%s' and PascalCase '%s'. Please contact the author for further help.", case2, case1),
 			},
 		}
 		v.Warning = errors.Join(v.Warning, warn)

@@ -106,19 +106,11 @@ func (r *CompilationRuntime) compile(ident *definition.FileIdentifer, content st
 			continue
 		}
 		if warning != nil {
-			var w definition.TopLevelWarning
-			topLevelWarning, ok := warning.(definition.TopLevelWarning)
-			if !ok {
-				w = &definition.CompileWarning{
-					Position: importor.PosList[i],
-					Warning:  warning,
-				}
-			}
-			w = &definition.CompileWarning{
+			w := &definition.CompileWarning{
 				Position: importor.PosList[i],
 				Warning: &definition.ImportingWarning{
 					File:    other,
-					Warning: topLevelWarning,
+					Warning: warning,
 				},
 			}
 			warnings = errors.Join(warnings, w)
