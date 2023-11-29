@@ -4,6 +4,7 @@
 .idea
 .vs
 .vscode
+.example
 
 # Binaries for programs and plugins
 *.exe
@@ -11,6 +12,8 @@
 *.dll
 *.so
 *.dylib
+
+bubbler
 
 # Test binary, built with `go test -c`
 *.test
@@ -23,3 +26,5 @@
 
 # Go workspace file
 go.work
+
+*.deprecated

@@ -62,7 +62,7 @@ func (g *CMinimalGenerator) Generate(unit *definition.CompilationUnit) (string, 
 		"GenTypes": g.GenTypes,
 	}
 
-	str := util.ExecuteTemplate(fileTemplate, "file", template.FuncMap{}, data)
+	str := util.ExecuteTemplate(fileTemplate, "file", nil, data)
 
 	return str, nil
 }
@@ -81,6 +81,20 @@ var typeMap = map[definition.TypeID]string{
 	definition.TypeID_Float64: "double",
 	definition.TypeID_String:  "char*",
 	definition.TypeID_Bytes:   "uint8_t*",
+}
+
+var typeSizeMapInt = map[int64]string{
+	8:  "int8_t",
+	16: "int16_t",
+	32: "int32_t",
+	64: "int64_t",
+}
+
+var typeSizeMapUint = map[int64]string{
+	8:  "uint8_t",
+	16: "uint16_t",
+	32: "uint32_t",
+	64: "uint64_t",
 }
 
 func (g *CMinimalGenerator) generateType(type_ definition.Type) (def string) {
@@ -179,7 +193,7 @@ var structTemplate = `
 {{- end -}}
 
 {{- define "structConst" -}}
-static const unsigned long long {{ .StructName }}_Size = {{ .StructSize }};
+static const uint64_t {{ .StructName }}_Size = {{ .StructSize }};
 {{- end -}}
 
 {{- define "structDef" -}}
@@ -247,354 +261,6 @@ func (g *CMinimalGenerator) generateStruct(structDef *definition.Struct) *Genera
 		GeneratedFunc:  funcStr,
 	}
 	return code
-}
-
-func (g *CMinimalGenerator) generateEncoder(structDef *definition.Struct) string {
-	genEncode := func(from, to int64, fieldData func(int64) string) string {
-		encodeStr := ""
-		for i := from; i < to; i = (i + 8) & (^7) {
-			nextI := min(to, (i+8)&(^7))
-			dataMask := ((1 << (((nextI - 1) & 7) + 1)) - 1) & (^((1 << (i & 7)) - 1))
-			operator := "="
-			if i%8 != 0 {
-				operator = "|="
-			}
-
-			begin := i - from
-			end := nextI - from
-			fieldStr := ""
-
-			j := begin
-			if j < end {
-				nextJ := min(end, (j+8)&(^7))
-				fieldMask := ((1 << (((nextJ - 1) & 7) + 1)) - 1) & (^((1 << (j & 7)) - 1))
-				shiftRight := j % 8
-				fieldStr += fmt.Sprintf("(((%s) & 0b%b) >> %d)", fieldData(j/8), fieldMask, shiftRight)
-				j = nextJ
-			}
-			if j < end {
-				nextJ := min(end, (j+8)&(^7))
-				fieldMask := ((1 << (((nextJ - 1) & 7) + 1)) - 1) & (^((1 << (j & 7)) - 1))
-				shiftLeft := 8 - nextJ%8
-				fieldStr += fmt.Sprintf(" | (((%s) & 0b%b) << %d)", fieldData(j/8), fieldMask, shiftLeft)
-				j = nextJ
-			}
-
-			shiftLeft := i % 8
-			encodeStr += fmt.Sprintf("((uint8_t*)data)[%d] %s ((%s << %d) & 0b%b);\n", i/8, operator, fieldStr, shiftLeft, dataMask)
-		}
-		return encodeStr
-	}
-
-	str := fmt.Sprintf("// Encoder: %s\n", structDef.StructName)
-	str += fmt.Sprintf("static void %s_encode(struct %s* structPtr, void* data) {\n", structDef.StructName, structDef.StructName)
-	encodeStr := ""
-	startBits := int64(0)
-	for _, field := range structDef.StructFields {
-		from := startBits
-		to := startBits + field.GetFieldBitSize()
-		startBits += field.GetFieldBitSize()
-		pos := fmt.Sprintf("[%s, %s)", util.ToSizeString(from), util.ToSizeString(to))
-		switch val := field.(type) {
-		case *definition.ConstantField:
-			encodeStr += fmt.Sprintf("// %s %s\n", pos, val.ShortString())
-			var byteOrder binary.ByteOrder = binary.LittleEndian
-			if option, ok := val.FieldOptions.Get("order"); ok {
-				if option.OptionValue.GetLiteralValue() == "big" {
-					byteOrder = binary.BigEndian
-				}
-			}
-			buffer := &bytes.Buffer{}
-			value := val.FieldConstant.GetLiteralValueIn(val.FieldType)
-			err := binary.Write(buffer, byteOrder, value)
-			if err != nil {
-				panic(fmt.Errorf("internal error: %s", err))
-			}
-			data := buffer.Bytes()
-			fieldData := func(i int64) string {
-				return fmt.Sprintf("0x%X", data[i])
-			}
-			encodeStr += genEncode(from, to, fieldData)
-
-		case *definition.VoidField:
-			encodeStr += fmt.Sprintf("// %s %s\n", pos, val.ShortString())
-			encodeStr += genEncode(from, to, func(i int64) string { return "0" })
-
-		case *definition.EmbeddedField:
-			continue
-
-		case *definition.NormalField:
-			encodeStr += fmt.Sprintf("// %s %s\n", pos, val.ShortString())
-			switch ty := val.FieldType.(type) {
-			case *definition.Struct:
-				encodeStr += fmt.Sprintf("%s_encode(&(structPtr->%s), ((uint8_t*)data) + %d);\n", ty.StructName, val.FieldName, from/8)
-			case *definition.BasicType, *definition.Enum:
-				tySize := (ty.GetTypeBitSize() + 7) / 8
-				fieldSize := (val.FieldBitSize + 7) / 8
-				var fieldData func(int64) string
-				// 默认编码为小端序
-				if option, ok := val.FieldOptions.Get("order"); ok {
-					if option.OptionValue.GetLiteralValue() == "big" {
-						// 大端序
-						fieldData = func(i int64) string {
-							return fmt.Sprintf("((*(uint%d_t*)(&(structPtr->%s))) >> %d)", tySize*8, val.FieldName, (fieldSize-i-1)*8)
-						}
-					}
-				}
-				if fieldData == nil {
-					// 小端序
-					fieldData = func(i int64) string {
-						return fmt.Sprintf("((*(uint%d_t*)(&(structPtr->%s))) >> %d)", tySize*8, val.FieldName, i*8)
-					}
-				}
-				encodeStr += genEncode(from, to, fieldData)
-
-			case *definition.Array:
-				tySize := (ty.ElementType.GetTypeBitSize() + 7) / 8
-				var fieldData func(int64) string
-				// 默认编码为小端序
-				if option, ok := val.FieldOptions.Get("order"); ok {
-					if option.OptionValue.GetLiteralValue() == "big" {
-						// 大端序
-						fieldData = func(i int64) string {
-							return fmt.Sprintf("((*(uint%d_t*)(&((structPtr->%s)[%d]))) >> %d)", tySize*8, val.FieldName, i/tySize, (tySize-i%tySize-1)*8)
-						}
-					}
-				}
-				if fieldData == nil {
-					// 小端序
-					fieldData = func(i int64) string {
-						return fmt.Sprintf("((*(uint%d_t*)(&((structPtr->%s)[%d]))) >> %d)", tySize*8, val.FieldName, i/tySize, i%tySize*8)
-					}
-				}
-				encodeStr += genEncode(from, to, fieldData)
-
-			default:
-				fieldData := func(i int64) string {
-					return fmt.Sprintf("((uint8_t*)&(structPtr->%s))[%d]", val.FieldName, i)
-				}
-				encodeStr += genEncode(from, to, fieldData)
-			}
-		default:
-			panic("unreachable")
-		}
-	}
-	encodeStr = util.IndentSpace4(encodeStr)
-	str += encodeStr
-	str += fmt.Sprintf("}\n")
-	return str
-}
-
-func (g *CMinimalGenerator) generateDecoder(structDef *definition.Struct) string {
-	genDecode := func(from, to int64, fieldProcessor func(string, int64) string) string {
-		decodeStr := ""
-		for i := int64(0); i < to-from; i += 8 {
-			nextI := min(to-from, (i+8)&(^7))
-			// dataMask := ((1 << (((nextI - 1) & 7) + 1)) - 1) & (^((1 << (i & 7)) - 1))
-
-			begin := from + i
-			end := from + nextI
-			fieldStr := ""
-
-			j := begin
-			if j < end {
-				nextJ := min(end, (j+8)&(^7))
-				fieldMask := ((1 << (((nextJ - 1) & 7) + 1)) - 1) & (^((1 << (j & 7)) - 1))
-				shiftLeft := j % 8
-				fieldStr += fmt.Sprintf("((((uint8_t*)data)[%d] & 0b%b) >> %d)", j/8, fieldMask, shiftLeft)
-				j = nextJ
-			}
-			if j < end {
-				nextJ := min(end, (j+8)&(^7))
-				fieldMask := ((1 << (((nextJ - 1) & 7) + 1)) - 1) & (^((1 << (j & 7)) - 1))
-				shiftRight := 8 - nextJ%8
-				fieldStr += fmt.Sprintf(" | ((((uint8_t*)data)[%d] & 0b%b) << %d)", j/8, fieldMask, shiftRight)
-				j = nextJ
-			}
-
-			decodeStr += fmt.Sprintf("%s;\n", fieldProcessor(fieldStr, i/8))
-		}
-		return decodeStr
-	}
-
-	signExtend := func(from, to int64, fieldStr string) string {
-		if from >= to {
-			return fieldStr
-		}
-		return fmt.Sprintf("((int%d_t)((%s) << %d) >> %d)", to, fieldStr, to-from, to-from)
-	}
-
-	// another sign extend implementation
-	// signExtend2 := func(from, to int64, fieldStr string) string {
-	//     if from >= to {
-	//         return fieldStr
-	//     }
-	//     signMask := int64(1) << (from - 1)
-	//     return fmt.Sprintf("((%s ^ 0x%X) - 0x%X)", fieldStr, signMask, signMask)
-	// }
-
-	str := fmt.Sprintf("// Decoder: %s\n", structDef.StructName)
-	str += fmt.Sprintf("static bool %s_decode(void* data, struct %s* structPtr) {\n", structDef.StructName, structDef.StructName)
-	decodeStr := ""
-	startBits := int64(0)
-	for fieldIndex, field := range structDef.StructFields {
-		from := startBits
-		to := startBits + field.GetFieldBitSize()
-		startBits += field.GetFieldBitSize()
-		pos := fmt.Sprintf("[%s, %s)", util.ToSizeString(from), util.ToSizeString(to))
-		switch val := field.(type) {
-		case *definition.ConstantField:
-			decodeStr += fmt.Sprintf("// %s %s\n", pos, val.ShortString())
-			name := fmt.Sprintf("structPtr->%s", val.FieldName)
-			if val.FieldName == "" {
-				tyStr := g.generateType(val.FieldType)
-				name = fmt.Sprintf("temp_field_%d", fieldIndex)
-				decodeStr += fmt.Sprintf("%s %s;\n", tyStr, name)
-			}
-
-			tySize := (val.FieldType.GetTypeBitSize() + 7) / 8
-			fieldSize := (val.FieldBitSize + 7) / 8
-			var fieldProcessor func(string, int64) string
-			// 默认解码为小端序
-			if option, ok := val.FieldOptions.Get("order"); ok {
-				if option.OptionValue.GetLiteralValue() == "big" {
-					// 大端序
-					fieldProcessor = func(fieldStr string, i int64) string {
-						operator := "="
-						if i != 0 {
-							operator = "|="
-						}
-						return fmt.Sprintf("(*(uint%d_t*)(&(%s))) %s ((uint%d_t)(%s) << %d)", tySize*8, name, operator, tySize*8, fieldStr, (fieldSize-i-1)*8)
-					}
-				}
-			}
-			if fieldProcessor == nil {
-				// 小端序
-				fieldProcessor = func(fieldStr string, i int64) string {
-					operator := "="
-					if i != 0 {
-						operator = "|="
-					}
-					return fmt.Sprintf("(*(uint%d_t*)(&(%s))) %s ((uint%d_t)(%s) << %d)", tySize*8, name, operator, tySize*8, fieldStr, i*8)
-				}
-			}
-			decodeStr += genDecode(from, to, fieldProcessor)
-
-			if val.FieldType.TypeTypeID.IsInt() && val.FieldType.TypeBitSize > val.FieldBitSize {
-				decodeStr += fmt.Sprintf("%s = %s;\n", name, signExtend(val.FieldBitSize, val.FieldType.TypeBitSize, name))
-			}
-
-			decodeStr += fmt.Sprintf("if (%s != %s) return false;\n", name, val.FieldConstant)
-
-		case *definition.VoidField:
-			decodeStr += fmt.Sprintf("// %s %s\n", pos, val.ShortString())
-			continue
-
-		case *definition.EmbeddedField:
-			continue
-
-		case *definition.NormalField:
-			decodeStr += fmt.Sprintf("// %s %s\n", pos, val.ShortString())
-			name := fmt.Sprintf("structPtr->%s", val.FieldName)
-
-			switch ty := val.FieldType.(type) {
-			case *definition.Struct:
-				decodeStr += fmt.Sprintf("if (!%s_decode((void*)((uint8_t*)data + %d), &(%s))) return false;\n", ty.StructName, from/8, name)
-
-			case *definition.BasicType, *definition.Enum:
-				tySize := (ty.GetTypeBitSize() + 7) / 8
-				fieldSize := (val.FieldBitSize + 7) / 8
-				var fieldProcessor func(string, int64) string
-				// 默认解码为小端序
-				if option, ok := val.FieldOptions.Get("order"); ok {
-					if option.OptionValue.GetLiteralValue() == "big" {
-						// 大端序
-						fieldProcessor = func(fieldStr string, i int64) string {
-							operator := "="
-							if i != 0 {
-								operator = "|="
-							}
-							return fmt.Sprintf("(*(uint%d_t*)(&(%s))) %s ((uint%d_t)(%s) << %d)", tySize*8, name, operator, tySize*8, fieldStr, (fieldSize-i-1)*8)
-						}
-					}
-				}
-				if fieldProcessor == nil {
-					// 小端序
-					fieldProcessor = func(fieldStr string, i int64) string {
-						operator := "="
-						if i != 0 {
-							operator = "|="
-						}
-						return fmt.Sprintf("(*(uint%d_t*)(&(%s))) %s ((uint%d_t)(%s) << %d)", tySize*8, name, operator, tySize*8, fieldStr, i*8)
-					}
-				}
-				decodeStr += genDecode(from, to, fieldProcessor)
-
-				if basicTy, ok := ty.(*definition.BasicType); ok {
-					if basicTy.TypeTypeID.IsInt() && basicTy.TypeBitSize > val.FieldBitSize {
-						decodeStr += fmt.Sprintf("%s = %s;\n", name, signExtend(val.FieldBitSize, basicTy.TypeBitSize, name))
-					}
-				}
-
-			case *definition.Array:
-				tySize := (ty.ElementType.GetTypeBitSize() + 7) / 8
-				fieldSize := (val.FieldBitSize + 7) / 8
-				var fieldProcessor func(string, int64) string
-				// 默认解码为小端序
-				if option, ok := val.FieldOptions.Get("order"); ok {
-					if option.OptionValue.GetLiteralValue() == "big" {
-						// 大端序
-						fieldProcessor = func(fieldStr string, i int64) string {
-							elemName := fmt.Sprintf("(%s)[%d]", name, i/tySize)
-							operator := "="
-							if i%tySize != 0 {
-								operator = "|="
-							}
-							shiftLeft := (fieldSize/ty.Length - i%tySize - 1) * 8
-							return fmt.Sprintf("(*(uint%d_t*)(&(%s))) %s ((uint%d_t)(%s) << %d)", tySize*8, elemName, operator, tySize*8, fieldStr, shiftLeft)
-						}
-					}
-				}
-				if fieldProcessor == nil {
-					// 小端序
-					fieldProcessor = func(fieldStr string, i int64) string {
-						elemName := fmt.Sprintf("(%s)[%d]", name, i/tySize)
-						operator := "="
-						if i%tySize != 0 {
-							operator = "|="
-						}
-						shiftLeft := (i % tySize) * 8
-						return fmt.Sprintf("(*(uint%d_t*)(&(%s))) %s ((uint%d_t)(%s) << %d)", tySize*8, elemName, operator, tySize*8, fieldStr, shiftLeft)
-					}
-				}
-				decodeStr += genDecode(from, to, fieldProcessor)
-
-				if basicTy, ok := ty.ElementType.(*definition.BasicType); ok {
-					if basicTy.TypeTypeID.IsInt() && basicTy.TypeBitSize > val.FieldBitSize {
-						for i := int64(0); i < ty.Length; i++ {
-							elemName := fmt.Sprintf("(%s)[%d]", name, i)
-							decodeStr += fmt.Sprintf("%s = %s;\n", elemName, signExtend(val.FieldBitSize, basicTy.TypeBitSize, elemName))
-						}
-					}
-				}
-
-			default:
-				fieldProcessor := func(fieldStr string, i int64) string {
-					operator := "="
-					return fmt.Sprintf("((uint8_t*)&(structPtr->%s))[%d] %s %s", val.FieldName, i, operator, fieldStr)
-				}
-				decodeStr += genDecode(from, to, fieldProcessor)
-			}
-
-		default:
-			panic("unreachable")
-		}
-	}
-	decodeStr += "return true;\n"
-	decodeStr = util.IndentSpace4(decodeStr)
-	str += decodeStr
-	str += "}\n"
-	return str
 }
 
 var methodsTemplate = `
@@ -817,7 +483,7 @@ enum {{ .EnumName }} {
 `
 
 func (g *CMinimalGenerator) generateEnum(enumDef *definition.Enum) *GeneratedType {
-	enumDefStr := util.ExecuteTemplate(enumTemplate, "enumDef", template.FuncMap{}, enumDef)
+	enumDefStr := util.ExecuteTemplate(enumTemplate, "enumDef", nil, enumDef)
 
 	code := &GeneratedType{
 		GeneratedConst: "",
@@ -826,4 +492,392 @@ func (g *CMinimalGenerator) generateEnum(enumDef *definition.Enum) *GeneratedTyp
 	}
 
 	return code
+}
+
+//
+// ==================== Encoder & Decoder ====================
+// TODO: Templateify the encoder & decoder
+//
+
+func (g *CMinimalGenerator) generateEncoder(structDef *definition.Struct) string {
+	genEncode := func(from, to int64, fieldData func(int64) string) string {
+		encodeStr := ""
+		for i := from; i < to; i = (i + 8) & (^7) {
+			nextI := min(to, (i+8)&(^7))
+			dataMask := ((1 << (((nextI - 1) & 7) + 1)) - 1) & (^((1 << (i & 7)) - 1))
+			operator := "="
+			if i%8 != 0 {
+				operator = "|="
+			}
+
+			begin := i - from
+			end := nextI - from
+			fieldStr := ""
+
+			j := begin
+			if j < end {
+				nextJ := min(end, (j+8)&(^7))
+				fieldMask := ((1 << (((nextJ - 1) & 7) + 1)) - 1) & (^((1 << (j & 7)) - 1))
+				shiftRight := j % 8
+				fieldStr += fmt.Sprintf("(((%s) & 0b%b) >> %d)", fieldData(j/8), fieldMask, shiftRight)
+				j = nextJ
+			}
+			if j < end {
+				nextJ := min(end, (j+8)&(^7))
+				fieldMask := ((1 << (((nextJ - 1) & 7) + 1)) - 1) & (^((1 << (j & 7)) - 1))
+				shiftLeft := 8 - nextJ%8
+				fieldStr += fmt.Sprintf(" | (((%s) & 0b%b) << %d)", fieldData(j/8), fieldMask, shiftLeft)
+				j = nextJ
+			}
+
+			shiftLeft := i % 8
+			encodeStr += fmt.Sprintf("((uint8_t*)data)[%d] %s ((%s << %d) & 0b%b);\n", i/8, operator, fieldStr, shiftLeft, dataMask)
+		}
+		return encodeStr
+	}
+
+	str := fmt.Sprintf("// Encoder: %s\n", structDef.StructName)
+	str += fmt.Sprintf("static void %s_encode(struct %s* structPtr, void* data) {\n", structDef.StructName, structDef.StructName)
+	encodeStr := ""
+	startBits := int64(0)
+	for _, field := range structDef.StructFields {
+		from := startBits
+		to := startBits + field.GetFieldBitSize()
+		startBits += field.GetFieldBitSize()
+		pos := fmt.Sprintf("[%s, %s)", util.ToSizeString(from), util.ToSizeString(to))
+
+		switch val := field.(type) {
+		case *definition.ConstantField:
+			encodeStr += fmt.Sprintf("// %s %s\n", pos, val.ShortString())
+
+			var byteOrder binary.ByteOrder = binary.LittleEndian
+			if option, ok := val.FieldOptions.Get("order"); ok {
+				if option.OptionValue.GetLiteralValue() == "big" {
+					byteOrder = binary.BigEndian
+				}
+			}
+
+			buffer := &bytes.Buffer{}
+			value := val.FieldConstant.GetLiteralValueIn(val.FieldType)
+			err := binary.Write(buffer, byteOrder, value)
+			if err != nil {
+				panic(fmt.Errorf("internal error: %s", err))
+			}
+			data := buffer.Bytes()
+
+			fieldData := func(i int64) string {
+				return fmt.Sprintf("0x%X", data[i])
+			}
+			encodeStr += genEncode(from, to, fieldData)
+
+		case *definition.VoidField:
+			encodeStr += fmt.Sprintf("// %s %s\n", pos, val.ShortString())
+			encodeStr += genEncode(from, to, func(i int64) string { return "0" })
+
+		case *definition.EmbeddedField:
+			continue
+
+		case *definition.NormalField:
+			encodeStr += fmt.Sprintf("// %s %s\n", pos, val.ShortString())
+			name := fmt.Sprintf("structPtr->%s", val.FieldName)
+
+			switch ty := val.FieldType.(type) {
+			case *definition.Struct:
+				encodeStr += fmt.Sprintf("%s_encode(&(%s), ((uint8_t*)data) + %d);\n", ty.StructName, name, from/8)
+
+			case *definition.BasicType, *definition.Enum:
+				tySize := (ty.GetTypeBitSize() + 7) / 8
+				tyUint := typeSizeMapUint[tySize*8]
+				fieldSize := (val.FieldBitSize + 7) / 8
+				var fieldData func(int64) string
+				// 默认编码为小端序
+				if option, ok := val.FieldOptions.Get("order"); ok {
+					if option.OptionValue.GetLiteralValue() == "big" {
+						// 大端序
+						fieldData = func(i int64) string {
+							return fmt.Sprintf("((*(%s*)(&(%s))) >> %d)", tyUint, name, (fieldSize-i-1)*8)
+						}
+					}
+				}
+				if fieldData == nil {
+					// 小端序
+					fieldData = func(i int64) string {
+						return fmt.Sprintf("((*(%s*)(&(%s))) >> %d)", tyUint, name, i*8)
+					}
+				}
+				encodeStr += genEncode(from, to, fieldData)
+
+			case *definition.Array:
+				elemTySize := (ty.ElementType.GetTypeBitSize() + 7) / 8
+				elemBitSize := val.FieldBitSize / ty.Length
+				elemSize := (elemBitSize + 7) / 8
+				tyUint := typeSizeMapUint[elemTySize*8]
+				var fieldDataIndex func(int64) func(int64) string
+				// 默认编码为小端序
+				if option, ok := val.FieldOptions.Get("order"); ok {
+					if option.OptionValue.GetLiteralValue() == "big" {
+						// 大端序
+						fieldDataIndex = func(index int64) func(int64) string {
+							return func(i int64) string {
+								return fmt.Sprintf("((*(%s*)(&((%s)[%d]))) >> %d)", tyUint, name, index, (elemSize-i-1)*8)
+							}
+						}
+					}
+				}
+				if fieldDataIndex == nil {
+					// 小端序
+					fieldDataIndex = func(index int64) func(int64) string {
+						return func(i int64) string {
+							return fmt.Sprintf("((*(%s*)(&((%s)[%d]))) >> %d)", tyUint, name, index, i*8)
+						}
+					}
+				}
+				for i := int64(0); i < ty.Length; i++ {
+					subFrom := from + i*elemBitSize
+					subTo := from + (i+1)*elemBitSize
+					fieldData := fieldDataIndex(i)
+					encodeStr += genEncode(subFrom, subTo, fieldData)
+				}
+
+			default:
+				fieldData := func(i int64) string {
+					return fmt.Sprintf("((uint8_t*)&(%s))[%d]", name, i)
+				}
+				encodeStr += genEncode(from, to, fieldData)
+			}
+		default:
+			panic("unreachable")
+		}
+	}
+	encodeStr = util.IndentSpace4(encodeStr)
+	str += encodeStr
+	str += fmt.Sprintf("}\n")
+	return str
+}
+
+func (g *CMinimalGenerator) generateDecoder(structDef *definition.Struct) string {
+	genDecode := func(from, to int64, fieldProcessor func(string, int64) string) string {
+		decodeStr := ""
+		for i := int64(0); i < to-from; i += 8 {
+			nextI := min(to-from, (i+8)&(^7))
+			// dataMask := ((1 << (((nextI - 1) & 7) + 1)) - 1) & (^((1 << (i & 7)) - 1))
+
+			begin := from + i
+			end := from + nextI
+			fieldStr := ""
+
+			j := begin
+			if j < end {
+				nextJ := min(end, (j+8)&(^7))
+				fieldMask := ((1 << (((nextJ - 1) & 7) + 1)) - 1) & (^((1 << (j & 7)) - 1))
+				shiftLeft := j % 8
+				fieldStr += fmt.Sprintf("((((uint8_t*)data)[%d] & 0b%b) >> %d)", j/8, fieldMask, shiftLeft)
+				j = nextJ
+			}
+			if j < end {
+				nextJ := min(end, (j+8)&(^7))
+				fieldMask := ((1 << (((nextJ - 1) & 7) + 1)) - 1) & (^((1 << (j & 7)) - 1))
+				shiftRight := 8 - nextJ%8
+				fieldStr += fmt.Sprintf(" | ((((uint8_t*)data)[%d] & 0b%b) << %d)", j/8, fieldMask, shiftRight)
+				j = nextJ
+			}
+
+			decodeStr += fmt.Sprintf("%s;\n", fieldProcessor(fieldStr, i/8))
+		}
+		return decodeStr
+	}
+
+	signExtend := func(from, to int64, fieldStr string) string {
+		if from >= to {
+			return fieldStr
+		}
+		return fmt.Sprintf("((int%d_t)((%s) << %d) >> %d)", to, fieldStr, to-from, to-from)
+	}
+
+	// another sign extend implementation
+	// signExtend2 := func(from, to int64, fieldStr string) string {
+	//     if from >= to {
+	//         return fieldStr
+	//     }
+	//     signMask := int64(1) << (from - 1)
+	//     return fmt.Sprintf("((%s ^ 0x%X) - 0x%X)", fieldStr, signMask, signMask)
+	// }
+
+	str := fmt.Sprintf("// Decoder: %s\n", structDef.StructName)
+	str += fmt.Sprintf("static bool %s_decode(void* data, struct %s* structPtr) {\n", structDef.StructName, structDef.StructName)
+	decodeStr := ""
+	startBits := int64(0)
+	for fieldIndex, field := range structDef.StructFields {
+		from := startBits
+		to := startBits + field.GetFieldBitSize()
+		startBits += field.GetFieldBitSize()
+		pos := fmt.Sprintf("[%s, %s)", util.ToSizeString(from), util.ToSizeString(to))
+
+		switch val := field.(type) {
+
+		case *definition.ConstantField:
+			decodeStr += fmt.Sprintf("// %s %s\n", pos, val.ShortString())
+
+			name := fmt.Sprintf("structPtr->%s", val.FieldName)
+			if val.FieldName == "" {
+				tyStr := g.generateType(val.FieldType)
+				name = fmt.Sprintf("temp_field_%d", fieldIndex)
+				decodeStr += fmt.Sprintf("%s %s;\n", tyStr, name)
+			}
+
+			tySize := (val.FieldType.GetTypeBitSize() + 7) / 8
+			tyUint := typeSizeMapUint[tySize*8]
+			fieldSize := (val.FieldBitSize + 7) / 8
+			var fieldProcessor func(string, int64) string
+
+			// 默认解码为小端序
+			if option, ok := val.FieldOptions.Get("order"); ok {
+				if option.OptionValue.GetLiteralValue() == "big" {
+					// 大端序
+					fieldProcessor = func(fieldStr string, i int64) string {
+						operator := "="
+						if i != 0 {
+							operator = "|="
+						}
+						return fmt.Sprintf("(*(%s*)(&(%s))) %s ((%s)(%s) << %d)", tyUint, name, operator, tyUint, fieldStr, (fieldSize-i-1)*8)
+					}
+				}
+			}
+
+			if fieldProcessor == nil {
+				// 小端序
+				fieldProcessor = func(fieldStr string, i int64) string {
+					operator := "="
+					if i != 0 {
+						operator = "|="
+					}
+					return fmt.Sprintf("(*(%s*)(&(%s))) %s ((%s)(%s) << %d)", tyUint, name, operator, tyUint, fieldStr, i*8)
+				}
+			}
+
+			decodeStr += genDecode(from, to, fieldProcessor)
+
+			if val.FieldType.TypeTypeID.IsInt() && val.FieldType.TypeBitSize > val.FieldBitSize {
+				decodeStr += fmt.Sprintf("%s = %s;\n", name, signExtend(val.FieldBitSize, val.FieldType.TypeBitSize, name))
+			}
+
+			decodeStr += fmt.Sprintf("if (%s != %s) return false;\n", name, val.FieldConstant)
+
+		case *definition.VoidField:
+			decodeStr += fmt.Sprintf("// %s %s\n", pos, val.ShortString())
+			continue
+
+		case *definition.EmbeddedField:
+			continue
+
+		case *definition.NormalField:
+			decodeStr += fmt.Sprintf("// %s %s\n", pos, val.ShortString())
+			name := fmt.Sprintf("structPtr->%s", val.FieldName)
+
+			switch ty := val.FieldType.(type) {
+			case *definition.Struct:
+				decodeStr += fmt.Sprintf("if (!%s_decode((void*)((uint8_t*)data + %d), &(%s))) return false;\n", ty.StructName, from/8, name)
+
+			case *definition.BasicType, *definition.Enum:
+				tySize := (ty.GetTypeBitSize() + 7) / 8
+				tyUint := typeSizeMapUint[tySize*8]
+				fieldSize := (val.FieldBitSize + 7) / 8
+				var fieldProcessor func(string, int64) string
+				// 默认解码为小端序
+				if option, ok := val.FieldOptions.Get("order"); ok {
+					if option.OptionValue.GetLiteralValue() == "big" {
+						// 大端序
+						fieldProcessor = func(fieldStr string, i int64) string {
+							operator := "="
+							if i != 0 {
+								operator = "|="
+							}
+							return fmt.Sprintf("(*(%s*)(&(%s))) %s ((%s)(%s) << %d)", tyUint, name, operator, tyUint, fieldStr, (fieldSize-i-1)*8)
+						}
+					}
+				}
+				if fieldProcessor == nil {
+					// 小端序
+					fieldProcessor = func(fieldStr string, i int64) string {
+						operator := "="
+						if i != 0 {
+							operator = "|="
+						}
+						return fmt.Sprintf("(*(%s*)(&(%s))) %s ((%s)(%s) << %d)", tyUint, name, operator, tyUint, fieldStr, i*8)
+					}
+				}
+				decodeStr += genDecode(from, to, fieldProcessor)
+
+				if basicTy, ok := ty.(*definition.BasicType); ok {
+					if basicTy.TypeTypeID.IsInt() && basicTy.TypeBitSize > val.FieldBitSize {
+						decodeStr += fmt.Sprintf("%s = %s;\n", name, signExtend(val.FieldBitSize, basicTy.TypeBitSize, name))
+					}
+				}
+
+			case *definition.Array:
+				elemTySize := (ty.ElementType.GetTypeBitSize() + 7) / 8
+				elemBitSize := val.FieldBitSize / ty.Length
+				elemSize := (elemBitSize + 7) / 8
+				tyUint := typeSizeMapUint[elemTySize*8]
+				var fieldProcessorIndex func(int64) func(string, int64) string
+				// 默认解码为小端序
+				if option, ok := val.FieldOptions.Get("order"); ok {
+					if option.OptionValue.GetLiteralValue() == "big" {
+						// 大端序
+						fieldProcessorIndex = func(index int64) func(string, int64) string {
+							return func(fieldStr string, i int64) string {
+								operator := "="
+								if i != 0 {
+									operator = "|="
+								}
+								return fmt.Sprintf("(*(%s*)(&((%s)[%d]))) %s ((%s)(%s) << %d)", tyUint, name, index, operator, tyUint, fieldStr, (elemSize-i-1)*8)
+							}
+						}
+					}
+				}
+				if fieldProcessorIndex == nil {
+					// 小端序
+					fieldProcessorIndex = func(index int64) func(string, int64) string {
+						return func(fieldStr string, i int64) string {
+							operator := "="
+							if i != 0 {
+								operator = "|="
+							}
+							return fmt.Sprintf("(*(%s*)(&((%s)[%d]))) %s ((%s)(%s) << %d)", tyUint, name, index, operator, tyUint, fieldStr, i*8)
+						}
+					}
+				}
+				for i := int64(0); i < ty.Length; i++ {
+					subFrom := from + i*elemBitSize
+					subTo := from + (i+1)*elemBitSize
+					fieldProcessor := fieldProcessorIndex(i)
+					decodeStr += genDecode(subFrom, subTo, fieldProcessor)
+				}
+
+				if basicTy, ok := ty.ElementType.(*definition.BasicType); ok {
+					if basicTy.TypeTypeID.IsInt() && basicTy.TypeBitSize > val.FieldBitSize {
+						for i := int64(0); i < ty.Length; i++ {
+							elemName := fmt.Sprintf("(%s)[%d]", name, i)
+							decodeStr += fmt.Sprintf("%s = %s;\n", elemName, signExtend(val.FieldBitSize, basicTy.TypeBitSize, elemName))
+						}
+					}
+				}
+
+			default:
+				fieldProcessor := func(fieldStr string, i int64) string {
+					operator := "="
+					return fmt.Sprintf("((uint8_t*)&(structPtr->%s))[%d] %s %s", val.FieldName, i, operator, fieldStr)
+				}
+				decodeStr += genDecode(from, to, fieldProcessor)
+			}
+
+		default:
+			panic("unreachable")
+		}
+	}
+	decodeStr += "return true;\n"
+	decodeStr = util.IndentSpace4(decodeStr)
+	str += decodeStr
+	str += "}\n"
+	return str
 }

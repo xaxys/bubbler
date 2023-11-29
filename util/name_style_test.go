@@ -50,7 +50,7 @@ func TestToPascalCase(t *testing.T) {
 		{"hello_world", "HelloWorld"},
 		{"foo_bar_baz", "FooBarBaz"},
 		{"abc_def_ghi", "AbcDefGhi"},
-		{"____He___ll__o_", "____HeLlO"},
+		{"____He___ll__o__", "____HeLlO__"},
 		{"", ""},
 		{"helloWorld", "HelloWorld"},
 		{"fooBarBaz", "FooBarBaz"},
@@ -63,7 +63,7 @@ func TestToPascalCase(t *testing.T) {
 		{"_abc_def_ghi", "_AbcDefGhi"},
 		{"CAPITALS_WITH_UNDERSCORES", "CapitalsWithUnderscores"},
 		{"_CAPITALS_WITH_UNDERSCORES", "_CapitalsWithUnderscores"},
-		{"hello_world_", "HelloWorld"},
+		{"hello_world_", "HelloWorld_"},
 		{"hello__world", "HelloWorld"},
 		{"_hello__world", "_HelloWorld"},
 		{"__hello__world", "__HelloWorld"},
@@ -87,7 +87,7 @@ func TestTocamelCase(t *testing.T) {
 		{"hello_world", "helloWorld"},
 		{"foo_bar_baz", "fooBarBaz"},
 		{"abc_def_ghi", "abcDefGhi"},
-		{"____He___ll__o_", "____heLlO"},
+		{"____He___ll__o__", "____heLlO__"},
 		{"", ""},
 		{"helloWorld", "helloWorld"},
 		{"fooBarBaz", "fooBarBaz"},
@@ -100,7 +100,7 @@ func TestTocamelCase(t *testing.T) {
 		{"_abc_def_ghi", "_abcDefGhi"},
 		{"CAPITALS_WITH_UNDERSCORES", "capitalsWithUnderscores"},
 		{"_CAPITALS_WITH_UNDERSCORES", "_capitalsWithUnderscores"},
-		{"hello_world_", "helloWorld"},
+		{"hello_world_", "helloWorld_"},
 		{"hello__world", "helloWorld"},
 		{"_hello__world", "_helloWorld"},
 		{"__hello__world", "__helloWorld"},
@@ -127,7 +127,7 @@ func TestTosnake_case(t *testing.T) {
 		{"hello_world", "hello_world"},
 		{"foo_bar_baz", "foo_bar_baz"},
 		{"abc_def_ghi", "abc_def_ghi"},
-		{"____He___ll__o_", "____he_ll_o_"},
+		{"____He___ll__o__", "____he_ll_o__"},
 		{"", ""},
 		{"helloWorld", "hello_world"},
 		{"fooBarBaz", "foo_bar_baz"},
@@ -152,3 +152,83 @@ func TestTosnake_case(t *testing.T) {
 		}
 	}
 }
+
+func TestToALLCAP_CASE(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"HelloWorld", "HELLO_WORLD"},
+		{"FooBarBaz", "FOO_BAR_BAZ"},
+		{"AbcDefGhi", "ABC_DEF_GHI"},
+		{"hello_world", "HELLO_WORLD"},
+		{"foo_bar_baz", "FOO_BAR_BAZ"},
+		{"abc_def_ghi", "ABC_DEF_GHI"},
+		{"____He___ll__o__", "____HE_LL_O__"},
+		{"", ""},
+		{"helloWorld", "HELLO_WORLD"},
+		{"fooBarBaz", "FOO_BAR_BAZ"},
+		{"abcDefGhi", "ABC_DEF_GHI"},
+		{"_helloWorld", "_HELLO_WORLD"},
+		{"_fooBarBaz", "_FOO_BAR_BAZ"},
+		{"_abcDefGhi", "_ABC_DEF_GHI"},
+		{"CAPITALS_WITH_UNDERSCORES", "CAPITALS_WITH_UNDERSCORES"},
+		{"_CAPITALS_WITH_UNDERSCORES", "_CAPITALS_WITH_UNDERSCORES"},
+		{"HelloWorld_", "HELLO_WORLD_"},
+		{"Hello__World", "HELLO_WORLD"},
+		{"_Hello__World", "_HELLO_WORLD"},
+		{"__Hello__World", "__HELLO_WORLD"},
+		{"HelloWorld123", "HELLO_WORLD123"},
+		{"HelloWorld_123", "HELLO_WORLD_123"},
+	}
+
+	for _, test := range tests {
+		result := ToALLCAP_CASE(test.input)
+		if result != test.expected {
+			t.Errorf("ToALLCAP_CASE(%s) = %s, expected %s", test.input, result, test.expected)
+		}
+	}
+}
+
+// func TestMuxNameStyle(t *testing.T) {
+// 	generator := func(length int) string {
+// 		str := ""
+// 		for i := 0; i < length; i++ {
+// 			ty := rand.Intn(4)
+// 			switch ty {
+// 			case 0:
+// 				str += "_"
+// 			case 1:
+// 				str += string(rune('A' + rand.Intn(26)))
+// 			case 2:
+// 				str += string(rune('a' + rand.Intn(26)))
+// 			case 3:
+// 				str += string(rune('0' + rand.Intn(10)))
+// 			}
+// 		}
+// 		return str
+// 	}
+
+// 	funcList := map[string]func(string) string{
+// 		"ToPascalCase":  ToPascalCase,
+// 		"TocamelCase":   TocamelCase,
+// 		"Tosnake_case":  Tosnake_case,
+// 		"ToALLCAP_CASE": ToALLCAP_CASE,
+// 	}
+
+// 	caseNum := 2
+// 	caseLen := 20
+// 	for i := 0; i < caseNum; i++ {
+// 		caseStr := generator(caseLen)
+
+// 		for baseName, baseFunc := range funcList {
+// 			baseStr := baseFunc(caseStr)
+// 			for otherName, otherFunc := range funcList {
+// 				result := baseFunc(otherFunc(caseStr))
+// 				if result != baseStr {
+// 					t.Errorf("MuxNameStyle(%s, %s, %s) = %s, expected %s", baseName, otherName, caseStr, result, baseStr)
+// 				}
+// 			}
+// 		}
+// 	}
+// }

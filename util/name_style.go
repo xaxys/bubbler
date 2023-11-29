@@ -1,5 +1,7 @@
 package util
 
+import "strings"
+
 func IsUpper(s rune) bool {
 	return s >= 'A' && s <= 'Z'
 }
@@ -60,34 +62,37 @@ func ToPascalCase(s string) string {
 	if len(s) == 0 {
 		return s
 	}
-	isFirst := true
-	isUpper := false
+	prefix, s := CutPrefixUnderscore(s)
+	s, suffix := CutSuffixUnderscore(s)
+	isUpper := false // deal with CAPITALS_WITH_UNDERSCORES case
 	doCapitalize := true
 	ret := ""
+	s = strings.TrimPrefix(s, "_")
 	for _, c := range s {
+		// skip all _ (hello___world -> helloWorld)
 		if c == '_' {
-			if isFirst {
-				ret += string(c)
-				continue
-			}
 			doCapitalize = true
 			continue
 		}
+		// found _ before || is first char (hello_world -> HelloWorld)
 		if doCapitalize {
 			ret += string(ToUpper(c))
 			doCapitalize = false
-			isFirst = false
 			isUpper = IsUpper(c)
 			continue
 		}
+		// found UPPER char before (HELLO -> Hello)
 		if isUpper {
 			ret += string(ToLower(c))
+			doCapitalize = false
 			isUpper = IsUpper(c)
 			continue
 		}
 		ret += string(c)
+		doCapitalize = false
 		isUpper = IsUpper(c)
 	}
+	ret = prefix + ret + suffix
 	return ret
 }
 
@@ -95,40 +100,42 @@ func TocamelCase(s string) string {
 	if len(s) == 0 {
 		return s
 	}
-	isFirst := true
-	isUpper := false
+	prefix, s := CutPrefixUnderscore(s)
+	s, suffix := CutSuffixUnderscore(s)
+	isUpper := false // deal with CAPITALS_WITH_UNDERSCORES case
 	doCapitalize := false
 	ret := ""
-	for _, c := range s {
+	for i, c := range s {
+		// skip all _ (hello___world -> helloWorld)
 		if c == '_' {
-			if isFirst {
-				ret += string(c)
-				continue
-			}
 			doCapitalize = true
 			continue
 		}
-		if isFirst {
+		// lower first char (HelloWorld -> helloWorld)
+		if i == 0 {
 			ret += string(ToLower(c))
-			doCapitalize = false
-			isFirst = false
 			isUpper = IsUpper(c)
 			continue
 		}
+		// found _ before (hello_world -> helloWorld)
 		if doCapitalize {
 			ret += string(ToUpper(c))
 			doCapitalize = false
 			isUpper = IsUpper(c)
 			continue
 		}
+		// found UPPER char before (HELLO -> Hello)
 		if isUpper {
 			ret += string(ToLower(c))
+			doCapitalize = false
 			isUpper = IsUpper(c)
 			continue
 		}
 		ret += string(c)
+		doCapitalize = false
 		isUpper = IsUpper(c)
 	}
+	ret = prefix + ret + suffix
 	return ret
 }
 
@@ -136,37 +143,118 @@ func Tosnake_case(s string) string {
 	if len(s) == 0 {
 		return s
 	}
-	isFirst := true
-	isUpper := false
+	prefix, s := CutPrefixUnderscore(s)
+	s, suffix := CutSuffixUnderscore(s)
+	isUpper := false // deal with CAPITALS_WITH_UNDERSCORES case
 	hasUnderScore := false
 	ret := ""
-	for _, c := range s {
+	for i, c := range s {
 		if c == '_' {
-			if isFirst {
-				ret += string(c)
-				continue
-			}
+			// skip multiple _ (hello___world -> hello_world)
 			if !hasUnderScore {
 				ret += string(c)
 				hasUnderScore = true
 			}
 			continue
 		}
+		// lower first char (HelloWorld -> hello_world) (avoid Hello -> _hello)
+		if i == 0 {
+			ret += string(ToLower(c))
+			isUpper = IsUpper(c)
+			hasUnderScore = false
+			continue
+		}
 		if IsUpper(c) {
-			if !isFirst && !hasUnderScore && !isUpper {
+			// skip multiple _ (hello_World -> hello_world) (avoid hello_World -> hello__world)
+			// skip multiple upper (HELLO -> hello) (avoid HELLO -> h_e_l_l_o)
+			if !hasUnderScore && !isUpper {
 				ret += "_"
 				hasUnderScore = true
 			}
 			ret += string(ToLower(c))
-			isFirst = false
 			isUpper = true
 			hasUnderScore = false
 			continue
 		}
 		ret += string(c)
-		isFirst = false
 		isUpper = false
 		hasUnderScore = false
 	}
+	ret = prefix + ret + suffix
 	return ret
+}
+
+func ToALLCAP_CASE(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	prefix, s := CutPrefixUnderscore(s)
+	s, suffix := CutSuffixUnderscore(s)
+	isUpper := false
+	hasUnderScore := false
+	ret := ""
+	for i, c := range s {
+		if c == '_' {
+			// skip multiple _ (hello___world -> HELLO_WORLD)
+			if !hasUnderScore {
+				ret += string(c)
+				hasUnderScore = true
+			}
+			continue
+		}
+		// upper first char (HelloWorld -> HELLO_WORLD) (avoid Hello -> _HELLO)
+		if i == 0 {
+			ret += string(ToUpper(c))
+			isUpper = IsUpper(c)
+			hasUnderScore = false
+			continue
+		}
+		if IsUpper(c) {
+			// skip multiple _ (hello_World -> HELLO_WORLD) (avoid hello_World -> HELLO__WORLD)
+			// skip multiple upper (HELLO -> HELLO) (avoid HELLO -> H_E_L_L_O)
+			if !hasUnderScore && !isUpper {
+				ret += "_"
+				hasUnderScore = true
+			}
+			ret += string(ToUpper(c))
+			isUpper = true
+			hasUnderScore = false
+			continue
+		}
+		ret += string(ToUpper(c))
+		isUpper = false
+		hasUnderScore = false
+	}
+	ret = prefix + ret + suffix
+	return ret
+}
+
+func CutPrefixUnderscore(s string) (prefix string, rest string) {
+	if len(s) == 0 {
+		return "", ""
+	}
+	if s[0] != '_' {
+		return "", s
+	}
+	for i, c := range s {
+		if c != '_' {
+			return s[:i], s[i:]
+		}
+	}
+	return s, ""
+}
+
+func CutSuffixUnderscore(s string) (rest string, suffix string) {
+	if len(s) == 0 {
+		return "", ""
+	}
+	if s[len(s)-1] != '_' {
+		return s, ""
+	}
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] != '_' {
+			return s[:i+1], s[i+1:]
+		}
+	}
+	return "", s
 }

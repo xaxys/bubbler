@@ -427,13 +427,15 @@ func (v *ProtoVisitor) VisitFieldNormal(ctx *parser.FieldNormalContext) any {
 				},
 			}
 		}
-		if _, ok := type_.(*definition.Array); ok && size != type_Size {
-			return &definition.CompileError{
-				Position: pos,
-				Err: &definition.InvalidSizeError{
-					Size: size,
-					Msg:  fmt.Sprintf("declared size does not match actual array size [%s] (%d bits)", util.ToSizeString(type_Size), type_Size),
-				},
+		if arrTy, ok := type_.(*definition.Array); ok {
+			if size%arrTy.Length != 0 {
+				return &definition.CompileError{
+					Position: pos,
+					Err: &definition.InvalidSizeError{
+						Size: size,
+						Msg:  fmt.Sprintf("declared size must be multiple of array length [%d]", arrTy.Length),
+					},
+				}
 			}
 		}
 		if _, ok := type_.(*definition.Struct); ok && size != type_Size {

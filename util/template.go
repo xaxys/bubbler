@@ -6,12 +6,16 @@ import (
 )
 
 func ExecuteTemplate(templ, templateName string, fns template.FuncMap, data interface{}) string {
+	if fns == nil {
+		fns = make(template.FuncMap)
+	}
 	fns["panic"] = templatePanic
 	fns["dict"] = templateDict
 	fns["iterate"] = templateIterate
 	fns["ToPascalCase"] = ToPascalCase
 	fns["TocamelCase"] = TocamelCase
 	fns["Tosnake_case"] = Tosnake_case
+	fns["ToALLCAP_CASE"] = ToALLCAP_CASE
 	tmpl := template.Must(template.New("").Funcs(fns).Parse(templ))
 	var buf bytes.Buffer
 	err := tmpl.ExecuteTemplate(&buf, templateName, data)
