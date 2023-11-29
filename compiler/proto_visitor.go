@@ -167,7 +167,7 @@ func (v *ProtoVisitor) VisitStructDef(ctx *parser.StructDefContext) any {
 					Column: ctx.StructBody().GetStart().GetColumn(),
 				},
 				Err: &definition.InvalidSizeError{
-					Size: structDef.StructBitSize,
+					Size: fixedSize,
 					Msg:  "struct fixed-size field must be byte-aligned (bit size must be multiple of 8)",
 				},
 			}

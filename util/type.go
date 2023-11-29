@@ -360,3 +360,83 @@ func ToBool(v interface{}) bool {
 		panic("invalid type")
 	}
 }
+
+type Bool interface {
+	~bool
+}
+
+type Int interface {
+	~int | ~int8 | ~int16 | ~int32 | ~int64
+}
+
+type Uint interface {
+	~uint | ~uint8 | ~uint16 | ~uint32
+}
+
+type Float interface {
+	~float32 | ~float64
+}
+
+type IntNumber interface {
+	Int | Uint
+}
+
+type Number interface {
+	IntNumber | Float
+}
+
+// func To[T, U Number](v U) T {
+// 	return T(v)
+// }
+
+// func ToInt64[T Number](v T) int64 {
+// 	return int64(v)
+// }
+
+// func ToInt32[T Number](v T) int32 {
+// 	return int32(v)
+// }
+
+// func ToInt16[T Number](v T) int16 {
+// 	return int16(v)
+// }
+
+// func ToInt8[T Number](v T) int8 {
+// 	return int8(v)
+// }
+
+// func ToInt[T Number](v T) int {
+// 	return int(v)
+// }
+
+// func ToUint64[T Number](v T) uint64 {
+// 	return uint64(v)
+// }
+
+// func ToUint32[T Number](v T) uint32 {
+// 	return uint32(v)
+// }
+
+// func ToUint16[T Number](v T) uint16 {
+// 	return uint16(v)
+// }
+
+// func ToUint8[T Number](v T) uint8 {
+// 	return uint8(v)
+// }
+
+// func ToUint[T Number](v T) uint {
+// 	return uint(v)
+// }
+
+// func ToFloat64[T Number](v T) float64 {
+// 	return float64(v)
+// }
+
+// func ToFloat32[T Number](v T) float32 {
+// 	return float32(v)
+// }
+
+// func ToBool[T Number](v T) bool {
+// 	return v != 0
+// }

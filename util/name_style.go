@@ -40,7 +40,7 @@ func IsAllUpper(s string) bool {
 		if c == '_' {
 			continue
 		}
-		if !IsUpper(c) {
+		if !IsUpper(c) && !IsDigit(c) {
 			return false
 		}
 	}
@@ -55,7 +55,7 @@ func IsAllLower(s string) bool {
 		if c == '_' {
 			continue
 		}
-		if !IsLower(c) {
+		if !IsLower(c) && !IsDigit(c) {
 			return false
 		}
 	}

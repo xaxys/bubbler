@@ -251,7 +251,7 @@ func (g *CMinimalGenerator) generateStruct(structDef *definition.Struct) *Genera
 
 	defStr := util.ExecuteTemplate(structTemplate, "structDef", funcMap, defData)
 
-	funcStr := g.generateEncoder(structDef) + "\n" + g.generateDecoder(structDef)
+	funcStr := g.generateEncoder(structDef) + "\n" + g.generateDecoder(structDef) + "\n"
 
 	funcStr += g.generateStructMethods(structDef)
 
@@ -542,7 +542,7 @@ func (g *CMinimalGenerator) generateEncoder(structDef *definition.Struct) string
 	str += fmt.Sprintf("static void %s_encode(struct %s* structPtr, void* data) {\n", structDef.StructName, structDef.StructName)
 	encodeStr := ""
 	startBits := int64(0)
-	for _, field := range structDef.StructFields {
+	for fieldIndex, field := range structDef.StructFields {
 		from := startBits
 		to := startBits + field.GetFieldBitSize()
 		startBits += field.GetFieldBitSize()
@@ -587,8 +587,33 @@ func (g *CMinimalGenerator) generateEncoder(structDef *definition.Struct) string
 			case *definition.Struct:
 				encodeStr += fmt.Sprintf("%s_encode(&(%s), ((uint8_t*)data) + %d);\n", ty.StructName, name, from/8)
 
-			case *definition.BasicType, *definition.Enum:
-				tySize := (ty.GetTypeBitSize() + 7) / 8
+			case *definition.Enum:
+				fieldSize := (val.FieldBitSize + 7) / 8
+				tySize := util.HighBit(fieldSize)
+				tyUint := typeSizeMapUint[tySize*8]
+				tempName := fmt.Sprintf("temp_field_%d", fieldIndex)
+				encodeStr += fmt.Sprintf("%s %s = (%s)%s;\n", tyUint, tempName, tyUint, name)
+
+				var fieldData func(int64) string
+				// 默认编码为小端序
+				if option, ok := val.FieldOptions.Get("order"); ok {
+					if option.OptionValue.GetLiteralValue() == "big" {
+						// 大端序
+						fieldData = func(i int64) string {
+							return fmt.Sprintf("(%s >> %d)", tempName, (fieldSize-i-1)*8)
+						}
+					}
+				}
+				if fieldData == nil {
+					// 小端序
+					fieldData = func(i int64) string {
+						return fmt.Sprintf("(%s >> %d)", tempName, i*8)
+					}
+				}
+				encodeStr += genEncode(from, to, fieldData)
+
+			case *definition.BasicType:
+				tySize := (ty.TypeBitSize + 7) / 8
 				tyUint := typeSizeMapUint[tySize*8]
 				fieldSize := (val.FieldBitSize + 7) / 8
 				var fieldData func(int64) string
@@ -780,8 +805,49 @@ func (g *CMinimalGenerator) generateDecoder(structDef *definition.Struct) string
 			case *definition.Struct:
 				decodeStr += fmt.Sprintf("if (!%s_decode((void*)((uint8_t*)data + %d), &(%s))) return false;\n", ty.StructName, from/8, name)
 
-			case *definition.BasicType, *definition.Enum:
-				tySize := (ty.GetTypeBitSize() + 7) / 8
+			case *definition.Enum:
+				fieldSize := (val.FieldBitSize + 7) / 8
+				tySize := util.HighBit(fieldSize)
+				tyUint := typeSizeMapUint[tySize*8]
+				tempName := fmt.Sprintf("temp_field_%d", fieldIndex)
+				decodeStr += fmt.Sprintf("%s %s;\n", tyUint, tempName)
+
+				var fieldProcessor func(string, int64) string
+				// 默认解码为小端序
+				if option, ok := val.FieldOptions.Get("order"); ok {
+					if option.OptionValue.GetLiteralValue() == "big" {
+						// 大端序
+						fieldProcessor = func(fieldStr string, i int64) string {
+							operator := "="
+							if i != 0 {
+								operator = "|="
+							}
+							return fmt.Sprintf("%s %s ((%s)(%s) << %d)", tempName, operator, tyUint, fieldStr, (fieldSize-i-1)*8)
+						}
+					}
+				}
+				if fieldProcessor == nil {
+					// 小端序
+					fieldProcessor = func(fieldStr string, i int64) string {
+						operator := "="
+						if i != 0 {
+							operator = "|="
+						}
+						return fmt.Sprintf("%s %s ((%s)(%s) << %d)", tempName, operator, tyUint, fieldStr, i*8)
+					}
+				}
+				decodeStr += genDecode(from, to, fieldProcessor)
+				decodeStr += fmt.Sprintf("%s = (enum %s)%s;\n", name, ty.EnumName, tempName)
+
+				// TODO: sign extend of enum. DO THIS AFTER SUPPORTING NEGATIVE ENUM VALUES
+				// if basicTy, ok := ty.(*definition.BasicType); ok {
+				// 	if basicTy.TypeTypeID.IsInt() && basicTy.TypeBitSize > val.FieldBitSize {
+				// 		decodeStr += fmt.Sprintf("%s = %s;\n", name, signExtend(val.FieldBitSize, basicTy.TypeBitSize, name))
+				// 	}
+				// }
+
+			case *definition.BasicType:
+				tySize := (ty.TypeBitSize + 7) / 8
 				tyUint := typeSizeMapUint[tySize*8]
 				fieldSize := (val.FieldBitSize + 7) / 8
 				var fieldProcessor func(string, int64) string
@@ -810,10 +876,8 @@ func (g *CMinimalGenerator) generateDecoder(structDef *definition.Struct) string
 				}
 				decodeStr += genDecode(from, to, fieldProcessor)
 
-				if basicTy, ok := ty.(*definition.BasicType); ok {
-					if basicTy.TypeTypeID.IsInt() && basicTy.TypeBitSize > val.FieldBitSize {
-						decodeStr += fmt.Sprintf("%s = %s;\n", name, signExtend(val.FieldBitSize, basicTy.TypeBitSize, name))
-					}
+				if ty.TypeTypeID.IsInt() && ty.TypeBitSize > val.FieldBitSize {
+					decodeStr += fmt.Sprintf("%s = %s;\n", name, signExtend(val.FieldBitSize, ty.TypeBitSize, name))
 				}
 
 			case *definition.Array:
