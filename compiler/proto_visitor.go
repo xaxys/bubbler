@@ -223,6 +223,21 @@ func (v *ProtoVisitor) VisitStructName(ctx *parser.StructNameContext) any {
 			},
 		}
 	}
+	standard := util.ToPascalCase(util.ToPascalCase(name))
+	if name != standard {
+		warn := &definition.CompileWarning{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.Ident().GetStart().GetLine(),
+				Column: ctx.Ident().GetStart().GetColumn(),
+			},
+			Warning: &definition.NameStyleWarning{
+				Name: name,
+				Msg:  fmt.Sprintf("non-standard PascalCase detected. use '%s' instead.", standard),
+			},
+		}
+		v.Warning = errors.Join(v.Warning, warn)
+	}
 	return name
 }
 
@@ -827,15 +842,8 @@ func (v *ProtoVisitor) VisitFieldName(ctx *parser.FieldNameContext) any {
 			},
 		}
 	}
-	case1 := name
-	for case1 != util.Tosnake_case(util.ToPascalCase(case1)) {
-		case1 = util.Tosnake_case(util.ToPascalCase(case1))
-	}
-	case2 := name
-	for case2 != util.Tosnake_case(util.TocamelCase(case2)) {
-		case2 = util.Tosnake_case(util.TocamelCase(case2))
-	}
-	if name != case1 {
+	standard := util.Tosnake_case(util.Tosnake_case(name))
+	if name != standard {
 		warn := &definition.CompileWarning{
 			Position: definition.BasePosition{
 				File:   v.Unit.UnitName.Path,
@@ -844,21 +852,7 @@ func (v *ProtoVisitor) VisitFieldName(ctx *parser.FieldNameContext) any {
 			},
 			Warning: &definition.NameStyleWarning{
 				Name: name,
-				Msg:  fmt.Sprintf("non-standard snake_case detected. use '%s' instead.", case1),
-			},
-		}
-		v.Warning = errors.Join(v.Warning, warn)
-	}
-	if case1 != case2 {
-		warn := &definition.GeneralWarning{
-			Position: definition.BasePosition{
-				File:   v.Unit.UnitName.Path,
-				Line:   ctx.Ident().GetStart().GetLine(),
-				Column: ctx.Ident().GetStart().GetColumn(),
-			},
-			Warning: &definition.NameStyleWarning{
-				Name: name,
-				Msg:  fmt.Sprintf("non-identical detected while converting to camelCase '%s' and PascalCase '%s'. Please contact the author for further help.", case2, case1),
+				Msg:  fmt.Sprintf("non-standard snake_case detected. use '%s' instead.", standard),
 			},
 		}
 		v.Warning = errors.Join(v.Warning, warn)
@@ -1100,19 +1094,12 @@ func (v *MethodVisitor) VisitMethodName(ctx *parser.MethodNameContext) any {
 			},
 			Err: &definition.NameStyleError{
 				Name: name,
-				Msg:  "method name must be uncapitalized, recommended to use snake_case",
+				Msg:  "method name must be uncapitalized, recommended to use camelCase",
 			},
 		}
 	}
-	case1 := name
-	for case1 != util.Tosnake_case(util.ToPascalCase(case1)) {
-		case1 = util.Tosnake_case(util.ToPascalCase(case1))
-	}
-	case2 := name
-	for case2 != util.Tosnake_case(util.TocamelCase(case2)) {
-		case2 = util.Tosnake_case(util.TocamelCase(case2))
-	}
-	if name != case1 {
+	standard := util.TocamelCase(util.TocamelCase(name))
+	if name != standard {
 		warn := &definition.CompileWarning{
 			Position: definition.BasePosition{
 				File:   v.Unit.UnitName.Path,
@@ -1121,21 +1108,7 @@ func (v *MethodVisitor) VisitMethodName(ctx *parser.MethodNameContext) any {
 			},
 			Warning: &definition.NameStyleWarning{
 				Name: name,
-				Msg:  fmt.Sprintf("non-standard snake_case detected. use '%s' instead.", case1),
-			},
-		}
-		v.Warning = errors.Join(v.Warning, warn)
-	}
-	if case1 != case2 {
-		warn := &definition.GeneralWarning{
-			Position: definition.BasePosition{
-				File:   v.Unit.UnitName.Path,
-				Line:   ctx.Ident().GetStart().GetLine(),
-				Column: ctx.Ident().GetStart().GetColumn(),
-			},
-			Warning: &definition.NameStyleWarning{
-				Name: name,
-				Msg:  fmt.Sprintf("non-identical detected while converting to camelCase '%s' and PascalCase '%s'. Please contact the author for further help.", case2, case1),
+				Msg:  fmt.Sprintf("non-standard camelCase detected. use '%s' instead.", standard),
 			},
 		}
 		v.Warning = errors.Join(v.Warning, warn)
@@ -2172,9 +2145,24 @@ func (v *ProtoVisitor) VisitEnumField(ctx *parser.EnumFieldContext) any {
 			},
 			Err: &definition.NameStyleError{
 				Name: name,
-				Msg:  "enum value name must be Capitalized, recommended to use CAPITALS_WITH_UNDERSCORES",
+				Msg:  "enum value name must be Capitalized, recommended to use ALLCAP_CASE",
 			},
 		}
+	}
+	standard := util.ToALLCAP_CASE(util.ToALLCAP_CASE(name))
+	if name != standard {
+		warn := &definition.CompileWarning{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.Ident().GetStart().GetLine(),
+				Column: ctx.Ident().GetStart().GetColumn(),
+			},
+			Warning: &definition.NameStyleWarning{
+				Name: name,
+				Msg:  fmt.Sprintf("non-standard ALLCAP_CASE detected. use '%s' instead.", standard),
+			},
+		}
+		v.Warning = errors.Join(v.Warning, warn)
 	}
 
 	value := int64(-1)
@@ -2221,6 +2209,21 @@ func (v *ProtoVisitor) VisitEnumName(ctx *parser.EnumNameContext) any {
 				Msg:  "enum name must be Capitalized, recommended to use PascalCase",
 			},
 		}
+	}
+	standard := util.ToPascalCase(util.ToPascalCase(name))
+	if name != standard {
+		warn := &definition.CompileWarning{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.Ident().GetStart().GetLine(),
+				Column: ctx.Ident().GetStart().GetColumn(),
+			},
+			Warning: &definition.NameStyleWarning{
+				Name: name,
+				Msg:  fmt.Sprintf("non-standard PascalCase detected. use '%s' instead.", standard),
+			},
+		}
+		v.Warning = errors.Join(v.Warning, warn)
 	}
 	return name
 }

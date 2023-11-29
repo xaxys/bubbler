@@ -32,6 +32,36 @@ func ToLower(s rune) rune {
 	return s
 }
 
+func IsAllUpper(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for _, c := range s {
+		if c == '_' {
+			continue
+		}
+		if !IsUpper(c) {
+			return false
+		}
+	}
+	return true
+}
+
+func IsAllLower(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for _, c := range s {
+		if c == '_' {
+			continue
+		}
+		if !IsLower(c) {
+			return false
+		}
+	}
+	return true
+}
+
 func IsCapitalized(s string) bool {
 	if len(s) == 0 {
 		return false
@@ -64,6 +94,7 @@ func ToPascalCase(s string) string {
 	}
 	prefix, s := CutPrefixUnderscore(s)
 	s, suffix := CutSuffixUnderscore(s)
+	isAllUpper := IsAllUpper(s)
 	isUpper := false // deal with CAPITALS_WITH_UNDERSCORES case
 	doCapitalize := true
 	ret := ""
@@ -82,7 +113,7 @@ func ToPascalCase(s string) string {
 			continue
 		}
 		// found UPPER char before (HELLO -> Hello)
-		if isUpper {
+		if isAllUpper && isUpper {
 			ret += string(ToLower(c))
 			doCapitalize = false
 			isUpper = IsUpper(c)
@@ -102,6 +133,7 @@ func TocamelCase(s string) string {
 	}
 	prefix, s := CutPrefixUnderscore(s)
 	s, suffix := CutSuffixUnderscore(s)
+	isAllUpper := IsAllUpper(s)
 	isUpper := false // deal with CAPITALS_WITH_UNDERSCORES case
 	doCapitalize := false
 	ret := ""
@@ -125,7 +157,7 @@ func TocamelCase(s string) string {
 			continue
 		}
 		// found UPPER char before (HELLO -> Hello)
-		if isUpper {
+		if isAllUpper && isUpper {
 			ret += string(ToLower(c))
 			doCapitalize = false
 			isUpper = IsUpper(c)
@@ -145,6 +177,7 @@ func Tosnake_case(s string) string {
 	}
 	prefix, s := CutPrefixUnderscore(s)
 	s, suffix := CutSuffixUnderscore(s)
+	isAllUpper := IsAllUpper(s)
 	isUpper := false // deal with CAPITALS_WITH_UNDERSCORES case
 	hasUnderScore := false
 	ret := ""
@@ -167,7 +200,7 @@ func Tosnake_case(s string) string {
 		if IsUpper(c) {
 			// skip multiple _ (hello_World -> hello_world) (avoid hello_World -> hello__world)
 			// skip multiple upper (HELLO -> hello) (avoid HELLO -> h_e_l_l_o)
-			if !hasUnderScore && !isUpper {
+			if !hasUnderScore && !(isAllUpper && isUpper) {
 				ret += "_"
 				hasUnderScore = true
 			}
@@ -190,7 +223,8 @@ func ToALLCAP_CASE(s string) string {
 	}
 	prefix, s := CutPrefixUnderscore(s)
 	s, suffix := CutSuffixUnderscore(s)
-	isUpper := false
+	isAllUpper := IsAllUpper(s)
+	isUpper := false // deal with CAPITALS_WITH_UNDERSCORES case
 	hasUnderScore := false
 	ret := ""
 	for i, c := range s {
@@ -212,7 +246,7 @@ func ToALLCAP_CASE(s string) string {
 		if IsUpper(c) {
 			// skip multiple _ (hello_World -> HELLO_WORLD) (avoid hello_World -> HELLO__WORLD)
 			// skip multiple upper (HELLO -> HELLO) (avoid HELLO -> H_E_L_L_O)
-			if !hasUnderScore && !isUpper {
+			if !hasUnderScore && !(isAllUpper && isUpper) {
 				ret += "_"
 				hasUnderScore = true
 			}

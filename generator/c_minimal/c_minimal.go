@@ -290,10 +290,11 @@ static void {{ .StructName }}_set_{{ $fieldName }}(struct {{ .StructName }}* str
 {{- define "customGetter" -}}
 {{- $returnType := generateType .ReturnType -}}
 {{- $fieldName := Tosnake_case .FieldDef.FieldName -}}
+{{- $methodName := Tosnake_case .Name -}}
 {{- $valueReplacement := printf "structPtr->%s" $fieldName -}}
 {{- $expr := generateExpr .Expr $valueReplacement -}}
-// CustomGetter: {{ .StructName }}_get_{{ $fieldName }}_{{ .Name }}
-static {{ $returnType }} {{ .StructName }}_get_{{ $fieldName }}_{{ .Name }}(struct {{ .StructName }}* structPtr) {
+// CustomGetter: {{ .StructName }}_get_{{ $fieldName }}_{{ $methodName }}
+static {{ $returnType }} {{ .StructName }}_get_{{ $fieldName }}_{{ $methodName }}(struct {{ .StructName }}* structPtr) {
 	return {{ $expr }};
 }
 
@@ -302,9 +303,10 @@ static {{ $returnType }} {{ .StructName }}_get_{{ $fieldName }}_{{ .Name }}(stru
 {{- define "customSetter" -}}
 {{- $paramType := generateType .ParamType -}}
 {{- $fieldName := Tosnake_case .FieldDef.FieldName -}}
+{{- $methodName := Tosnake_case .Name -}}
 {{- $expr := generateExpr .Expr "value" -}}
-// CustomSetter: {{ .StructName }}_set_{{ $fieldName }}_{{ .Name }}
-static void {{ .StructName }}_set_{{ $fieldName }}_{{ .Name }}(struct {{ .StructName }}* structPtr, {{ $paramType }} value) {
+// CustomSetter: {{ .StructName }}_set_{{ $fieldName }}_{{ $methodName }}
+static void {{ .StructName }}_set_{{ $fieldName }}_{{ $methodName }}(struct {{ .StructName }}* structPtr, {{ $paramType }} value) {
 	structPtr->{{ $fieldName }} = {{ $expr }};
 }
 

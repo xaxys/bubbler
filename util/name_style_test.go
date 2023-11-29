@@ -1,6 +1,7 @@
 package util
 
 import (
+	"math/rand"
 	"testing"
 )
 
@@ -47,6 +48,10 @@ func TestToPascalCase(t *testing.T) {
 		input    string
 		expected string
 	}{
+		{"PropellerAData", "PropellerAData"},
+		{"propellerAData", "PropellerAData"},
+		{"propeller_a_data", "PropellerAData"},
+		{"PROPELLER_A_DATA", "PropellerAData"},
 		{"hello_world", "HelloWorld"},
 		{"foo_bar_baz", "FooBarBaz"},
 		{"abc_def_ghi", "AbcDefGhi"},
@@ -84,6 +89,10 @@ func TestTocamelCase(t *testing.T) {
 		input    string
 		expected string
 	}{
+		{"PropellerAData", "propellerAData"},
+		{"propellerAData", "propellerAData"},
+		{"propeller_a_data", "propellerAData"},
+		{"PROPELLER_A_DATA", "propellerAData"},
 		{"hello_world", "helloWorld"},
 		{"foo_bar_baz", "fooBarBaz"},
 		{"abc_def_ghi", "abcDefGhi"},
@@ -121,6 +130,10 @@ func TestTosnake_case(t *testing.T) {
 		input    string
 		expected string
 	}{
+		{"PropellerAData", "propeller_a_data"},
+		{"propellerAData", "propeller_a_data"},
+		{"propeller_a_data", "propeller_a_data"},
+		{"PROPELLER_A_DATA", "propeller_a_data"},
 		{"HelloWorld", "hello_world"},
 		{"FooBarBaz", "foo_bar_baz"},
 		{"AbcDefGhi", "abc_def_ghi"},
@@ -158,6 +171,10 @@ func TestToALLCAP_CASE(t *testing.T) {
 		input    string
 		expected string
 	}{
+		{"PropellerAData", "PROPELLER_A_DATA"},
+		{"propellerAData", "PROPELLER_A_DATA"},
+		{"propeller_a_data", "PROPELLER_A_DATA"},
+		{"PROPELLER_A_DATA", "PROPELLER_A_DATA"},
 		{"HelloWorld", "HELLO_WORLD"},
 		{"FooBarBaz", "FOO_BAR_BAZ"},
 		{"AbcDefGhi", "ABC_DEF_GHI"},
@@ -190,45 +207,49 @@ func TestToALLCAP_CASE(t *testing.T) {
 	}
 }
 
-// func TestMuxNameStyle(t *testing.T) {
-// 	generator := func(length int) string {
-// 		str := ""
-// 		for i := 0; i < length; i++ {
-// 			ty := rand.Intn(4)
-// 			switch ty {
-// 			case 0:
-// 				str += "_"
-// 			case 1:
-// 				str += string(rune('A' + rand.Intn(26)))
-// 			case 2:
-// 				str += string(rune('a' + rand.Intn(26)))
-// 			case 3:
-// 				str += string(rune('0' + rand.Intn(10)))
-// 			}
-// 		}
-// 		return str
-// 	}
+func TestMuxNameStyle(t *testing.T) {
+	generator := func(length int) string {
+		str := ""
+		for i := 0; i < length; i++ {
+			ty := rand.Intn(4)
+			switch ty {
+			case 0:
+				str += "_"
+			case 1:
+				str += string(rune('A' + rand.Intn(26)))
+			case 2:
+				str += string(rune('a' + rand.Intn(26)))
+			case 3:
+				str += string(rune('0' + rand.Intn(10)))
+			}
+		}
+		return str
+	}
 
-// 	funcList := map[string]func(string) string{
-// 		"ToPascalCase":  ToPascalCase,
-// 		"TocamelCase":   TocamelCase,
-// 		"Tosnake_case":  Tosnake_case,
-// 		"ToALLCAP_CASE": ToALLCAP_CASE,
-// 	}
+	funcList := map[string]func(string) string{
+		"ToPascalCase":  ToPascalCase,
+		"TocamelCase":   TocamelCase,
+		"Tosnake_case":  Tosnake_case,
+		"ToALLCAP_CASE": ToALLCAP_CASE,
+	}
 
-// 	caseNum := 2
-// 	caseLen := 20
-// 	for i := 0; i < caseNum; i++ {
-// 		caseStr := generator(caseLen)
+	caseNum := 2000
+	caseLen := 2000
+	for i := 0; i < caseNum; i++ {
+		caseStr := generator(caseLen)
 
-// 		for baseName, baseFunc := range funcList {
-// 			baseStr := baseFunc(caseStr)
-// 			for otherName, otherFunc := range funcList {
-// 				result := baseFunc(otherFunc(caseStr))
-// 				if result != baseStr {
-// 					t.Errorf("MuxNameStyle(%s, %s, %s) = %s, expected %s", baseName, otherName, caseStr, result, baseStr)
-// 				}
-// 			}
-// 		}
-// 	}
-// }
+		for baseName, baseFunc := range funcList {
+			baseStr := baseFunc(baseFunc(caseStr))
+			// for otherName, otherFunc := range funcList {
+			// 	result := baseFunc(otherFunc(caseStr))
+			// 	if result != baseStr {
+			// 		t.Errorf("MuxNameStyle(%s, %s, %s) = %s, expected %s", baseName, otherName, caseStr, result, baseStr)
+			// 	}
+			// }
+			result := baseFunc(baseStr)
+			if result != baseStr {
+				t.Errorf("MuxNameStyle(%s, %s) = %s, expected %s", baseName, caseStr, result, baseStr)
+			}
+		}
+	}
+}
