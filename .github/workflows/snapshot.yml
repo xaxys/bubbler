@@ -1,0 +1,51 @@
+name: Snapshot
+on: workflow_dispatch
+jobs:
+  snapshot:
+    name: Snapshot
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.21.4
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Check out code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Fetch all tags
+        run: git fetch --force --tags
+
+      - name: Make Gen
+        run: make gen
+
+      - name: Create snapshot on GitHub
+        run: "docker run --rm --privileged -e CGO_ENABLED=1 -e GITHUB_TOKEN=$GITHUB_TOKEN -e GOVERSION=$(go version | awk '{print $3;}') -v /var/run/docker.sock:/var/run/docker.sock -v `pwd`:/go/src/bubbler -v /usr:/sysroot/usr -w /go/src/bubbler goreleaser/goreleaser-cross:v1.21.4 release --snapshot --clean"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get git tag
+        run: echo GIT_TAG=$(git describe --tags --always --dirty="-dev") >> $GITHUB_ENV
+
+      - name: Release snapshot on GitHub
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "Snapshot ${{ env.GIT_TAG }}"
+          tag_name: ${{ env.GIT_TAG }}
+          prerelease: true
+          files: |
+            ./dist/checksums.txt
+            ./dist/*.tar.gz
+            ./dist/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

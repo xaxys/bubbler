@@ -1,0 +1,68 @@
+name: Build and Test
+on: [push, pull_request]
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.21.4
+      
+      - name: Check out code
+        uses: actions/checkout@v2
+      
+      - name: Run Revive Action by pulling pre-built image
+        uses: docker://morphy/revive-action:v2
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.21.4
+
+      - name: Check out code
+        uses: actions/checkout@v2
+
+      - name: Get dependencies
+        run: |
+          go mod tidy
+          go generate ./...
+
+      - name: Run Unit tests.
+        run: make test-full
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.21.4
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Check out code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Fetch all tags
+        run: git fetch --force --tags
+
+      - name: Make Gen
+        run: make gen
+
+      - name: Create snapshot without release
+        run: "docker run --rm --privileged -e CGO_ENABLED=1 -e GITHUB_TOKEN=$GITHUB_TOKEN -e GOVERSION=$(go version | awk '{print $3;}') -v /var/run/docker.sock:/var/run/docker.sock -v `pwd`:/go/src/bubbler -v /usr:/sysroot/usr -w /go/src/bubbler goreleaser/goreleaser-cross:v1.21.4 release --snapshot --skip-publish --clean"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
