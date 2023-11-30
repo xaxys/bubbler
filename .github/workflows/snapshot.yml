@@ -35,7 +35,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get git tag
-        run: echo GIT_TAG=$(git describe --tags --always --dirty="-dev") >> $GITHUB_ENV
+        run: echo GIT_TAG=$(git describe --tags --alway | cut -d '-' -f 1)-$(git rev-parse --short HEAD)-dev >> $GITHUB_ENV
 
       - name: Release snapshot on GitHub
         uses: softprops/action-gh-release@v1
