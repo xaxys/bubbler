@@ -32,6 +32,7 @@ var fileTemplate = `
 // DO NOT EDIT
 #include <stdint.h>
 #include <stdbool.h>
+#include <math.h>
 
 {{ range $type := .GenTypes.Values -}}
 {{- if $type.GeneratedConst }}
