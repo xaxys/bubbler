@@ -195,7 +195,7 @@ type NameStyleWarning struct {
 }
 
 func (w NameStyleWarning) String() string {
-	return fmt.Sprintf("unrecommended name style '%s': %s",
+	return fmt.Sprintf("non-recommended name style '%s': %s",
 		color.FgLightWhite.Render(w.Name),
 		w.Msg,
 	)
