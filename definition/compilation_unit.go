@@ -1,7 +1,6 @@
 package definition
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/xaxys/bubbler/util"
@@ -24,7 +23,7 @@ func NewCompilationUnit(name *FileIdentifer) *CompilationUnit {
 }
 
 func (c *CompilationUnit) AddImport(other *CompilationUnit) error {
-	var err error
+	var err TopLevelError
 	if other.UnitName == c.UnitName {
 		return &ImportSelfError{}
 	}
@@ -38,8 +37,15 @@ func (c *CompilationUnit) AddImport(other *CompilationUnit) error {
 	for _, ty := range other.Types.Values() {
 		pos, ok := ty.(Position)
 		if !ok {
-			ex := fmt.Errorf("unexpected top level type %s without its position", ty.GetTypeName())
-			err = errors.Join(err, ex)
+			ex := &CompileError{
+				Position: &BasePosition{
+					File:   other.UnitName.Path,
+					Line:   0,
+					Column: 0,
+				},
+				Err: fmt.Errorf("unexpected top level type %s without its position", ty.GetTypeName()),
+			}
+			err = TopLevelErrorsJoin(err, ex)
 			continue
 		}
 		success := c.Types.Put(ty.GetTypeName(), ty)
@@ -52,7 +58,7 @@ func (c *CompilationUnit) AddImport(other *CompilationUnit) error {
 					DefName: ty.GetTypeName(),
 				},
 			}
-			err = errors.Join(err, ex)
+			err = TopLevelErrorsJoin(err, ex)
 			continue
 		}
 	}

@@ -1,7 +1,6 @@
 package compiler
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 
@@ -17,7 +16,7 @@ import (
 type ProtoVisitor struct {
 	parser.BasebubblerVisitor
 	Unit    *definition.CompilationUnit
-	Warning error
+	Warning definition.TopLevelWarning
 }
 
 func NewParseVisitor(unit *definition.CompilationUnit) *ProtoVisitor {
@@ -30,9 +29,12 @@ func NewParseVisitor(unit *definition.CompilationUnit) *ProtoVisitor {
 
 // VisitProto returns nil
 func (v *ProtoVisitor) VisitProto(ctx *parser.ProtoContext) any {
+	var errs definition.TopLevelError
 	for _, child := range ctx.AllTopLevelDef() {
 		ret := child.Accept(v)
 		switch val := ret.(type) {
+		case definition.TopLevelError:
+			errs = definition.TopLevelErrorsJoin(errs, val) // try parse multiple errors in one time
 		case error:
 			return val
 		case definition.CustomType:
@@ -41,7 +43,7 @@ func (v *ProtoVisitor) VisitProto(ctx *parser.ProtoContext) any {
 			panic("unreachable")
 		}
 	}
-	return nil
+	return errs
 }
 
 // VisitTopLevelDef returns CustomType or error
@@ -236,12 +238,13 @@ func (v *ProtoVisitor) VisitStructName(ctx *parser.StructNameContext) any {
 				Msg:  fmt.Sprintf("non-standard PascalCase detected. use '%s' instead.", standard),
 			},
 		}
-		v.Warning = errors.Join(v.Warning, warn)
+		v.Warning = definition.TopLevelWarningsJoin(v.Warning, warn)
 	}
 	return name
 }
 
 func (v *ProtoVisitor) VisitStructBody(ctx *parser.StructBodyContext) any {
+	var errs definition.TopLevelError
 	fields := util.NewOrderedMap[string, definition.Field]()
 	var addField func(f definition.Field) error
 	addField = func(f definition.Field) error {
@@ -259,6 +262,7 @@ func (v *ProtoVisitor) VisitStructBody(ctx *parser.StructBodyContext) any {
 			}
 			fields.Put(val.FieldName, val)
 			return nil
+
 		case *definition.EmbeddedField:
 			prev, ok := fields.Get(val.FieldType.StructName)
 			if ok {
@@ -316,11 +320,17 @@ func (v *ProtoVisitor) VisitStructBody(ctx *parser.StructBodyContext) any {
 	elems := ctx.AllStructElement()
 	for _, elem := range elems {
 		ret := elem.Accept(v)
+
 		switch val := ret.(type) {
 		case nil: // skip empty statement
 			break
+
+		case definition.TopLevelError:
+			errs = definition.TopLevelErrorsJoin(errs, val)
+
 		case error:
 			return val
+
 		case *definition.EmbeddedField:
 			err := addField(val)
 			if err != nil {
@@ -336,15 +346,22 @@ func (v *ProtoVisitor) VisitStructBody(ctx *parser.StructBodyContext) any {
 					},
 				}
 			}
+
 		case definition.Field:
 			err := addField(val)
 			if err != nil {
 				return err
 			}
+
 		default:
 			panic("unreachable")
 		}
 	}
+
+	if errs != nil {
+		return errs
+	}
+
 	return fields.Values()
 }
 
@@ -855,7 +872,7 @@ func (v *ProtoVisitor) VisitFieldName(ctx *parser.FieldNameContext) any {
 				Msg:  fmt.Sprintf("non-standard snake_case detected. use '%s' instead.", standard),
 			},
 		}
-		v.Warning = errors.Join(v.Warning, warn)
+		v.Warning = definition.TopLevelWarningsJoin(v.Warning, warn)
 	}
 	return name
 }
@@ -886,8 +903,8 @@ func (v *ProtoVisitor) VisitFieldOptions(ctx *parser.FieldOptionsContext) any {
 		case *definition.Option:
 			err := ValidateOption(val)
 			if err != nil {
-				if warning, ok := err.(definition.TopLevelWarning); ok {
-					v.Warning = errors.Join(v.Warning, warning)
+				if warn, ok := err.(definition.TopLevelWarning); ok {
+					v.Warning = definition.TopLevelWarningsJoin(v.Warning, warn)
 				} else {
 					return err
 				}
@@ -990,12 +1007,18 @@ func (v *MethodVisitor) VisitFieldMethods(ctx *parser.FieldMethodsContext) any {
 		return nil
 	}
 
+	var errs definition.TopLevelError
 	elems := ctx.AllFieldMethod()
 	for _, elem := range elems {
 		ret := elem.Accept(v)
+
 		switch val := ret.(type) {
+		case definition.TopLevelError:
+			errs = definition.TopLevelErrorsJoin(errs, val)
+
 		case error:
 			return val
+
 		case *definition.Method:
 			switch val.MethodKind {
 			case definition.MethodKindID_Get:
@@ -1011,9 +1034,14 @@ func (v *MethodVisitor) VisitFieldMethods(ctx *parser.FieldMethodsContext) any {
 			default:
 				panic("unreachable")
 			}
+
 		default:
 			panic("unreachable")
 		}
+	}
+
+	if errs != nil {
+		return errs
 	}
 
 	gettersList := getters.Values()
@@ -1111,7 +1139,7 @@ func (v *MethodVisitor) VisitMethodName(ctx *parser.MethodNameContext) any {
 				Msg:  fmt.Sprintf("non-standard camelCase detected. use '%s' instead.", standard),
 			},
 		}
-		v.Warning = errors.Join(v.Warning, warn)
+		v.Warning = definition.TopLevelWarningsJoin(v.Warning, warn)
 	}
 	return name
 }
@@ -2104,21 +2132,34 @@ func (v *ProtoVisitor) VisitEnumBody(ctx *parser.EnumBodyContext) any {
 		return nil
 	}
 
+	var errs definition.TopLevelError
 	for _, elem := range ctx.AllEnumElement() {
 		ret := elem.Accept(v)
+
 		switch val := ret.(type) {
+		case definition.TopLevelError:
+			errs = definition.TopLevelErrorsJoin(errs, val)
+
 		case nil: // skip empty statement
 			break
+
 		case error:
 			return val
+
 		case *definition.EnumValue:
 			err := addValue(val)
 			if err != nil {
 				return err
 			}
+
 		default:
 			panic("unreachable")
+
 		}
+	}
+
+	if errs != nil {
+		return errs
 	}
 
 	return values.Values()
@@ -2162,7 +2203,7 @@ func (v *ProtoVisitor) VisitEnumField(ctx *parser.EnumFieldContext) any {
 				Msg:  fmt.Sprintf("non-standard ALLCAP_CASE detected. use '%s' instead.", standard),
 			},
 		}
-		v.Warning = errors.Join(v.Warning, warn)
+		v.Warning = definition.TopLevelWarningsJoin(v.Warning, warn)
 	}
 
 	value := int64(-1)
@@ -2223,7 +2264,7 @@ func (v *ProtoVisitor) VisitEnumName(ctx *parser.EnumNameContext) any {
 				Msg:  fmt.Sprintf("non-standard PascalCase detected. use '%s' instead.", standard),
 			},
 		}
-		v.Warning = errors.Join(v.Warning, warn)
+		v.Warning = definition.TopLevelWarningsJoin(v.Warning, warn)
 	}
 	return name
 }

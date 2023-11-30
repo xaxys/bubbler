@@ -13,7 +13,44 @@ type TopLevelError interface {
 	IsTopLevelError()
 }
 
+func TopLevelErrorsJoin(errs ...TopLevelError) TopLevelError {
+	var topErrs []TopLevelError
+	for _, err := range errs {
+		if err == nil {
+			continue
+		}
+		if topErr, ok := err.(*JoinTopLevelErrors); ok {
+			topErrs = append(topErrs, topErr.Errs...)
+		} else {
+			topErrs = append(topErrs, err)
+		}
+	}
+	if len(topErrs) == 0 {
+		return nil
+	}
+	return &JoinTopLevelErrors{
+		Errs: topErrs,
+	}
+}
+
 // ==================== Top Level Error ====================
+
+type JoinTopLevelErrors struct {
+	TopLevelError
+	Errs []TopLevelError
+}
+
+func (e JoinTopLevelErrors) String() string {
+	strs := make([]string, len(e.Errs))
+	for i, err := range e.Errs {
+		strs[i] = err.Error()
+	}
+	return strings.Join(strs, "\n")
+}
+
+func (e JoinTopLevelErrors) Error() string {
+	return e.String()
+}
 
 type GeneralError struct {
 	TopLevelError

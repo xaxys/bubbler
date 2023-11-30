@@ -1,7 +1,6 @@
 package compiler
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/antlr4-go/antlr/v4"
@@ -11,7 +10,7 @@ import (
 type errorListener struct {
 	*antlr.DefaultErrorListener
 	File string
-	Err  error
+	Err  definition.TopLevelError
 }
 
 func (l *errorListener) SyntaxError(recognizer antlr.Recognizer, offendingSymbol any, line, column int, msg string, e antlr.RecognitionException) {
@@ -23,5 +22,5 @@ func (l *errorListener) SyntaxError(recognizer antlr.Recognizer, offendingSymbol
 		},
 		Err: fmt.Errorf("%s", msg),
 	}
-	l.Err = errors.Join(l.Err, err)
+	l.Err = definition.TopLevelErrorsJoin(l.Err, err)
 }

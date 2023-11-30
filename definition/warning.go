@@ -2,6 +2,7 @@ package definition
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gookit/color"
 	"github.com/xaxys/bubbler/util"
@@ -12,7 +13,44 @@ type TopLevelWarning interface {
 	IsTopLevelWarning()
 }
 
+func TopLevelWarningsJoin(warnings ...TopLevelWarning) TopLevelWarning {
+	var topWarnings []TopLevelWarning
+	for _, warning := range warnings {
+		if warning == nil {
+			continue
+		}
+		if topWarning, ok := warning.(*JoinTopLevelWarnings); ok {
+			topWarnings = append(topWarnings, topWarning.Warnings...)
+		} else {
+			topWarnings = append(topWarnings, warning)
+		}
+	}
+	if len(topWarnings) == 0 {
+		return nil
+	}
+	return &JoinTopLevelWarnings{
+		Warnings: topWarnings,
+	}
+}
+
 // ==================== Top Level Warning ====================
+
+type JoinTopLevelWarnings struct {
+	TopLevelWarning
+	Warnings []TopLevelWarning
+}
+
+func (w JoinTopLevelWarnings) String() string {
+	strs := make([]string, len(w.Warnings))
+	for i, warning := range w.Warnings {
+		strs[i] = warning.Error()
+	}
+	return strings.Join(strs, "\n")
+}
+
+func (w JoinTopLevelWarnings) Error() string {
+	return w.String()
+}
 
 type GeneralWarning struct {
 	TopLevelWarning

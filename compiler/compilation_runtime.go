@@ -1,8 +1,6 @@
 package compiler
 
 import (
-	"errors"
-
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/xaxys/bubbler/definition"
 	"github.com/xaxys/bubbler/fileio"
@@ -98,7 +96,7 @@ func (r *CompilationRuntime) compile(ident *definition.FileIdentifer, content st
 	r.Units.Put(ident.Path, unit)
 	r.ParseStack.Put(ident.Path, unit)
 
-	var warnings error
+	var warnings definition.TopLevelWarning
 	// compile imports
 	for i, other := range importor.Imports {
 		otherUnit, err, warning := r.Compile(other)
@@ -106,14 +104,23 @@ func (r *CompilationRuntime) compile(ident *definition.FileIdentifer, content st
 			continue
 		}
 		if warning != nil {
-			w := &definition.CompileWarning{
-				Position: importor.PosList[i],
-				Warning: &definition.ImportingWarning{
-					File:    other,
-					Warning: warning,
-				},
+			var w definition.TopLevelWarning
+			topLevelWarning, ok := warning.(definition.TopLevelWarning)
+			if !ok {
+				w = &definition.CompileWarning{
+					Position: importor.PosList[i],
+					Warning:  warning,
+				}
+			} else {
+				w = &definition.CompileWarning{
+					Position: importor.PosList[i],
+					Warning: &definition.ImportingWarning{
+						File:    other,
+						Warning: topLevelWarning,
+					},
+				}
 			}
-			warnings = errors.Join(warnings, w)
+			warnings = definition.TopLevelWarningsJoin(warnings, w)
 		}
 		if err != nil {
 			topLevelErr, ok := err.(definition.TopLevelError)
@@ -144,7 +151,7 @@ func (r *CompilationRuntime) compile(ident *definition.FileIdentifer, content st
 
 	protoVisitor := NewParseVisitor(unit)
 	protoErr := ast.Accept(protoVisitor)
-	warnings = errors.Join(warnings, protoVisitor.Warning)
+	warnings = definition.TopLevelWarningsJoin(warnings, protoVisitor.Warning)
 	if err, ok := protoErr.(error); ok {
 		return nil, err, warnings
 	}
