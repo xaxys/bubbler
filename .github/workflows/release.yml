@@ -33,6 +33,6 @@ jobs:
         run: make gen
 
       - name: Create release on GitHub
-        run: "docker run --rm --privileged -e CGO_ENABLED=1 -e GITHUB_TOKEN=$GITHUB_TOKEN -e GOVERSION=$(go version | awk '{print $3;}') -v /var/run/docker.sock:/var/run/docker.sock -v `pwd`:/go/src/bubbler -v /usr:/sysroot/usr -w /go/src/bubbler goreleaser/goreleaser-cross:v1.21.4 release --clean"
+        run: "docker run --rm --privileged -e CGO_ENABLED=1 -e GITHUB_TOKEN=$GITHUB_TOKEN -e GOVERSION=$(go version | awk '{print $3;}') -v /var/run/docker.sock:/var/run/docker.sock -v `pwd`:/go/src/bubbler -v /usr:/sysroot/usr -w /go/src/bubbler goreleaser/goreleaser-cross:v1.21.4 release --skip-validate --clean"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

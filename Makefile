@@ -36,14 +36,14 @@ $(1)
 
 endef
 
-all: build
+all: gen build
 
 gen:
 	@echo Generating $(PACKAGE_NAME) ...
 #	@$(foreach file, $(GEN_FILES), $(call exec-cmd, $(GO) run $(file)))
 	@$(call exec-cmd, $(PWD)/tools/gen$(SCRIPT_EXT))
 
-build: gen
+build:
 	@echo Building $(PACKAGE_NAME) ...
 	@$(GO) env -w CGO_ENABLED="1"
 	@$(GO) build \
@@ -79,4 +79,4 @@ clean:
 	@$(RM_CMD_1) "*.out"      $(RM_CMD_2)
 	@$(RM_CMD_1) "*.yaml"     $(RM_CMD_2)
 
-.PHONY: all test test-full test-short gen clean
+.PHONY: all gen build run test test-full test-short clean
