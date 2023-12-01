@@ -1,8 +1,6 @@
 package compiler
 
 import (
-	"strings"
-
 	"github.com/xaxys/bubbler/definition"
 	"github.com/xaxys/bubbler/parser"
 	"github.com/xaxys/bubbler/util"
@@ -59,7 +57,7 @@ func (v *InfoVisitor) VisitProto(ctx *parser.ProtoContext) any {
 				Position: pkg,
 				Err: &definition.PackageDuplicateError{
 					PrevDef:     v.Unit.Package,
-					PackageName: v.Unit.Package.PackageName,
+					PackageName: v.Unit.Package.String(),
 				},
 			}
 			err = definition.TopLevelErrorsJoin(err, ex)
@@ -122,13 +120,13 @@ func (v *InfoVisitor) VisitProto(ctx *parser.ProtoContext) any {
 // ==================== Package ====================
 
 func (v *InfoVisitor) VisitPackageStatement(ctx *parser.PackageStatementContext) any {
-	var name string
-	nameRet := ctx.FullIdent().Accept(v)
-	switch val := nameRet.(type) {
+	var paths []string
+	pathsRet := ctx.FullIdent().Accept(v)
+	switch val := pathsRet.(type) {
 	case error:
 		return val
-	case string:
-		name = val
+	case []string:
+		paths = val
 	default:
 		panic("unreachable")
 	}
@@ -139,7 +137,7 @@ func (v *InfoVisitor) VisitPackageStatement(ctx *parser.PackageStatementContext)
 			Line:   ctx.GetStart().GetLine(),
 			Column: ctx.GetStart().GetColumn(),
 		},
-		PackageName: name,
+		PackagePaths: paths,
 	}
 	return pkg
 }
@@ -177,12 +175,10 @@ func (v *InfoVisitor) VisitOptionStatement(ctx *parser.OptionStatementContext) a
 // ==================== FullIdent ====================
 
 func (v *InfoVisitor) VisitFullIdent(ctx *parser.FullIdentContext) any {
-	// 其实是脱了裤子放屁，直接GetText()就完事了，哈。
 	var idents []string
 	for _, child := range ctx.AllIdent() {
 		part := child.GetText()
 		idents = append(idents, part)
 	}
-	ident := strings.Join(idents, ".")
-	return ident
+	return idents
 }

@@ -141,56 +141,56 @@ func (g *CGenerator) generateType(type_ definition.Type) (def string) {
 
 var structTemplate = `
 {{- define "constantField" -}}
-	{{- $pos := .Pos -}}
-	{{- $field := .Field -}}
-	{{- $fieldName := Tosnake_case .Field.FieldName -}}
-	// {{ $pos }} ConstantField: {{ $field.ShortString }}
-	{{ if $fieldName }}
-		{{- $tyStr := generateType $field.FieldType -}}
-		{{ $tyStr }} {{ $fieldName }};
-	{{- end }}
+    {{- $pos := .Pos -}}
+    {{- $field := .Field -}}
+    {{- $fieldName := Tosnake_case .Field.FieldName -}}
+    // {{ $pos }} ConstantField: {{ $field.ShortString }}
+    {{ if $fieldName }}
+        {{- $tyStr := generateType $field.FieldType -}}
+        {{ $tyStr }} {{ $fieldName }};
+    {{- end }}
 {{- end -}}
 
 {{- define "voidField" -}}
-	{{- $pos := .Pos -}}
-	{{- $field := .Field -}}
-	// {{ $pos }} VoidField: {{ $field.ShortString }}
+    {{- $pos := .Pos -}}
+    {{- $field := .Field -}}
+    // {{ $pos }} VoidField: {{ $field.ShortString }}
 {{- end -}}
 
 {{- define "embeddedField" -}}
-	{{- $pos := .Pos -}}
-	{{- $field := .Field -}}
-	// {{ $pos }} EmbeddedField: {{ $field.ShortString }}
+    {{- $pos := .Pos -}}
+    {{- $field := .Field -}}
+    // {{ $pos }} EmbeddedField: {{ $field.ShortString }}
 {{- end -}}
 
 {{- define "normalField" -}}
-	{{- $pos := .Pos -}}
-	{{- $field := .Field -}}
-	{{- $fieldName := Tosnake_case .Field.FieldName -}}
-	// {{ $pos }} NormalField: {{ $field.ShortString }}
-	{{ if $field.FieldType.GetTypeID.IsArray }}
-		{{- $arrayType := $field.FieldType.ElementType -}}
-		{{- $tyStr := generateType $arrayType -}}
-		{{- $length := $field.FieldType.Length -}}
-		{{ $tyStr }} {{ $fieldName }}[{{ $length }}];
-	{{- else }}
-		{{- $tyStr := generateType $field.FieldType -}}
-		{{ $tyStr }} {{ $fieldName }};
-	{{- end -}}
+    {{- $pos := .Pos -}}
+    {{- $field := .Field -}}
+    {{- $fieldName := Tosnake_case .Field.FieldName -}}
+    // {{ $pos }} NormalField: {{ $field.ShortString }}
+    {{ if $field.FieldType.GetTypeID.IsArray }}
+        {{- $arrayType := $field.FieldType.ElementType -}}
+        {{- $tyStr := generateType $arrayType -}}
+        {{- $length := $field.FieldType.Length -}}
+        {{ $tyStr }} {{ $fieldName }}[{{ $length }}];
+    {{- else }}
+        {{- $tyStr := generateType $field.FieldType -}}
+        {{ $tyStr }} {{ $fieldName }};
+    {{- end -}}
 {{- end -}}
 
 {{- define "field" -}}
-	{{- if eq .Field.GetFieldKind .FieldKindID_Constant }}
-		{{- template "constantField" . }}
-	{{- else if eq .Field.GetFieldKind .FieldKindID_Void }}
-		{{- template "voidField" . }}
-	{{- else if eq .Field.GetFieldKind .FieldKindID_Embedded }}
-		{{- template "embeddedField" . }}
-	{{- else if eq .Field.GetFieldKind .FieldKindID_Normal }}
-		{{- template "normalField" . }}
-	{{- else }}
-		{{- panic "unreachable" }}
-	{{- end -}}
+    {{- if eq .Field.GetFieldKind .FieldKindID_Constant }}
+        {{- template "constantField" . }}
+    {{- else if eq .Field.GetFieldKind .FieldKindID_Void }}
+        {{- template "voidField" . }}
+    {{- else if eq .Field.GetFieldKind .FieldKindID_Embedded }}
+        {{- template "embeddedField" . }}
+    {{- else if eq .Field.GetFieldKind .FieldKindID_Normal }}
+        {{- template "normalField" . }}
+    {{- else }}
+        {{- panic "unreachable" }}
+    {{- end -}}
 {{- end -}}
 
 {{- define "structConst" -}}
@@ -203,7 +203,7 @@ static const uint64_t {{ .StructName }}_Size = {{ .StructSize }};
 // Struct: {{ $structDef.ShortString }}
 struct {{ $structDef.StructName }} {
 {{- range $fieldStr := $fieldStrs }}
-	{{ $fieldStr }}
+    {{ $fieldStr }}
 {{- end }}
 }
 {{- end -}}
@@ -272,7 +272,7 @@ var methodsTemplate = `
 {{- $expr := generateExpr .Expr $valueReplacement -}}
 // DefaultGetter: {{ .StructName }}_get_{{ $fieldName }}
 static {{ $returnType }} {{ .StructName }}_get_{{ $fieldName }}(struct {{ .StructName }}* structPtr) {
-	return {{ $expr }};
+    return {{ $expr }};
 }
 
 {{ end -}}
@@ -283,7 +283,7 @@ static {{ $returnType }} {{ .StructName }}_get_{{ $fieldName }}(struct {{ .Struc
 {{- $expr := generateExpr .Expr "value" -}}
 // DefaultSetter: {{ .StructName }}_set_{{ $fieldName }}
 static void {{ .StructName }}_set_{{ $fieldName }}(struct {{ .StructName }}* structPtr, {{ $paramType }} value) {
-	structPtr->{{ $fieldName }} = {{ $expr }};
+    structPtr->{{ $fieldName }} = {{ $expr }};
 }
 
 {{ end -}}
@@ -296,7 +296,7 @@ static void {{ .StructName }}_set_{{ $fieldName }}(struct {{ .StructName }}* str
 {{- $expr := generateExpr .Expr $valueReplacement -}}
 // CustomGetter: {{ .StructName }}_get_{{ $fieldName }}_{{ $methodName }}
 static {{ $returnType }} {{ .StructName }}_get_{{ $fieldName }}_{{ $methodName }}(struct {{ .StructName }}* structPtr) {
-	return {{ $expr }};
+    return {{ $expr }};
 }
 
 {{ end -}}
@@ -308,7 +308,7 @@ static {{ $returnType }} {{ .StructName }}_get_{{ $fieldName }}_{{ $methodName }
 {{- $expr := generateExpr .Expr "value" -}}
 // CustomSetter: {{ .StructName }}_set_{{ $fieldName }}_{{ $methodName }}
 static void {{ .StructName }}_set_{{ $fieldName }}_{{ $methodName }}(struct {{ .StructName }}* structPtr, {{ $paramType }} value) {
-	structPtr->{{ $fieldName }} = {{ $expr }};
+    structPtr->{{ $fieldName }} = {{ $expr }};
 }
 
 {{ end -}}
@@ -318,7 +318,7 @@ static void {{ .StructName }}_set_{{ $fieldName }}_{{ $methodName }}(struct {{ .
 {{- $fieldName := Tosnake_case .FieldDef.FieldName -}}
 // RawGetter: {{ .StructName }}_get_{{ $fieldName }}
 static {{ $returnType }} {{ .StructName }}_getraw_{{ $fieldName }}(struct {{ .StructName }}* structPtr) {
-	return structPtr->{{ $fieldName }};
+    return structPtr->{{ $fieldName }};
 }
 
 {{ end -}}
@@ -328,7 +328,7 @@ static {{ $returnType }} {{ .StructName }}_getraw_{{ $fieldName }}(struct {{ .St
 {{- $fieldName := Tosnake_case .FieldDef.FieldName -}}
 // RawSetter: {{ .StructName }}_set_{{ $fieldName }}
 static void {{ .StructName }}_setraw_{{ $fieldName }}(struct {{ .StructName }}* structPtr, {{ $paramType }} value) {
-	structPtr->{{ $fieldName }} = value;
+    structPtr->{{ $fieldName }} = value;
 }
 
 {{ end -}}
@@ -339,17 +339,17 @@ static void {{ .StructName }}_setraw_{{ $fieldName }}(struct {{ .StructName }}* 
 {{- $fieldName := Tosnake_case .FieldDef.FieldName -}}
 // RawGetterArray: {{ .StructName }}_get_{{ $fieldName }}
 static {{ $elemType }}* {{ .StructName }}_getraw_{{ $fieldName }}(struct {{ .StructName }}* structPtr) {
-	return structPtr->{{ $fieldName }};
+    return structPtr->{{ $fieldName }};
 }
 
 // RawGetterArrayItem: {{ .StructName }}_getraw_{{ $fieldName }}_item
 static {{ $elemType }} {{ .StructName }}_getraw_{{ $fieldName }}_item(struct {{ .StructName }}* structPtr, int index) {
-	return structPtr->{{ $fieldName }}[index];
+    return structPtr->{{ $fieldName }}[index];
 }
 
 // RawGetterArrayLength: {{ .StructName }}_getraw_{{ $fieldName }}_length
 static uint64_t {{ .StructName }}_getraw_{{ $fieldName }}_length(struct {{ .StructName }}* structPtr) {
-	return {{ $length }};
+    return {{ $length }};
 }
 
 {{ end -}}
@@ -361,13 +361,13 @@ static uint64_t {{ .StructName }}_getraw_{{ $fieldName }}_length(struct {{ .Stru
 // RawSetterArray: {{ .StructName }}_set_{{ $fieldName }}
 static void {{ .StructName }}_setraw_{{ $fieldName }}(struct {{ .StructName }}* structPtr, {{ $elemType }}* value) {
 {{- range $i := iterate 0 $length }}
-	structPtr->{{ $fieldName }}[{{ $i }}] = value[{{ $i }}];
+    structPtr->{{ $fieldName }}[{{ $i }}] = value[{{ $i }}];
 {{- end }}
 }
 
 // RawSetterArrayItem: {{ .StructName }}_setraw_{{ $fieldName }}_item
 static void {{ .StructName }}_setraw_{{ $fieldName }}_item(struct {{ .StructName }}* structPtr, int index, {{ $elemType }} value) {
-	structPtr->{{ $fieldName }}[index] = value;
+    structPtr->{{ $fieldName }}[index] = value;
 }
 
 {{ end -}}
@@ -379,32 +379,32 @@ static void {{ .StructName }}_setraw_{{ $fieldName }}_item(struct {{ .StructName
 {{- $methodKindID_Set := .MethodKindID_Set -}}
 // FieldMethods: {{ .StructName }}.{{ Tosnake_case .FieldDef.FieldName }}
 {{ if $fieldDef.FieldType.GetTypeID.IsArray }}
-	{{- template "rawGetterArray" (dict "StructName" $structName "FieldDef" $fieldDef) }}
-	{{- template "rawSetterArray" (dict "StructName" $structName "FieldDef" $fieldDef) }}
+    {{- template "rawGetterArray" (dict "StructName" $structName "FieldDef" $fieldDef) }}
+    {{- template "rawSetterArray" (dict "StructName" $structName "FieldDef" $fieldDef) }}
 {{- else -}}
-	{{- template "rawGetter" (dict "StructName" $structName "FieldDef" $fieldDef) }}
-	{{- template "rawSetter" (dict "StructName" $structName "FieldDef" $fieldDef) }}
+    {{- template "rawGetter" (dict "StructName" $structName "FieldDef" $fieldDef) }}
+    {{- template "rawSetter" (dict "StructName" $structName "FieldDef" $fieldDef) }}
 {{- end -}}
 {{ range $method := .FieldDef.FieldMethods }}
-	{{- if eq $method.MethodKind $methodKindID_Get }}
-		{{- if $method.MethodName }}
-			{{- $getterData := dict "StructName" $structName "FieldDef" $fieldDef "ReturnType" $method.MethodParamType "Expr" $method.MethodExpr "Name" $method.MethodName }}
-			{{- template "customGetter" $getterData }}
-		{{- else }}
-			{{- $getterData := dict "StructName" $structName "FieldDef" $fieldDef "ReturnType" $method.MethodParamType "Expr" $method.MethodExpr }}
-			{{- template "defaultGetter" $getterData }}
-		{{- end }}
-	{{- else if eq $method.MethodKind $methodKindID_Set }}
-		{{- if $method.MethodName }}
-			{{- $setterData := dict "StructName" $structName "FieldDef" $fieldDef "ParamType" $method.MethodParamType "Expr" $method.MethodExpr "Name" $method.MethodName }}
-			{{- template "customSetter" $setterData }}
-		{{- else }}
-			{{- $setterData := dict "StructName" $structName "FieldDef" $fieldDef "ParamType" $method.MethodParamType "Expr" $method.MethodExpr }}
-			{{- template "defaultSetter" $setterData }}
-		{{- end }}
-	{{- else }}
-		{{- panic "unreachable" }}
-	{{- end -}}
+    {{- if eq $method.MethodKind $methodKindID_Get }}
+        {{- if $method.MethodName }}
+            {{- $getterData := dict "StructName" $structName "FieldDef" $fieldDef "ReturnType" $method.MethodParamType "Expr" $method.MethodExpr "Name" $method.MethodName }}
+            {{- template "customGetter" $getterData }}
+        {{- else }}
+            {{- $getterData := dict "StructName" $structName "FieldDef" $fieldDef "ReturnType" $method.MethodParamType "Expr" $method.MethodExpr }}
+            {{- template "defaultGetter" $getterData }}
+        {{- end }}
+    {{- else if eq $method.MethodKind $methodKindID_Set }}
+        {{- if $method.MethodName }}
+            {{- $setterData := dict "StructName" $structName "FieldDef" $fieldDef "ParamType" $method.MethodParamType "Expr" $method.MethodExpr "Name" $method.MethodName }}
+            {{- template "customSetter" $setterData }}
+        {{- else }}
+            {{- $setterData := dict "StructName" $structName "FieldDef" $fieldDef "ParamType" $method.MethodParamType "Expr" $method.MethodExpr }}
+            {{- template "defaultSetter" $setterData }}
+        {{- end }}
+    {{- else }}
+        {{- panic "unreachable" }}
+    {{- end -}}
 {{- end -}}
 {{- end -}}
 
@@ -417,9 +417,9 @@ static void {{ .StructName }}_setraw_{{ $fieldName }}_item(struct {{ .StructName
 {{- $methodKindID_Get := .MethodKindID_Get -}}
 {{- $methodKindID_Set := .MethodKindID_Set -}}
 {{- range $field := .StructDef.StructFields }}
-	{{- if eq $field.GetFieldKind $fieldKindID_Normal }}
-		{{- template "fieldMethods" dict "StructName" $structName "FieldDef" $field "MethodKindID_Get" $methodKindID_Get "MethodKindID_Set" $methodKindID_Set }}
-	{{- end -}}
+    {{- if eq $field.GetFieldKind $fieldKindID_Normal }}
+        {{- template "fieldMethods" dict "StructName" $structName "FieldDef" $field "MethodKindID_Get" $methodKindID_Get "MethodKindID_Set" $methodKindID_Set }}
+    {{- end -}}
 {{- end -}}
 {{- end -}}
 `
@@ -929,9 +929,9 @@ func (g *CGenerator) generateDecoder(structDef *definition.Struct) string {
 
 				// TODO: sign extend of enum. DO THIS AFTER SUPPORTING NEGATIVE ENUM VALUES
 				// if basicTy, ok := ty.(*definition.BasicType); ok {
-				// 	if basicTy.TypeTypeID.IsInt() && basicTy.TypeBitSize > val.FieldBitSize {
-				// 		decodeStr += fmt.Sprintf("%s = %s;\n", name, signExtend(val.FieldBitSize, basicTy.TypeBitSize, name))
-				// 	}
+				//     if basicTy.TypeTypeID.IsInt() && basicTy.TypeBitSize > val.FieldBitSize {
+				//         decodeStr += fmt.Sprintf("%s = %s;\n", name, signExtend(val.FieldBitSize, basicTy.TypeBitSize, name))
+				//     }
 				// }
 
 			case *definition.BasicType:

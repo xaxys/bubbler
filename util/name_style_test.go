@@ -241,10 +241,10 @@ func TestMuxNameStyle(t *testing.T) {
 		for baseName, baseFunc := range funcList {
 			baseStr := baseFunc(baseFunc(caseStr))
 			// for otherName, otherFunc := range funcList {
-			// 	result := baseFunc(otherFunc(caseStr))
-			// 	if result != baseStr {
-			// 		t.Errorf("MuxNameStyle(%s, %s, %s) = %s, expected %s", baseName, otherName, caseStr, result, baseStr)
-			// 	}
+			//     result := baseFunc(otherFunc(caseStr))
+			//     if result != baseStr {
+			//         t.Errorf("MuxNameStyle(%s, %s, %s) = %s, expected %s", baseName, otherName, caseStr, result, baseStr)
+			//     }
 			// }
 			result := baseFunc(baseStr)
 			if result != baseStr {

@@ -2,17 +2,18 @@ package definition
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/xaxys/bubbler/util"
 )
 
 type Package struct {
 	BasePosition
-	PackageName string
+	PackagePaths []string
 }
 
 func (p Package) String() string {
-	return fmt.Sprintf("Package {\n    PackageName: %s\n}", p.PackageName)
+	return strings.Join(p.PackagePaths, ".")
 }
 
 type CompilationUnit struct {
