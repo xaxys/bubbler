@@ -351,6 +351,42 @@ func (e EmbeddedFieldError) Error() string {
 
 // --------------------
 
+type PackageDuplicateError struct {
+	PrevDef     Position
+	PackageName string
+}
+
+func (e PackageDuplicateError) String() string {
+	return fmt.Sprintf("package name has already been set to '%s' at %s",
+		color.FgLightWhite.Render(e.PackageName),
+		color.FgLightWhite.Render(e.PrevDef.GetPositionString()),
+	)
+}
+
+func (e PackageDuplicateError) Error() string {
+	return e.String()
+}
+
+// --------------------
+
+type OptionDuplicateError struct {
+	PrevDef    Position
+	OptionName string
+}
+
+func (e OptionDuplicateError) String() string {
+	return fmt.Sprintf("option '%s' has already been set at %s",
+		color.FgLightWhite.Render(e.OptionName),
+		color.FgLightWhite.Render(e.PrevDef.GetPositionString()),
+	)
+}
+
+func (e OptionDuplicateError) Error() string {
+	return e.String()
+}
+
+// --------------------
+
 type OptionTypeError struct {
 	OptionName string
 	Expect     string
@@ -392,6 +428,44 @@ func (e OptionValueError) String() string {
 }
 
 func (e OptionValueError) Error() string {
+	return e.String()
+}
+
+// --------------------
+
+type FieldConstValueTypeError struct {
+	Constant string
+	Expect   string
+	Got      string
+}
+
+func (e FieldConstValueTypeError) String() string {
+	return fmt.Sprintf("constant value '%s' of type '%s' does not match field type '%s'",
+		color.FgLightWhite.Render(e.Constant),
+		color.FgLightWhite.Render(e.Got),
+		color.FgLightWhite.Render(e.Expect),
+	)
+}
+
+func (e FieldConstValueTypeError) Error() string {
+	return e.String()
+}
+
+// --------------------
+
+type EnumConstValueTypeError struct {
+	Constant string
+	Got      string
+}
+
+func (e EnumConstValueTypeError) String() string {
+	return fmt.Sprintf("invalid constant value '%s' of type '%s', enum value must be an integer",
+		color.FgLightWhite.Render(e.Constant),
+		color.FgLightWhite.Render(e.Got),
+	)
+}
+
+func (e EnumConstValueTypeError) Error() string {
 	return e.String()
 }
 
@@ -470,13 +544,13 @@ func (e InvalidStructDefError) Error() string {
 
 // --------------------
 
-type InvalidEmbeddedError struct{}
+type InvalidEmbeddedFieldError struct{}
 
-func (e InvalidEmbeddedError) String() string {
+func (e InvalidEmbeddedFieldError) String() string {
 	return "invalid embedded field, type must be a struct"
 }
 
-func (e InvalidEmbeddedError) Error() string {
+func (e InvalidEmbeddedFieldError) Error() string {
 	return e.String()
 }
 

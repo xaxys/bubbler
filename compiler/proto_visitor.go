@@ -2,7 +2,6 @@ package compiler
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/xaxys/bubbler/definition"
 	"github.com/xaxys/bubbler/parser"
@@ -23,6 +22,20 @@ func NewParseVisitor(unit *definition.CompilationUnit) *ProtoVisitor {
 	return &ProtoVisitor{
 		Unit: unit,
 	}
+}
+
+// ==================== Unused ====================
+
+func (ProtoVisitor) VisitFullIdent(ctx *parser.FullIdentContext) any {
+	panic("unreachable")
+}
+
+func (ProtoVisitor) VisitPackageStatement(ctx *parser.PackageStatementContext) any {
+	panic("unreachable")
+}
+
+func (ProtoVisitor) VisitOptionStatement(ctx *parser.OptionStatementContext) any {
+	panic("unreachable")
 }
 
 // ==================== Top Level ====================
@@ -554,7 +567,7 @@ func (v *ProtoVisitor) VisitFieldEmbedded(ctx *parser.FieldEmbeddedContext) any 
 				Line:   ctx.Type_().GetStart().GetLine(),
 				Column: ctx.Type_().GetStart().GetColumn(),
 			},
-			Err: &definition.InvalidEmbeddedError{},
+			Err: &definition.InvalidEmbeddedFieldError{},
 		}
 	}
 
@@ -884,9 +897,9 @@ func (v *ProtoVisitor) VisitFieldOptions(ctx *parser.FieldOptionsContext) any {
 		if ok {
 			return &definition.CompileError{
 				Position: o,
-				Err: &definition.DefinitionDuplicateError{
-					PrevDef: prev,
-					DefName: o.OptionName,
+				Err: &definition.OptionDuplicateError{
+					PrevDef:    prev,
+					OptionName: o.OptionName,
 				},
 			}
 		}
@@ -901,7 +914,7 @@ func (v *ProtoVisitor) VisitFieldOptions(ctx *parser.FieldOptionsContext) any {
 		case error:
 			return val
 		case *definition.Option:
-			err := ValidateOption(val)
+			err := FieldOptionValidator.ValidateOption(val)
 			if err != nil {
 				if warn, ok := err.(definition.TopLevelWarning); ok {
 					v.Warning = definition.TopLevelWarningsJoin(v.Warning, warn)
@@ -1822,10 +1835,28 @@ func (v *ProtoVisitor) VisitType_(ctx *parser.Type_Context) any {
 		return ctx.BasicType().Accept(v)
 	}
 	if ctx.STRING() != nil {
-		return &definition.String{}
+		// TODO: return &definition.String{}
+		// return &definition.String{}
+		return &definition.GeneralError{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.STRING().GetSymbol().GetLine(),
+				Column: ctx.STRING().GetSymbol().GetColumn(),
+			},
+			Err: fmt.Errorf("string type is not supported yet"),
+		}
 	}
 	if ctx.BYTES() != nil {
-		return &definition.Bytes{}
+		// TODO: return &definition.Bytes{}
+		// return &definition.Bytes{}
+		return &definition.GeneralError{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.BYTES().GetSymbol().GetLine(),
+				Column: ctx.BYTES().GetSymbol().GetColumn(),
+			},
+			Err: fmt.Errorf("bytes type is not supported yet"),
+		}
 	}
 	if ctx.ArrayType() != nil {
 		return ctx.ArrayType().Accept(v)
@@ -1896,11 +1927,11 @@ func (v *ProtoVisitor) VisitBasicType(ctx *parser.BasicTypeContext) any {
 
 func (v *ProtoVisitor) VisitArrayType(ctx *parser.ArrayTypeContext) any {
 	var base definition.Type
-	baseRet := ctx.BasicType().Accept(v)
+	baseRet := ctx.ArrayElementType().Accept(v)
 	switch val := baseRet.(type) {
 	case error:
 		return val
-	case *definition.BasicType:
+	case definition.Type:
 		base = val
 	default:
 		panic("unreachable")
@@ -1937,6 +1968,85 @@ func (v *ProtoVisitor) VisitArrayType(ctx *parser.ArrayTypeContext) any {
 	}
 
 	return arrayDef
+}
+
+func (v *ProtoVisitor) VisitArrayElementType(ctx *parser.ArrayElementTypeContext) any {
+	if ctx.BasicType() != nil {
+		return ctx.BasicType().Accept(v)
+	}
+	if ctx.STRING() != nil {
+		// TODO: return &definition.String{}
+		return &definition.GeneralError{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.STRING().GetSymbol().GetLine(),
+				Column: ctx.STRING().GetSymbol().GetColumn(),
+			},
+			Err: fmt.Errorf("string type is not supported yet"),
+		}
+	}
+	if ctx.BYTES() != nil {
+		// TODO: return &definition.Bytes{}
+		return &definition.GeneralError{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.BYTES().GetSymbol().GetLine(),
+				Column: ctx.BYTES().GetSymbol().GetColumn(),
+			},
+			Err: fmt.Errorf("bytes type is not supported yet"),
+		}
+	}
+	if ctx.StructType() != nil {
+		// TODO: return ctx.StructType().Accept(v)
+		return &definition.GeneralError{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.StructType().GetStart().GetLine(),
+				Column: ctx.StructType().GetStart().GetColumn(),
+			},
+			Err: fmt.Errorf("struct type as array element is not supported yet"),
+		}
+	}
+	if ctx.EnumType() != nil {
+		return ctx.EnumType().Accept(v)
+	}
+	if ctx.Ident() != nil {
+		name := ctx.Ident().Accept(v).(string)
+		if !v.Unit.Types.Has(name) {
+			pos := definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.Ident().GetStart().GetLine(),
+				Column: ctx.Ident().GetStart().GetColumn(),
+			}
+			return &definition.CompileError{
+				Position: pos,
+				Err: &definition.DefinitionNotFoundError{
+					DefName: name,
+				},
+			}
+		}
+
+		ty := v.Unit.Types.MustGet(name)
+		switch val := ty.(type) {
+		case *definition.Struct:
+			// TODO: support struct as array element
+			return &definition.GeneralError{
+				Position: definition.BasePosition{
+					File:   v.Unit.UnitName.Path,
+					Line:   ctx.Ident().GetStart().GetLine(),
+					Column: ctx.Ident().GetStart().GetColumn(),
+				},
+				Err: fmt.Errorf("struct type as array element is not supported yet"),
+			}
+
+		case *definition.Enum:
+			return val
+
+		default:
+			panic("unreachable")
+		}
+	}
+	panic("unreachable")
 }
 
 func (v *ProtoVisitor) VisitStructType(ctx *parser.StructTypeContext) any {
@@ -2066,12 +2176,12 @@ func (v *ProtoVisitor) VisitEnumDef(ctx *parser.EnumDefContext) any {
 	}
 
 	body := ctx.EnumBody().Accept(v)
-	values := make([]*definition.EnumValue, 0)
+	var values *util.OrderedMap[string, *definition.EnumValue]
 	switch val := body.(type) {
 	case error:
 		return val
-	case []*definition.EnumValue:
-		if len(val) == 0 {
+	case *util.OrderedMap[string, *definition.EnumValue]:
+		if val.Len() == 0 {
 			return &definition.CompileError{
 				Position: definition.BasePosition{
 					File:   v.Unit.UnitName.Path,
@@ -2100,7 +2210,7 @@ func (v *ProtoVisitor) VisitEnumDef(ctx *parser.EnumDefContext) any {
 		EnumValues:  values,
 	}
 
-	for _, val := range values {
+	for _, val := range values.Values() {
 		val.EnumBelongs = enumDef
 	}
 
@@ -2109,6 +2219,7 @@ func (v *ProtoVisitor) VisitEnumDef(ctx *parser.EnumDefContext) any {
 
 func (v *ProtoVisitor) VisitEnumBody(ctx *parser.EnumBodyContext) any {
 	values := util.NewOrderedMap[string, *definition.EnumValue]()
+
 	var addValue func(val *definition.EnumValue) error
 	addValue = func(val *definition.EnumValue) error {
 		prev, ok := values.Get(val.EnumValueName)
@@ -2162,58 +2273,55 @@ func (v *ProtoVisitor) VisitEnumBody(ctx *parser.EnumBodyContext) any {
 		return errs
 	}
 
-	return values.Values()
+	return values
 }
 
 func (v *ProtoVisitor) VisitEnumElement(ctx *parser.EnumElementContext) any {
 	if ctx.EmptyStatement_() != nil {
 		return nil
 	}
-	if ctx.EnumField() != nil {
-		return ctx.EnumField().Accept(v)
+	if ctx.EnumValue() != nil {
+		return ctx.EnumValue().Accept(v)
 	}
 	panic("unreachable")
 }
 
-func (v *ProtoVisitor) VisitEnumField(ctx *parser.EnumFieldContext) any {
-	name := ctx.Ident().Accept(v).(string)
-	if !util.IsCapitalized(name) {
-		return &definition.CompileError{
-			Position: definition.BasePosition{
-				File:   v.Unit.UnitName.Path,
-				Line:   ctx.Ident().GetStart().GetLine(),
-				Column: ctx.Ident().GetStart().GetColumn(),
-			},
-			Err: &definition.NameStyleError{
-				Name: name,
-				Msg:  "enum value name must be Capitalized, recommended to use ALLCAP_CASE",
-			},
-		}
-	}
-	standard := util.ToALLCAP_CASE(util.ToALLCAP_CASE(name))
-	if name != standard {
-		warn := &definition.CompileWarning{
-			Position: definition.BasePosition{
-				File:   v.Unit.UnitName.Path,
-				Line:   ctx.Ident().GetStart().GetLine(),
-				Column: ctx.Ident().GetStart().GetColumn(),
-			},
-			Warning: &definition.NameStyleWarning{
-				Name: name,
-				Msg:  fmt.Sprintf("non-standard ALLCAP_CASE detected. use '%s' instead.", standard),
-			},
-		}
-		v.Warning = definition.TopLevelWarningsJoin(v.Warning, warn)
+func (v *ProtoVisitor) VisitEnumValue(ctx *parser.EnumValueContext) any {
+	var name string
+	nameRet := ctx.EnumValueName().Accept(v)
+	switch val := nameRet.(type) {
+	case error:
+		return val
+	case string:
+		name = val
+	default:
+		panic("unreachable")
 	}
 
 	value := int64(-1)
-	if ctx.IntLit() != nil {
-		ret := ctx.IntLit().Accept(v)
+	if ctx.Constant() != nil {
+		ret := ctx.Constant().Accept(v)
 		switch val := ret.(type) {
 		case error:
 			return val
-		case int64:
-			value = val
+		case definition.Literal:
+			switch val := val.(type) {
+			case *definition.IntLiteral:
+				value = val.IntValue
+			default:
+				return &definition.CompileError{
+					Position: definition.BasePosition{
+						File:   v.Unit.UnitName.Path,
+						Line:   ctx.Constant().GetStart().GetLine(),
+						Column: ctx.Constant().GetStart().GetColumn(),
+					},
+					Err: &definition.EnumConstValueTypeError{
+						Constant: fmt.Sprint(val),
+						Got:      val.GetLiteralKind().String(),
+					},
+				}
+			}
+
 		default:
 			panic("unreachable")
 		}
@@ -2269,6 +2377,39 @@ func (v *ProtoVisitor) VisitEnumName(ctx *parser.EnumNameContext) any {
 	return name
 }
 
+func (v *ProtoVisitor) VisitEnumValueName(ctx *parser.EnumValueNameContext) any {
+	name := ctx.Ident().Accept(v).(string)
+	if !util.IsCapitalized(name) {
+		return &definition.CompileError{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.Ident().GetStart().GetLine(),
+				Column: ctx.Ident().GetStart().GetColumn(),
+			},
+			Err: &definition.NameStyleError{
+				Name: name,
+				Msg:  "enum value name must be Capitalized, recommended to use ALLCAP_CASE",
+			},
+		}
+	}
+	standard := util.ToALLCAP_CASE(util.ToALLCAP_CASE(name))
+	if name != standard {
+		warn := &definition.CompileWarning{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.Ident().GetStart().GetLine(),
+				Column: ctx.Ident().GetStart().GetColumn(),
+			},
+			Warning: &definition.NameStyleWarning{
+				Name: name,
+				Msg:  fmt.Sprintf("non-standard ALLCAP_CASE detected. use '%s' instead.", standard),
+			},
+		}
+		v.Warning = definition.TopLevelWarningsJoin(v.Warning, warn)
+	}
+	return name
+}
+
 // TODO: parse enum options
 func (v *ProtoVisitor) VisitEnumValueOption(ctx *parser.EnumValueOptionContext) any {
 	return nil
@@ -2281,173 +2422,46 @@ func (v *ProtoVisitor) VisitEnumValueOptions(ctx *parser.EnumValueOptionsContext
 
 // ==================== Literal ====================
 
+// VisitConstant returns Literal or error
 func (v *ProtoVisitor) VisitConstant(ctx *parser.ConstantContext) any {
-	if ctx.IntLit() != nil {
-		constant := int64(0)
-		ret := ctx.IntLit().Accept(v)
-		switch val := ret.(type) {
-		case error:
-			return val
-		case int64:
-			constant = val
-		default:
-			panic("unreachable")
-		}
-
-		if ctx.SUB() != nil {
-			constant = -constant
-		}
-		return &definition.IntLiteral{
-			BasePosition: definition.BasePosition{
-				File:   v.Unit.UnitName.Path,
-				Line:   ctx.IntLit().GetStart().GetLine(),
-				Column: ctx.IntLit().GetStart().GetColumn(),
-			},
-			IntValue: constant,
-		}
-	}
-	if ctx.FloatLit() != nil {
-		constant := float64(0)
-		ret := ctx.FloatLit().Accept(v)
-		switch val := ret.(type) {
-		case error:
-			return val
-		case float64:
-			constant = val
-		default:
-			panic("unreachable")
-		}
-
-		if ctx.SUB() != nil {
-			constant = -constant
-		}
-		return &definition.FloatLiteral{
-			BasePosition: definition.BasePosition{
-				File:   v.Unit.UnitName.Path,
-				Line:   ctx.FloatLit().GetStart().GetLine(),
-				Column: ctx.FloatLit().GetStart().GetColumn(),
-			},
-			FloatValue: constant,
-		}
-	}
-	if ctx.BoolLit() != nil {
-		constant := ctx.BoolLit().Accept(v).(bool)
-		return &definition.BoolLiteral{
-			BasePosition: definition.BasePosition{
-				File:   v.Unit.UnitName.Path,
-				Line:   ctx.BoolLit().GetStart().GetLine(),
-				Column: ctx.BoolLit().GetStart().GetColumn(),
-			},
-			BoolValue: constant,
-		}
-	}
-	if ctx.StrLit() != nil {
-		constant := ""
-		ret := ctx.StrLit().Accept(v)
-		switch val := ret.(type) {
-		case error:
-			return val
-		case string:
-			constant = val
-		default:
-			panic("unreachable")
-		}
-		return &definition.StringLiteral{
-			BasePosition: definition.BasePosition{
-				File:   v.Unit.UnitName.Path,
-				Line:   ctx.StrLit().GetStart().GetLine(),
-				Column: ctx.StrLit().GetStart().GetColumn(),
-			},
-			StringValue: constant,
-		}
-	}
-	panic("unreachable")
+	lv := NewLiteralVisitor(v.Unit)
+	return ctx.Accept(lv)
 }
 
 // VisitIdent noexcept returns string
 func (v *ProtoVisitor) VisitIdent(ctx *parser.IdentContext) any {
-	ident := ctx.IDENTIFIER().GetText()
-	return ident
+	lv := NewLiteralVisitor(v.Unit)
+	return ctx.Accept(lv)
 }
 
 // VisitIntLit returns int64 or error
 func (v *ProtoVisitor) VisitIntLit(ctx *parser.IntLitContext) any {
-	lit := ctx.INT_LIT().GetText()
-	val, err := strconv.ParseInt(lit, 0, 64)
-	if err != nil {
-		return &definition.CompileError{
-			Position: &definition.BasePosition{
-				File:   v.Unit.UnitName.Path,
-				Line:   ctx.INT_LIT().GetSymbol().GetLine(),
-				Column: ctx.INT_LIT().GetSymbol().GetColumn(),
-			},
-			Err: &definition.InvalidLiteralError{
-				Literal: lit,
-				Err:     err,
-			},
-		}
-	}
-	return val
+	lv := NewLiteralVisitor(v.Unit)
+	return ctx.Accept(lv)
 }
 
 // VisitFloatLit returns float64 or error
 func (v *ProtoVisitor) VisitFloatLit(ctx *parser.FloatLitContext) any {
-	lit := ctx.FLOAT_LIT().GetText()
-	val, err := strconv.ParseFloat(lit, 64)
-	if err != nil {
-		return &definition.CompileError{
-			Position: &definition.BasePosition{
-				File:   v.Unit.UnitName.Path,
-				Line:   ctx.FLOAT_LIT().GetSymbol().GetLine(),
-				Column: ctx.FLOAT_LIT().GetSymbol().GetColumn(),
-			},
-			Err: &definition.InvalidLiteralError{
-				Literal: lit,
-				Err:     err,
-			},
-		}
-	}
-	return val
+	lv := NewLiteralVisitor(v.Unit)
+	return ctx.Accept(lv)
 }
 
 // VisitBoolLit noexcept returns bool
 func (v *ProtoVisitor) VisitBoolLit(ctx *parser.BoolLitContext) any {
-	lit := ctx.BOOL_LIT().GetText()
-	val, err := strconv.ParseBool(lit)
-	if err != nil {
-		// according to the grammar, this never returns error
-		panic("unreachable")
-	}
-	return val
+	lv := NewLiteralVisitor(v.Unit)
+	return ctx.Accept(lv)
 }
 
 // VisitStrLit returns string or error
 func (v *ProtoVisitor) VisitStrLit(ctx *parser.StrLitContext) any {
-	lit := ctx.STR_LIT().GetText()
-	// 'abc' -> "abc"
-	if lit[0] == '\'' && lit[len(lit)-1] == '\'' {
-		lit = fmt.Sprintf(`"%s"`, lit[1:len(lit)-1])
-	}
-	lit, err := strconv.Unquote(lit)
-	if err != nil {
-		return &definition.CompileError{
-			Position: &definition.BasePosition{
-				File:   v.Unit.UnitName.Path,
-				Line:   ctx.STR_LIT().GetSymbol().GetLine(),
-				Column: ctx.STR_LIT().GetSymbol().GetColumn(),
-			},
-			Err: &definition.InvalidLiteralError{
-				Literal: lit,
-				Err:     err,
-			},
-		}
-	}
-	return lit
+	lv := NewLiteralVisitor(v.Unit)
+	return ctx.Accept(lv)
 }
 
 // VisitValue noexcept returns *definition.ValueExpr
 func (v *ProtoVisitor) VisitValue(ctx *parser.ValueContext) any {
-	return &definition.ValueExpr{}
+	lv := NewLiteralVisitor(v.Unit)
+	return ctx.Accept(lv)
 }
 
 // ==================== Unimplemented ====================

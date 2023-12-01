@@ -542,7 +542,7 @@ var enumTemplate = `
 {{- define "enumDef" -}}
 // Enum: {{ .ShortString }}
 enum {{ .EnumName }} {
-{{- range .EnumValues }}
+{{- range .EnumValues.Values }}
     {{ .EnumValueName }} = {{ .EnumValue }},
 {{- end }}
 }
@@ -653,6 +653,7 @@ func (g *CGenerator) generateEncoder(structDef *definition.Struct) string {
 				encodeStr += fmt.Sprintf("%s_encode(&(%s), ((uint8_t*)data) + %d);\n", ty.StructName, name, from/8)
 
 			case *definition.Enum:
+				fieldBitSize := val.FieldBitSize
 				fieldSize := (val.FieldBitSize + 7) / 8
 				tySize := util.HighBit(fieldSize)
 				tyUint := typeSizeMapUint[tySize*8]
@@ -665,7 +666,7 @@ func (g *CGenerator) generateEncoder(structDef *definition.Struct) string {
 					if option.OptionValue.GetLiteralValue() == "big" {
 						// 大端序
 						fieldData = func(i int64) string {
-							return fmt.Sprintf("(%s >> %d)", tempName, (fieldSize-i-1)*8)
+							return fmt.Sprintf("(%s >> %d)", tempName, max(fieldBitSize-i*8-8, 0))
 						}
 					}
 				}
@@ -680,14 +681,14 @@ func (g *CGenerator) generateEncoder(structDef *definition.Struct) string {
 			case *definition.BasicType:
 				tySize := (ty.TypeBitSize + 7) / 8
 				tyUint := typeSizeMapUint[tySize*8]
-				fieldSize := (val.FieldBitSize + 7) / 8
+				fieldBitSize := val.FieldBitSize
 				var fieldData func(int64) string
 				// 默认编码为小端序
 				if option, ok := val.FieldOptions.Get("order"); ok {
 					if option.OptionValue.GetLiteralValue() == "big" {
 						// 大端序
 						fieldData = func(i int64) string {
-							return fmt.Sprintf("((*(%s*)(&(%s))) >> %d)", tyUint, name, (fieldSize-i-1)*8)
+							return fmt.Sprintf("((*(%s*)(&(%s))) >> %d)", tyUint, name, max(fieldBitSize-i*8-8, 0))
 						}
 					}
 				}
@@ -702,8 +703,24 @@ func (g *CGenerator) generateEncoder(structDef *definition.Struct) string {
 			case *definition.Array:
 				elemTySize := (ty.ElementType.GetTypeBitSize() + 7) / 8
 				elemBitSize := val.FieldBitSize / ty.Length
-				elemSize := (elemBitSize + 7) / 8
 				tyUint := typeSizeMapUint[elemTySize*8]
+
+				var nameIndex func(int64) string
+				switch ty.ElementType.(type) {
+				case *definition.BasicType:
+					nameIndex = func(index int64) string {
+						return fmt.Sprintf("(*(%s*)(&((%s)[%d])))", tyUint, name, index)
+					}
+				case *definition.Enum:
+					tempName := fmt.Sprintf("temp_field_%d", fieldIndex)
+					encodeStr += fmt.Sprintf("%s %s;\n", tyUint, tempName)
+					nameIndex = func(index int64) string {
+						return tempName
+					}
+				default:
+					panic("unreachable")
+				}
+
 				var fieldDataIndex func(int64) func(int64) string
 				// 默认编码为小端序
 				if option, ok := val.FieldOptions.Get("order"); ok {
@@ -711,7 +728,8 @@ func (g *CGenerator) generateEncoder(structDef *definition.Struct) string {
 						// 大端序
 						fieldDataIndex = func(index int64) func(int64) string {
 							return func(i int64) string {
-								return fmt.Sprintf("((*(%s*)(&((%s)[%d]))) >> %d)", tyUint, name, index, (elemSize-i-1)*8)
+								name := nameIndex(index)
+								return fmt.Sprintf("(%s >> %d)", name, max(elemBitSize-i*8-8, 0))
 							}
 						}
 					}
@@ -720,7 +738,8 @@ func (g *CGenerator) generateEncoder(structDef *definition.Struct) string {
 					// 小端序
 					fieldDataIndex = func(index int64) func(int64) string {
 						return func(i int64) string {
-							return fmt.Sprintf("((*(%s*)(&((%s)[%d]))) >> %d)", tyUint, name, index, i*8)
+							name := nameIndex(index)
+							return fmt.Sprintf("(%s >> %d)", name, i*8)
 						}
 					}
 				}
@@ -728,6 +747,9 @@ func (g *CGenerator) generateEncoder(structDef *definition.Struct) string {
 					subFrom := from + i*elemBitSize
 					subTo := from + (i+1)*elemBitSize
 					fieldData := fieldDataIndex(i)
+					if _, ok := ty.ElementType.(*definition.Enum); ok {
+						encodeStr += fmt.Sprintf("%s = (%s)((%s)[%d]);\n", nameIndex(i), tyUint, name, i)
+					}
 					encodeStr += genEncode(subFrom, subTo, fieldData)
 				}
 
@@ -819,7 +841,7 @@ func (g *CGenerator) generateDecoder(structDef *definition.Struct) string {
 
 			tySize := (val.FieldType.GetTypeBitSize() + 7) / 8
 			tyUint := typeSizeMapUint[tySize*8]
-			fieldSize := (val.FieldBitSize + 7) / 8
+			fieldBitSize := val.FieldBitSize
 			var fieldProcessor func(string, int64) string
 
 			// 默认解码为小端序
@@ -831,7 +853,7 @@ func (g *CGenerator) generateDecoder(structDef *definition.Struct) string {
 						if i != 0 {
 							operator = "|="
 						}
-						return fmt.Sprintf("(*(%s*)(&(%s))) %s ((%s)(%s) << %d)", tyUint, name, operator, tyUint, fieldStr, (fieldSize-i-1)*8)
+						return fmt.Sprintf("(*(%s*)(&(%s))) %s ((%s)(%s) << %d)", tyUint, name, operator, tyUint, fieldStr, max(fieldBitSize-i*8-8, 0))
 					}
 				}
 			}
@@ -871,6 +893,7 @@ func (g *CGenerator) generateDecoder(structDef *definition.Struct) string {
 				decodeStr += fmt.Sprintf("if (!%s_decode((void*)((uint8_t*)data + %d), &(%s))) return false;\n", ty.StructName, from/8, name)
 
 			case *definition.Enum:
+				fieldBitSize := val.FieldBitSize
 				fieldSize := (val.FieldBitSize + 7) / 8
 				tySize := util.HighBit(fieldSize)
 				tyUint := typeSizeMapUint[tySize*8]
@@ -887,7 +910,7 @@ func (g *CGenerator) generateDecoder(structDef *definition.Struct) string {
 							if i != 0 {
 								operator = "|="
 							}
-							return fmt.Sprintf("%s %s ((%s)(%s) << %d)", tempName, operator, tyUint, fieldStr, (fieldSize-i-1)*8)
+							return fmt.Sprintf("%s %s ((%s)(%s) << %d)", tempName, operator, tyUint, fieldStr, max(fieldBitSize-i*8-8, 0))
 						}
 					}
 				}
@@ -914,7 +937,7 @@ func (g *CGenerator) generateDecoder(structDef *definition.Struct) string {
 			case *definition.BasicType:
 				tySize := (ty.TypeBitSize + 7) / 8
 				tyUint := typeSizeMapUint[tySize*8]
-				fieldSize := (val.FieldBitSize + 7) / 8
+				fieldBitSize := val.FieldBitSize
 				var fieldProcessor func(string, int64) string
 				// 默认解码为小端序
 				if option, ok := val.FieldOptions.Get("order"); ok {
@@ -925,7 +948,7 @@ func (g *CGenerator) generateDecoder(structDef *definition.Struct) string {
 							if i != 0 {
 								operator = "|="
 							}
-							return fmt.Sprintf("(*(%s*)(&(%s))) %s ((%s)(%s) << %d)", tyUint, name, operator, tyUint, fieldStr, (fieldSize-i-1)*8)
+							return fmt.Sprintf("(*(%s*)(&(%s))) %s ((%s)(%s) << %d)", tyUint, name, operator, tyUint, fieldStr, max(fieldBitSize-i*8-8, 0))
 						}
 					}
 				}
@@ -948,8 +971,22 @@ func (g *CGenerator) generateDecoder(structDef *definition.Struct) string {
 			case *definition.Array:
 				elemTySize := (ty.ElementType.GetTypeBitSize() + 7) / 8
 				elemBitSize := val.FieldBitSize / ty.Length
-				elemSize := (elemBitSize + 7) / 8
 				tyUint := typeSizeMapUint[elemTySize*8]
+				var nameIndex func(int64) string
+				switch ty.ElementType.(type) {
+				case *definition.BasicType:
+					nameIndex = func(index int64) string {
+						return fmt.Sprintf("(*(%s*)(&((%s)[%d])))", tyUint, name, index)
+					}
+				case *definition.Enum:
+					tempName := fmt.Sprintf("temp_field_%d", fieldIndex)
+					decodeStr += fmt.Sprintf("%s %s;\n", tyUint, tempName)
+					nameIndex = func(index int64) string {
+						return tempName
+					}
+				default:
+					panic("unreachable")
+				}
 				var fieldProcessorIndex func(int64) func(string, int64) string
 				// 默认解码为小端序
 				if option, ok := val.FieldOptions.Get("order"); ok {
@@ -961,7 +998,8 @@ func (g *CGenerator) generateDecoder(structDef *definition.Struct) string {
 								if i != 0 {
 									operator = "|="
 								}
-								return fmt.Sprintf("(*(%s*)(&((%s)[%d]))) %s ((%s)(%s) << %d)", tyUint, name, index, operator, tyUint, fieldStr, (elemSize-i-1)*8)
+								name := nameIndex(index)
+								return fmt.Sprintf("%s %s ((%s)(%s) << %d)", name, operator, tyUint, fieldStr, max(elemBitSize-i*8-8, 0))
 							}
 						}
 					}
@@ -974,7 +1012,8 @@ func (g *CGenerator) generateDecoder(structDef *definition.Struct) string {
 							if i != 0 {
 								operator = "|="
 							}
-							return fmt.Sprintf("(*(%s*)(&((%s)[%d]))) %s ((%s)(%s) << %d)", tyUint, name, index, operator, tyUint, fieldStr, i*8)
+							name := nameIndex(index)
+							return fmt.Sprintf("%s %s ((%s)(%s) << %d)", name, operator, tyUint, fieldStr, i*8)
 						}
 					}
 				}
@@ -983,6 +1022,9 @@ func (g *CGenerator) generateDecoder(structDef *definition.Struct) string {
 					subTo := from + (i+1)*elemBitSize
 					fieldProcessor := fieldProcessorIndex(i)
 					decodeStr += genDecode(subFrom, subTo, fieldProcessor)
+					if enumTy, ok := ty.ElementType.(*definition.Enum); ok {
+						decodeStr += fmt.Sprintf("(%s)[%d] = (enum %s)(%s);\n", name, i, enumTy.EnumName, nameIndex(i))
+					}
 				}
 
 				if basicTy, ok := ty.ElementType.(*definition.BasicType); ok {

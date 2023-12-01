@@ -1,4 +1,4 @@
-// Code generated from D:/GoProject/bubbler/tools/../bubbler.g4 by ANTLR 4.13.1. DO NOT EDIT.
+// Code generated from bubbler.g4 by ANTLR 4.13.1. DO NOT EDIT.
 
 package parser // bubbler
 import "github.com/antlr4-go/antlr/v4"
@@ -24,6 +24,12 @@ type bubblerVisitor interface {
 
 	// Visit a parse tree produced by bubblerParser#bitSize.
 	VisitBitSize(ctx *BitSizeContext) interface{}
+
+	// Visit a parse tree produced by bubblerParser#packageStatement.
+	VisitPackageStatement(ctx *PackageStatementContext) interface{}
+
+	// Visit a parse tree produced by bubblerParser#optionStatement.
+	VisitOptionStatement(ctx *OptionStatementContext) interface{}
 
 	// Visit a parse tree produced by bubblerParser#optionName.
 	VisitOptionName(ctx *OptionNameContext) interface{}
@@ -61,6 +67,12 @@ type bubblerVisitor interface {
 	// Visit a parse tree produced by bubblerParser#basicType.
 	VisitBasicType(ctx *BasicTypeContext) interface{}
 
+	// Visit a parse tree produced by bubblerParser#arrayElementType.
+	VisitArrayElementType(ctx *ArrayElementTypeContext) interface{}
+
+	// Visit a parse tree produced by bubblerParser#arrayType.
+	VisitArrayType(ctx *ArrayTypeContext) interface{}
+
 	// Visit a parse tree produced by bubblerParser#enumDef.
 	VisitEnumDef(ctx *EnumDefContext) interface{}
 
@@ -70,8 +82,8 @@ type bubblerVisitor interface {
 	// Visit a parse tree produced by bubblerParser#enumElement.
 	VisitEnumElement(ctx *EnumElementContext) interface{}
 
-	// Visit a parse tree produced by bubblerParser#enumField.
-	VisitEnumField(ctx *EnumFieldContext) interface{}
+	// Visit a parse tree produced by bubblerParser#enumValue.
+	VisitEnumValue(ctx *EnumValueContext) interface{}
 
 	// Visit a parse tree produced by bubblerParser#enumValueOptions.
 	VisitEnumValueOptions(ctx *EnumValueOptionsContext) interface{}
@@ -151,11 +163,8 @@ type bubblerVisitor interface {
 	// Visit a parse tree produced by bubblerParser#ident.
 	VisitIdent(ctx *IdentContext) interface{}
 
-	// Visit a parse tree produced by bubblerParser#structName.
-	VisitStructName(ctx *StructNameContext) interface{}
-
-	// Visit a parse tree produced by bubblerParser#enumName.
-	VisitEnumName(ctx *EnumNameContext) interface{}
+	// Visit a parse tree produced by bubblerParser#fullIdent.
+	VisitFullIdent(ctx *FullIdentContext) interface{}
 
 	// Visit a parse tree produced by bubblerParser#fieldName.
 	VisitFieldName(ctx *FieldNameContext) interface{}
@@ -163,14 +172,20 @@ type bubblerVisitor interface {
 	// Visit a parse tree produced by bubblerParser#methodName.
 	VisitMethodName(ctx *MethodNameContext) interface{}
 
+	// Visit a parse tree produced by bubblerParser#structName.
+	VisitStructName(ctx *StructNameContext) interface{}
+
+	// Visit a parse tree produced by bubblerParser#enumName.
+	VisitEnumName(ctx *EnumNameContext) interface{}
+
+	// Visit a parse tree produced by bubblerParser#enumValueName.
+	VisitEnumValueName(ctx *EnumValueNameContext) interface{}
+
 	// Visit a parse tree produced by bubblerParser#structType.
 	VisitStructType(ctx *StructTypeContext) interface{}
 
 	// Visit a parse tree produced by bubblerParser#enumType.
 	VisitEnumType(ctx *EnumTypeContext) interface{}
-
-	// Visit a parse tree produced by bubblerParser#arrayType.
-	VisitArrayType(ctx *ArrayTypeContext) interface{}
 
 	// Visit a parse tree produced by bubblerParser#intLit.
 	VisitIntLit(ctx *IntLitContext) interface{}

@@ -149,6 +149,13 @@ func (r *CompilationRuntime) compile(ident *definition.FileIdentifer, content st
 
 	r.ParseStack.Remove(ident.Path)
 
+	infoVisitor := NewInfoVisitor(unit)
+	infoErr := ast.Accept(infoVisitor)
+	warnings = definition.TopLevelWarningsJoin(warnings, infoVisitor.Warning)
+	if err, ok := infoErr.(error); ok {
+		return nil, err, warnings
+	}
+
 	protoVisitor := NewParseVisitor(unit)
 	protoErr := ast.Accept(protoVisitor)
 	warnings = definition.TopLevelWarningsJoin(warnings, protoVisitor.Warning)

@@ -1,4 +1,4 @@
-// Code generated from D:/GoProject/bubbler/tools/../bubbler.g4 by ANTLR 4.13.1. DO NOT EDIT.
+// Code generated from bubbler.g4 by ANTLR 4.13.1. DO NOT EDIT.
 
 package parser // bubbler
 import "github.com/antlr4-go/antlr/v4"
@@ -28,6 +28,14 @@ func (v *BasebubblerVisitor) VisitByteSize(ctx *ByteSizeContext) interface{} {
 }
 
 func (v *BasebubblerVisitor) VisitBitSize(ctx *BitSizeContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BasebubblerVisitor) VisitPackageStatement(ctx *PackageStatementContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BasebubblerVisitor) VisitOptionStatement(ctx *OptionStatementContext) interface{} {
 	return v.VisitChildren(ctx)
 }
 
@@ -79,6 +87,14 @@ func (v *BasebubblerVisitor) VisitBasicType(ctx *BasicTypeContext) interface{} {
 	return v.VisitChildren(ctx)
 }
 
+func (v *BasebubblerVisitor) VisitArrayElementType(ctx *ArrayElementTypeContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BasebubblerVisitor) VisitArrayType(ctx *ArrayTypeContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
 func (v *BasebubblerVisitor) VisitEnumDef(ctx *EnumDefContext) interface{} {
 	return v.VisitChildren(ctx)
 }
@@ -91,7 +107,7 @@ func (v *BasebubblerVisitor) VisitEnumElement(ctx *EnumElementContext) interface
 	return v.VisitChildren(ctx)
 }
 
-func (v *BasebubblerVisitor) VisitEnumField(ctx *EnumFieldContext) interface{} {
+func (v *BasebubblerVisitor) VisitEnumValue(ctx *EnumValueContext) interface{} {
 	return v.VisitChildren(ctx)
 }
 
@@ -199,11 +215,7 @@ func (v *BasebubblerVisitor) VisitIdent(ctx *IdentContext) interface{} {
 	return v.VisitChildren(ctx)
 }
 
-func (v *BasebubblerVisitor) VisitStructName(ctx *StructNameContext) interface{} {
-	return v.VisitChildren(ctx)
-}
-
-func (v *BasebubblerVisitor) VisitEnumName(ctx *EnumNameContext) interface{} {
+func (v *BasebubblerVisitor) VisitFullIdent(ctx *FullIdentContext) interface{} {
 	return v.VisitChildren(ctx)
 }
 
@@ -215,15 +227,23 @@ func (v *BasebubblerVisitor) VisitMethodName(ctx *MethodNameContext) interface{}
 	return v.VisitChildren(ctx)
 }
 
+func (v *BasebubblerVisitor) VisitStructName(ctx *StructNameContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BasebubblerVisitor) VisitEnumName(ctx *EnumNameContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BasebubblerVisitor) VisitEnumValueName(ctx *EnumValueNameContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
 func (v *BasebubblerVisitor) VisitStructType(ctx *StructTypeContext) interface{} {
 	return v.VisitChildren(ctx)
 }
 
 func (v *BasebubblerVisitor) VisitEnumType(ctx *EnumTypeContext) interface{} {
-	return v.VisitChildren(ctx)
-}
-
-func (v *BasebubblerVisitor) VisitArrayType(ctx *ArrayTypeContext) interface{} {
 	return v.VisitChildren(ctx)
 }
 

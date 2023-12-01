@@ -23,16 +23,16 @@ type Enum struct {
 
 	EnumName    string
 	EnumBitSize int64
-	EnumValues  []*EnumValue
+	EnumValues  *util.OrderedMap[string, *EnumValue]
 }
 
 func (e Enum) ShortString() string {
-	return fmt.Sprintf("%s [%s] {%d values}", e.EnumName, util.ToSizeString(e.EnumBitSize), len(e.EnumValues))
+	return fmt.Sprintf("%s [%s] {%d values}", e.EnumName, util.ToSizeString(e.EnumBitSize), e.EnumValues.Len())
 }
 
 func (e Enum) String() string {
 	values := "[\n"
-	for _, value := range e.EnumValues {
+	for _, value := range e.EnumValues.Values() {
 		values += util.IndentSpace8(value) + "\n"
 	}
 	values += "    ]"
@@ -55,7 +55,7 @@ func (e *Enum) GetTypeBitSize() int64 {
 }
 
 func (e *Enum) GetEnumValueByName(name string) *EnumValue {
-	for _, enumValue := range e.EnumValues {
+	for _, enumValue := range e.EnumValues.Values() {
 		if enumValue.EnumValueName == name {
 			return enumValue
 		}
@@ -64,7 +64,7 @@ func (e *Enum) GetEnumValueByName(name string) *EnumValue {
 }
 
 func (e *Enum) GetEnumValueByValue(value int64) *EnumValue {
-	for _, enumValue := range e.EnumValues {
+	for _, enumValue := range e.EnumValues.Values() {
 		if enumValue.EnumValue == value {
 			return enumValue
 		}

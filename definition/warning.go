@@ -173,6 +173,18 @@ func (w ImportingWarning) Error() string {
 
 // --------------------
 
+type PackageNameNotSetWarning struct{}
+
+func (w PackageNameNotSetWarning) String() string {
+	return fmt.Sprintf("package name not set")
+}
+
+func (w PackageNameNotSetWarning) Error() string {
+	return w.String()
+}
+
+// --------------------
+
 type OptionUnknownWarning struct {
 	OptionName string
 }

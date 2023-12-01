@@ -6,8 +6,19 @@ import (
 	"github.com/xaxys/bubbler/util"
 )
 
+type Package struct {
+	BasePosition
+	PackageName string
+}
+
+func (p Package) String() string {
+	return fmt.Sprintf("Package {\n    PackageName: %s\n}", p.PackageName)
+}
+
 type CompilationUnit struct {
 	UnitName *FileIdentifer
+	Package  *Package
+	Options  *util.OrderedMap[string, *Option]
 	Imports  *util.OrderedMap[string, *CompilationUnit]
 	Types    *util.OrderedMap[string, CustomType] // Types contains all the top-level typedefs (inner typedefs excluded)
 	Names    *util.OrderedMap[string, Position]   // Names contains all the names (inner typedefs' name included)
@@ -74,6 +85,11 @@ func (c *CompilationUnit) AddImport(other *CompilationUnit) error {
 }
 
 func (c CompilationUnit) String() string {
+	options := "[\n"
+	for _, option := range c.Options.Values() {
+		options += util.IndentSpace8(option) + "\n"
+	}
+
 	imports := "[\n"
 	for _, unit := range c.Imports.Values() {
 		imports += util.IndentSpace8(unit.UnitName.Path) + "\n"
@@ -92,5 +108,6 @@ func (c CompilationUnit) String() string {
 	}
 	names += "    ]"
 
-	return fmt.Sprintf("CompilationUnit {\n    UnitName: %s\n    Imports: %s\n    Types: %s\n	Names: %s\n}", c.UnitName, imports, types, names)
+	return fmt.Sprintf("CompilationUnit {\n    UnitName: %s\n    Package: %s\n    Options: %s\n    Imports: %s\n    Types: %s\n    Names: %s\n}",
+		c.UnitName, c.Package, options, imports, types, names)
 }

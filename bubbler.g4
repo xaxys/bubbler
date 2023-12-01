@@ -3,6 +3,8 @@ grammar bubbler;
 proto:
     (
         importStatement
+        | packageStatement
+        | optionStatement
         | topLevelDef
         | emptyStatement_
     )* EOF;
@@ -27,12 +29,19 @@ byteSize: intLit;
 
 bitSize: intLit;
 
+// Package
+
+packageStatement: PACKAGE fullIdent SEMI;
+
 // Option
+
+optionStatement: OPTION optionName ASSIGN constant SEMI;
+
+optionName: ident;
 
 // optionName:
 //     fullIdent
 //     | LP fullIdent RP ( DOT fullIdent )?;
-optionName: ident;
 
 // Field
 
@@ -89,15 +98,21 @@ basicType:
     | FLOAT64
     ;
 
+// array
+
+arrayElementType: basicType | STRING | BYTES | structType | enumType | ident;
+
+arrayType: arrayElementType LT intLit GT;
+
 // enum
 
 enumDef: enumName size_ enumBody;
 
 enumBody: LC enumElement* RC;
 
-enumElement: enumField | emptyStatement_;
+enumElement: enumValue | emptyStatement_;
 
-enumField: ident ( ASSIGN intLit )? enumValueOptions? ( SEMI | COMMA );
+enumValue: enumValueName ( ASSIGN constant )? enumValueOptions? ( SEMI | COMMA );
 
 enumValueOptions:
     LB enumValueOption ( COMMA enumValueOption )* RB;
@@ -155,16 +170,16 @@ emptyStatement_: SEMI;
 // Lexical elements
 
 ident: IDENTIFIER;
-// fullIdent: ident ( DOT ident )*;
-structName: STRUCT ident;
-enumName: ENUM ident;
+fullIdent: ident ( DOT ident )*;
 fieldName: ident;
 methodName: ident;
+structName: STRUCT ident;
+enumName: ENUM ident;
+enumValueName: ident;
 // structType: ( DOT )? ( ident DOT )* structName;
 // enumType: ( DOT )? ( ident DOT )* enumName;
 structType: structName | structDef;
 enumType: enumName;
-arrayType: basicType LT intLit GT;
 
 intLit: INT_LIT;
 strLit: STR_LIT;
@@ -172,15 +187,15 @@ boolLit: BOOL_LIT;
 floatLit: FLOAT_LIT;
 
 // keywords
-// SYNTAX: 'syntax';
+SYNTAX: 'syntax';
 IMPORT: 'import';
 GET: 'get';
 SET: 'set';
 VALUE: 'value';
 // WEAK: 'weak';
 // PUBLIC: 'public';
-// PACKAGE: 'package';
-// OPTION: 'option';
+PACKAGE: 'package';
+OPTION: 'option';
 // OPTIONAL: 'optional';
 // REPEATED: 'repeated';
 // ONEOF: 'oneof';
@@ -296,6 +311,9 @@ COMMENT: '/*' .*? '*/' -> channel(HIDDEN);
 
 KEYWORDS:
     IMPORT
+    | SYNTAX
+    | PACKAGE
+    | OPTION
     | GET
     | SET
     | VALUE
