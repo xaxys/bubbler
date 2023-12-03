@@ -83,7 +83,7 @@ func (w CompileWarning) String() string {
 	return fmt.Sprintf(
 		"%s %s %s",
 		color.FgLightWhite.Sprintf("%s:", w.GetPositionString()),
-		color.FgYellow.Render("compile warning:"),
+		color.FgLightYellow.Render("compile warning:"),
 		w.Warning,
 	)
 }
