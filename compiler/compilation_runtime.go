@@ -9,13 +9,15 @@ import (
 )
 
 type CompilationRuntime struct {
-	Units      *util.OrderedMap[string, *definition.CompilationUnit]
-	ParseStack *util.OrderedMap[string, *definition.CompilationUnit]
+	Units      *util.OrderedMap[string, *definition.CompilationUnit] // Units contains all the units compiled, full path as key
+	Packages   *util.OrderedMap[string, *definition.CompilationUnit] // another view of Units, for faster package lookup, package name as key
+	ParseStack *util.OrderedMap[string, *definition.CompilationUnit] // ParseStack contains all the units being parsed, full path as key
 }
 
 func NewCompilationRuntime() *CompilationRuntime {
 	return &CompilationRuntime{
 		Units:      util.NewOrderedMap[string, *definition.CompilationUnit](),
+		Packages:   util.NewOrderedMap[string, *definition.CompilationUnit](),
 		ParseStack: util.NewOrderedMap[string, *definition.CompilationUnit](),
 	}
 }
@@ -73,12 +75,12 @@ func (r *CompilationRuntime) compile(ident *definition.FileIdentifer, content st
 		return nil, nil, nil
 	}
 
-	skip, err := r.CheckImport(ident)
+	skip, err := r.precheckFilePath(ident)
 	if err != nil {
 		return nil, err, nil
 	}
 	if skip {
-		return nil, nil, nil
+		return r.Units.MustGet(ident.Path), nil, nil
 	}
 
 	ast, err := getProtoAST(content, ident)
@@ -86,34 +88,47 @@ func (r *CompilationRuntime) compile(ident *definition.FileIdentifer, content st
 		return nil, err, nil
 	}
 
-	importor := NewImportVisitor(ident)
-	importErr := ast.Accept(importor)
+	var warnings definition.TopLevelWarning
+
+	importVisitor := NewImportVisitor(ident)
+	importErr := ast.Accept(importVisitor)
 	if err, ok := importErr.(error); ok {
 		return nil, err, nil
 	}
 
 	unit := definition.NewCompilationUnit(ident)
+
+	infoVisitor := NewInfoVisitor(unit)
+	infoErr := ast.Accept(infoVisitor)
+	warnings = definition.TopLevelWarningsJoin(warnings, infoVisitor.Warning)
+	if err, ok := infoErr.(error); ok {
+		return nil, err, warnings
+	}
+
+	err = r.precheckPackageName(unit.Package)
+	if err != nil {
+		return nil, err, warnings
+	}
+
 	r.Units.Put(ident.Path, unit)
+	r.Packages.Put(unit.Package.String(), unit)
 	r.ParseStack.Put(ident.Path, unit)
 
-	var warnings definition.TopLevelWarning
 	// compile imports
-	for i, other := range importor.Imports {
+	var errs definition.TopLevelError
+	for i, other := range importVisitor.Imports {
 		otherUnit, err, warning := r.Compile(other)
-		if otherUnit == nil && err == nil && warning == nil {
-			continue
-		}
 		if warning != nil {
 			var w definition.TopLevelWarning
 			topLevelWarning, ok := warning.(definition.TopLevelWarning)
 			if !ok {
 				w = &definition.CompileWarning{
-					Position: importor.PosList[i],
+					Position: importVisitor.PosList[i],
 					Warning:  warning,
 				}
 			} else {
 				w = &definition.CompileWarning{
-					Position: importor.PosList[i],
+					Position: importVisitor.PosList[i],
 					Warning: &definition.ImportingWarning{
 						File:    other,
 						Warning: topLevelWarning,
@@ -125,36 +140,43 @@ func (r *CompilationRuntime) compile(ident *definition.FileIdentifer, content st
 		if err != nil {
 			topLevelErr, ok := err.(definition.TopLevelError)
 			if !ok {
-				return nil, &definition.CompileError{
-					Position: importor.PosList[i],
+				ex := &definition.CompileError{
+					Position: importVisitor.PosList[i],
 					Err:      err,
-				}, warnings
+				}
+				errs = definition.TopLevelErrorsJoin(errs, ex)
+				continue
 			}
-			return nil, &definition.CompileError{
-				Position: importor.PosList[i],
+			ex := &definition.CompileError{
+				Position: importVisitor.PosList[i],
 				Err: &definition.ImportingError{
 					File: other,
 					Err:  topLevelErr,
 				},
-			}, warnings
+			}
+			errs = definition.TopLevelErrorsJoin(errs, ex)
+			continue
 		}
+		if otherUnit == nil {
+			// no error, and no unit, skip
+			continue
+		}
+
 		err = unit.AddImport(otherUnit)
 		if err != nil {
-			return nil, &definition.CompileError{
-				Position: importor.PosList[i],
+			ex := &definition.CompileError{
+				Position: importVisitor.PosList[i],
 				Err:      err,
-			}, warnings
+			}
+			errs = definition.TopLevelErrorsJoin(errs, ex)
 		}
+	}
+
+	if errs != nil {
+		return nil, errs, warnings
 	}
 
 	r.ParseStack.Remove(ident.Path)
-
-	infoVisitor := NewInfoVisitor(unit)
-	infoErr := ast.Accept(infoVisitor)
-	warnings = definition.TopLevelWarningsJoin(warnings, infoVisitor.Warning)
-	if err, ok := infoErr.(error); ok {
-		return nil, err, warnings
-	}
 
 	protoVisitor := NewParseVisitor(unit)
 	protoErr := ast.Accept(protoVisitor)
@@ -166,7 +188,7 @@ func (r *CompilationRuntime) compile(ident *definition.FileIdentifer, content st
 	return unit, nil, warnings
 }
 
-func (r *CompilationRuntime) CheckImport(file *definition.FileIdentifer) (skip bool, err error) {
+func (r *CompilationRuntime) precheckFilePath(file *definition.FileIdentifer) (skip bool, err error) {
 	if r.ParseStack.Has(file.Path) {
 		if r.ParseStack.Last().Value.UnitName.Path == file.Path {
 			return true, &definition.ImportSelfError{}
@@ -179,6 +201,20 @@ func (r *CompilationRuntime) CheckImport(file *definition.FileIdentifer) (skip b
 		return true, nil
 	}
 	return false, nil
+}
+
+func (r *CompilationRuntime) precheckPackageName(pkg *definition.Package) error {
+	prev, ok := r.Packages.Get(pkg.String())
+	if ok {
+		return &definition.CompileError{
+			Position: pkg,
+			Err: &definition.PackageDuplicateError{
+				PrevDef: prev.Package.BasePosition,
+				Package: pkg,
+			},
+		}
+	}
+	return nil
 }
 
 func getProtoAST(content string, file *definition.FileIdentifer) (antlr.ParseTree, error) {

@@ -22,46 +22,54 @@ func (v *InfoVisitor) VisitProto(ctx *parser.ProtoContext) any {
 	var err definition.TopLevelError
 	packageStmts := ctx.AllPackageStatement()
 	if len(packageStmts) == 0 {
-		warn := &definition.CompileWarning{
+		// warn := &definition.CompileWarning{
+		// 	Position: definition.BasePosition{
+		// 		File:   v.Unit.UnitName.Path,
+		// 		Line:   ctx.GetStart().GetLine(),
+		// 		Column: ctx.GetStart().GetColumn(),
+		// 	},
+		// 	Warning: &definition.PackageNameNotSetWarning{},
+		// }
+		// v.Warning = definition.TopLevelWarningsJoin(v.Warning, warn)
+		return &definition.CompileError{
 			Position: definition.BasePosition{
 				File:   v.Unit.UnitName.Path,
 				Line:   ctx.GetStart().GetLine(),
 				Column: ctx.GetStart().GetColumn(),
 			},
-			Warning: &definition.PackageNameNotSetWarning{},
+			Err: &definition.PackageNameNotSetError{},
 		}
-		v.Warning = definition.TopLevelWarningsJoin(v.Warning, warn)
-	} else {
-		var pkgs []*definition.Package
-		for _, pkg := range packageStmts {
-			pkgRet := pkg.Accept(v)
-			switch val := pkgRet.(type) {
-			case definition.TopLevelError:
-				err = definition.TopLevelErrorsJoin(err, val)
-			case error:
-				return val
-			case *definition.Package:
-				pkgs = append(pkgs, val)
-			default:
-				panic("unreachable")
-			}
-		}
+	}
 
-		if err != nil {
-			return err
+	var pkgs []*definition.Package
+	for _, pkg := range packageStmts {
+		pkgRet := pkg.Accept(v)
+		switch val := pkgRet.(type) {
+		case definition.TopLevelError:
+			err = definition.TopLevelErrorsJoin(err, val)
+		case error:
+			return val
+		case *definition.Package:
+			pkgs = append(pkgs, val)
+		default:
+			panic("unreachable")
 		}
+	}
 
-		v.Unit.Package = pkgs[0]
-		for _, pkg := range pkgs[1:] {
-			ex := &definition.CompileError{
-				Position: pkg,
-				Err: &definition.PackageDuplicateError{
-					PrevDef:     v.Unit.Package,
-					PackageName: v.Unit.Package.String(),
-				},
-			}
-			err = definition.TopLevelErrorsJoin(err, ex)
+	if err != nil {
+		return err
+	}
+
+	v.Unit.Package = pkgs[0]
+	for _, pkg := range pkgs[1:] {
+		ex := &definition.CompileError{
+			Position: pkg,
+			Err: &definition.PackageDefinitionDuplicateError{
+				PrevDef:     v.Unit.Package,
+				PackageName: v.Unit.Package.String(),
+			},
 		}
+		err = definition.TopLevelErrorsJoin(err, ex)
 	}
 
 	options := util.NewOrderedMap[string, *definition.Option]()
@@ -131,14 +139,13 @@ func (v *InfoVisitor) VisitPackageStatement(ctx *parser.PackageStatementContext)
 		panic("unreachable")
 	}
 
-	pkg := &definition.Package{
-		BasePosition: definition.BasePosition{
-			File:   v.Unit.UnitName.Path,
-			Line:   ctx.GetStart().GetLine(),
-			Column: ctx.GetStart().GetColumn(),
-		},
-		PackagePaths: paths,
+	pos := definition.BasePosition{
+		File:   v.Unit.UnitName.Path,
+		Line:   ctx.GetStart().GetLine(),
+		Column: ctx.GetStart().GetColumn(),
 	}
+
+	pkg := definition.NewPackage(pos, paths)
 	return pkg
 }
 

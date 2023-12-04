@@ -7,6 +7,7 @@ type Position interface {
 	GetLine() int
 	GetColumn() int
 	GetPositionString() string
+	Eqauals(Position) bool
 }
 
 type BasePosition struct {
@@ -33,4 +34,8 @@ func (p BasePosition) GetColumn() int {
 
 func (p BasePosition) GetPositionString() string {
 	return p.String()
+}
+
+func (p BasePosition) Eqauals(pos Position) bool {
+	return p.File == pos.GetFile() && p.Line == pos.GetLine() && p.Column == pos.GetColumn()
 }

@@ -351,19 +351,49 @@ func (e EmbeddedFieldError) Error() string {
 
 // --------------------
 
-type PackageDuplicateError struct {
+type PackageDefinitionDuplicateError struct {
 	PrevDef     Position
 	PackageName string
 }
 
-func (e PackageDuplicateError) String() string {
+func (e PackageDefinitionDuplicateError) String() string {
 	return fmt.Sprintf("package name has already been set to '%s' at %s",
 		color.FgLightWhite.Render(e.PackageName),
 		color.FgLightWhite.Render(e.PrevDef.GetPositionString()),
 	)
 }
 
+func (e PackageDefinitionDuplicateError) Error() string {
+	return e.String()
+}
+
+// --------------------
+
+type PackageDuplicateError struct {
+	PrevDef Position
+	Package *Package
+}
+
+func (e PackageDuplicateError) String() string {
+	return fmt.Sprintf("duplicate package name '%s', found previous one at %s",
+		color.FgLightWhite.Render(e.Package.String()),
+		color.FgLightWhite.Render(e.PrevDef),
+	)
+}
+
 func (e PackageDuplicateError) Error() string {
+	return e.String()
+}
+
+// --------------------
+
+type PackageNameNotSetError struct{}
+
+func (e PackageNameNotSetError) String() string {
+	return fmt.Sprintf("package name not set")
+}
+
+func (e PackageNameNotSetError) Error() string {
 	return e.String()
 }
 

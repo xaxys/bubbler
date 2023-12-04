@@ -51,7 +51,7 @@ func (v *ProtoVisitor) VisitProto(ctx *parser.ProtoContext) any {
 		case error:
 			return val
 		case definition.CustomType:
-			v.Unit.Types.MustPut(val.GetTypeName(), val)
+			v.Unit.AddLocalType(val)
 		default:
 			panic("unreachable")
 		}
@@ -85,27 +85,18 @@ func (v *ProtoVisitor) VisitStructDef(ctx *parser.StructDefContext) any {
 		panic("unreachable")
 	}
 
-	if v.Unit.Names.Has(name) {
-		pos := definition.BasePosition{
-			File:   v.Unit.UnitName.Path,
-			Line:   ctx.StructName().GetStart().GetLine(),
-			Column: ctx.StructName().GetStart().GetColumn(),
-		}
-		return &definition.CompileError{
-			Position: pos,
-			Err: &definition.DefinitionDuplicateError{
-				PrevDef: v.Unit.Names.MustGet(name),
-				DefName: name,
-			},
-		}
-	}
-
-	// reserve name
-	v.Unit.Names.Put(name, &definition.BasePosition{
+	namePos := &definition.BasePosition{
 		File:   v.Unit.UnitName.Path,
 		Line:   ctx.StructName().GetStart().GetLine(),
 		Column: ctx.StructName().GetStart().GetColumn(),
-	})
+	}
+	dupErr := v.Unit.AddLocalName(name, namePos)
+	if dupErr != nil {
+		return &definition.CompileError{
+			Position: namePos,
+			Err:      dupErr,
+		}
+	}
 
 	size := int64(0)
 	if ctx.Size_() != nil {
@@ -172,6 +163,7 @@ func (v *ProtoVisitor) VisitStructDef(ctx *parser.StructDefContext) any {
 		field.SetFieldBelongs(structDef)
 	}
 
+	// TODO: check if struct normal field is byte-aligned
 	if size == 0 {
 		fixedSize, dynamic := structDef.SumFieldBitSize()
 		if fixedSize%8 != 0 {
@@ -1869,7 +1861,7 @@ func (v *ProtoVisitor) VisitType_(ctx *parser.Type_Context) any {
 	}
 	if ctx.Ident() != nil {
 		name := ctx.Ident().Accept(v).(string)
-		if !v.Unit.Types.Has(name) {
+		if !v.Unit.GlobalTypes.Has(name) {
 			pos := definition.BasePosition{
 				File:   v.Unit.UnitName.Path,
 				Line:   ctx.Ident().GetStart().GetLine(),
@@ -1882,7 +1874,7 @@ func (v *ProtoVisitor) VisitType_(ctx *parser.Type_Context) any {
 				},
 			}
 		}
-		ty := v.Unit.Types.MustGet(name)
+		ty := v.Unit.GlobalTypes.MustGet(name)
 		return ty
 	}
 	panic("unreachable")
@@ -2012,7 +2004,7 @@ func (v *ProtoVisitor) VisitArrayElementType(ctx *parser.ArrayElementTypeContext
 	}
 	if ctx.Ident() != nil {
 		name := ctx.Ident().Accept(v).(string)
-		if !v.Unit.Types.Has(name) {
+		if !v.Unit.GlobalTypes.Has(name) {
 			pos := definition.BasePosition{
 				File:   v.Unit.UnitName.Path,
 				Line:   ctx.Ident().GetStart().GetLine(),
@@ -2026,7 +2018,7 @@ func (v *ProtoVisitor) VisitArrayElementType(ctx *parser.ArrayElementTypeContext
 			}
 		}
 
-		ty := v.Unit.Types.MustGet(name)
+		ty := v.Unit.GlobalTypes.MustGet(name)
 		switch val := ty.(type) {
 		case *definition.Struct:
 			// TODO: support struct as array element
@@ -2055,7 +2047,7 @@ func (v *ProtoVisitor) VisitStructType(ctx *parser.StructTypeContext) any {
 	}
 	if ctx.StructName() != nil {
 		name := ctx.StructName().Accept(v).(string)
-		if !v.Unit.Types.Has(name) {
+		if !v.Unit.GlobalTypes.Has(name) {
 			pos := definition.BasePosition{
 				File:   v.Unit.UnitName.Path,
 				Line:   ctx.StructName().GetStart().GetLine(),
@@ -2068,7 +2060,7 @@ func (v *ProtoVisitor) VisitStructType(ctx *parser.StructTypeContext) any {
 				},
 			}
 		}
-		ty := v.Unit.Types.MustGet(name)
+		ty := v.Unit.GlobalTypes.MustGet(name)
 		switch val := ty.(type) {
 		case *definition.Struct:
 			return val
@@ -2093,7 +2085,7 @@ func (v *ProtoVisitor) VisitStructType(ctx *parser.StructTypeContext) any {
 func (v *ProtoVisitor) VisitEnumType(ctx *parser.EnumTypeContext) any {
 	if ctx.EnumName() != nil {
 		name := ctx.EnumName().Accept(v).(string)
-		if !v.Unit.Types.Has(name) {
+		if !v.Unit.GlobalTypes.Has(name) {
 			pos := definition.BasePosition{
 				File:   v.Unit.UnitName.Path,
 				Line:   ctx.EnumName().GetStart().GetLine(),
@@ -2106,7 +2098,7 @@ func (v *ProtoVisitor) VisitEnumType(ctx *parser.EnumTypeContext) any {
 				},
 			}
 		}
-		ty := v.Unit.Types.MustGet(name)
+		ty := v.Unit.GlobalTypes.MustGet(name)
 		switch val := ty.(type) {
 		case *definition.Enum:
 			return val
@@ -2142,27 +2134,18 @@ func (v *ProtoVisitor) VisitEnumDef(ctx *parser.EnumDefContext) any {
 		panic("unreachable")
 	}
 
-	if v.Unit.Names.Has(name) {
-		pos := definition.BasePosition{
-			File:   v.Unit.UnitName.Path,
-			Line:   ctx.EnumName().GetStart().GetLine(),
-			Column: ctx.EnumName().GetStart().GetColumn(),
-		}
-		return &definition.CompileError{
-			Position: pos,
-			Err: &definition.DefinitionDuplicateError{
-				PrevDef: v.Unit.Names.MustGet(name),
-				DefName: name,
-			},
-		}
-	}
-
-	// reserve name
-	v.Unit.Names.Put(name, &definition.BasePosition{
+	namePos := &definition.BasePosition{
 		File:   v.Unit.UnitName.Path,
 		Line:   ctx.EnumName().GetStart().GetLine(),
 		Column: ctx.EnumName().GetStart().GetColumn(),
-	})
+	}
+	dupErr := v.Unit.AddLocalName(name, namePos)
+	if dupErr != nil {
+		return &definition.CompileError{
+			Position: namePos,
+			Err:      dupErr,
+		}
+	}
 
 	size := int64(0)
 	sizeRet := ctx.Size_().Accept(v)
@@ -2197,6 +2180,22 @@ func (v *ProtoVisitor) VisitEnumDef(ctx *parser.EnumDefContext) any {
 		values = val
 	default:
 		panic("unreachable")
+	}
+
+	var errs definition.TopLevelError
+	for _, val := range values.Values() {
+		dupErr := v.Unit.AddLocalName(val.EnumValueName, val)
+		if dupErr != nil {
+			ex := &definition.CompileError{
+				Position: val,
+				Err:      dupErr,
+			}
+			errs = definition.TopLevelErrorsJoin(errs, ex)
+		}
+	}
+
+	if errs != nil {
+		return errs
 	}
 
 	enumDef := &definition.Enum{
