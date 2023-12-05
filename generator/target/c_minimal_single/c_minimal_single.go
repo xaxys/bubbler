@@ -202,7 +202,7 @@ var structTemplate = `
 {{- end -}}
 
 {{- define "structConst" -}}
-static const uint64_t {{ .StructName }}_Size = {{ .StructSize }};
+static const uint64_t {{ .StructName }}_size = {{ .StructSize }};
 {{- end -}}
 
 {{- define "structDef" -}}
