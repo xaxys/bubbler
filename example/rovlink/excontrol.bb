@@ -1,3 +1,5 @@
+package api.rovlink.excontrol;
+
 struct RovExcontrolClampData[6] {
     int16 clamp[2];
     int16 wrist[2] {

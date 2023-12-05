@@ -1,3 +1,5 @@
+package api.rovlink.control;
+
 struct RovControlPropellerAData[6] {
     uint16 a1[2];
     uint16 a2[2];

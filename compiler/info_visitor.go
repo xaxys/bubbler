@@ -118,6 +118,8 @@ func (v *InfoVisitor) VisitProto(ctx *parser.ProtoContext) any {
 		}
 	}
 
+	v.Unit.Options = options
+
 	if err != nil {
 		return err
 	}

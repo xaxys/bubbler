@@ -1,3 +1,7 @@
+package all;
+
+option omit_empty = true;
+
 import "rovlink.bb";
 import "control.bb";
 import "excomponent.bb";

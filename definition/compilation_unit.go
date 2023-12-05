@@ -169,6 +169,7 @@ func (c *CompilationUnit) AddImport(other *CompilationUnit) error {
 	// package name conflict already checked in precheckPacakgeName
 
 	c.LocalImports.Put(other.UnitName.Path, other)
+	c.GlobalImports.Put(other.UnitName.Path, other)
 	for _, impo := range other.GlobalImports.Values() {
 		c.GlobalImports.Put(impo.UnitName.Path, impo)
 	}

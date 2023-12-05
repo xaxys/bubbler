@@ -1,3 +1,5 @@
+package api.rovlink.sensor;
+
 struct RovSensorCabTempHumidPressData[6] {
     uint16 temperature[2] {
         get (float64): value / 100.0;

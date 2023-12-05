@@ -1,3 +1,5 @@
+package api.rovlink.mode;
+
 struct RovModeModeAData[6] {
     bool side_push[1];
     bool tilt[1];

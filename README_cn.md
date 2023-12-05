@@ -18,7 +18,7 @@ cd bubbler
 go build
 ```
 
-## 使用
+## 使用方法
 
 ```sh
 bubbler [options] <input file>
@@ -29,20 +29,109 @@ bubbler [options] <input file>
 - `-t <target>`: 目标语言
 - `-o <output>`: 输出文件
 
-### 目标语言
-
-运行 `bubbler` 以查看支持的目标语言列表。
-
 ### 示例
 
 ```sh
-bubbler -t c -o gen.c example.bb
+bubble -t c -o output/ example.bb
+bubbler -t c-single -o gen.hpp example.bb
 bubbler -t dump example.bb
 ```
 
+### 目标语言
+
+运行 `bubbler` 命令查看支持的目标语言列表。
+
+```text
+Targets:
+  dump
+  c
+  c-single [c_single]
+  c_minimal [c-minimal, c_min, c-min]
+  c_minimal_single [c-minimal-single, c_min_single, c-min-single]
+```
+
+别名也是支持的，例如，`c_minimal` 可以缩写为 `c-min`、`c_min` 或 `c_minimal`。
+
+- `dump`：输出 `.bb` 文件的解析树（中间表示）。
+- `c`：C 语言，为每个 `.bb` 文件输出一个 `.bb.h` 文件和一个 `.bb.c` 文件。
+- `c-single`：C 语言，为每个 `.bb` 文件输出一个单独的文件。输出文件名（包括扩展名）由 `-o` 选项确定。
+- `c_minimal`：C 语言，为每个 `.bb` 文件输出一个 `.bb.h` 文件和一个 `.bb.c` 文件。不为字段生成 getter/setter 方法。
+- `c_minimal_single`：C 语言，为每个 `.bb` 文件输出一个单独的文件。输出文件名（包括扩展名）由 `-o` 选项确定。不为字段生成 getter/setter 方法。
+
 ## 协议语法
 
-Bubbler 使用一种简洁的语法来定义数据结构和枚举类型。
+Bubbler 使用简洁的语法来定义数据结构和枚举类型。
+
+在 [example](example/) 目录中查看示例。
+
+### 包名声明
+
+使用 `package` 关键字来定义包名。例如：
+
+使用 `import` 关键字导入其他 Bubbler 协议文件。例如：
+
+```protobuf
+package com.example.rovlink;
+```
+
+包名用于生成输出文件名。例如，如果包名为 `com.example.rovlink`，则输出文件名为 `rovlink.xxx`，并放置在 `${Output Path}/com/example/` 目录中。
+
+在 `.bb` 文件中只允许有一个包名声明，并且包名不能在全局范围内重复。
+
+### 选项声明
+
+使用 `option` 关键字来定义选项。例如：
+
+```protobuf
+option omit_empty = true;
+option go_package = "example.com/rovlink";
+option cpp_namespace = "com::example::rovlink";
+```
+
+在 `.bb` 文件中，选项语句不能重复。
+
+如果选项未知，将会产生编译器警告。
+
+#### 支持的选项
+
+##### `omit_empty`
+
+如果将 `omit_empty` 设置为 `true`，不含有任何类型定义的 `.bb` 文件将不会生成任何文件。
+
+```protobuf
+package all;
+
+option omit_empty = true;
+
+import "rovlink.bb";
+import "control.bb";
+import "excomponent.bb";
+import "excontrol.bb";
+import "exdata.bb";
+import "host.bb";
+import "mode.bb";
+import "sensor.bb";
+```
+
+在这个例子中，`omit_empty` 选项被设置为 `true`，这个 `.bb` 文件将不会生成名为 `all.xxx` 文件。
+
+您可以使用这个选项一次生成多个 `.bb` 文件，而无需编写外部脚本，来运行多次 `bubbler` 命令以生成多个文件。
+
+##### `go_package`
+
+如果设置了 `go_package`，生成的代码将在生成的 Go 代码中使用指定的包名。
+
+##### `cpp_namespace`
+
+如果设置了 `cpp_namespace`，生成的代码将在生成的 C++ 代码中使用指定的命名空间。
+
+##### `csharp_namespace`
+
+如果设置了 `csharp_namespace`，生成的代码将在生成的 C# 代码中使用指定的命名空间。
+
+##### `java_package`
+
+如果设置了 `java_package`，生成的代码将在生成的 Java 代码中使用指定的包名。
 
 ### 导入语句
 

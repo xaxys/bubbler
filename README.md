@@ -15,7 +15,7 @@ Warning: Bubbler is still in development and is not ready for production use.
 ```sh
 git clone https://github.com/xaxys/bubbler.git
 cd bubbler
-go build
+make
 ```
 
 ## Usage
@@ -27,22 +27,109 @@ bubbler [options] <input file>
 ### Options
 
 - `-t <target>`: Target language
-- `-o <output>`: Output file
+- `-o <output>`: Output Path
+
+### Examples
+
+```sh
+bubble -t c -o output/ example.bb
+bubbler -t c-single -o gen.hpp example.bb
+bubbler -t dump example.bb
+```
 
 ### Target Languages
 
 Run `bubbler` to see the list of supported target languages.
 
-### Examples
-
-```sh
-bubbler -t c -o gen.c example.bb
-bubbler -t dump example.bb
+```text
+Targets:
+  dump
+  c
+  c-single [c_single]
+  c_minimal [c-minimal, c_min, c-min]
+  c_minimal_single [c-minimal-single, c_min_single, c-min-single]
 ```
+
+Alias names are also supported, for example, `c_minimal` can be abbreviated as `c-min`, `c_min`, or `c_minimal`.
+
+- `dump`: Dump the parsed AST tree of the `.bb` file.
+- `c`: C language, output a `.bb.h` file and a `.bb.c` file for each `.bb` file.
+- `c-single`: C language, output a single file for each `.bb` file. The output file name (including extension name) is determined by the `-o` option.
+- `c_minimal`: C language, output a `.bb.h` file and a `.bb.c` file for each `.bb` file. No getter/setter methods are generated for fields.
+- `c_minimal_single`: C language, output a single file for each `.bb` file. The output file name (including extension name) is determined by the `-o` option. No getter/setter methods are generated for fields.
 
 ## Protocol Syntax
 
 Bubbler uses a concise syntax to define data structures and enumeration types.
+
+See examples in the [example](example/) directory.
+
+### Package Statements
+
+Use the `package` keyword to define the package name. For example:
+
+```protobuf
+package com.example.rovlink;
+```
+
+The package name is used to generate the output file name. For example, if the package name is `com.example.rovlink`, the output file name is `rovlink.xxx` and is placed in the `${Output Path}/com/example/` directory.
+
+Only one package statement is allowed in a `.bb` file, and it can not be duplicated globally.
+
+### Option Statements
+
+Use the `option` keyword to define options. For example:
+
+```protobuf
+option omit_empty = true;
+option go_package = "example.com/rovlink";
+option cpp_namespace = "com::example::rovlink";
+```
+
+The option statement cannot be duplicated in a `.bb` file.
+
+Warning will be reported if a option is unknown.
+
+#### Supported Options
+
+##### `omit_empty`
+
+If `omit_empty` is set to `true`, the generated code will not generate files without typedefs.
+
+```protobuf
+package all;
+
+option omit_empty = true;
+
+import "rovlink.bb";
+import "control.bb";
+import "excomponent.bb";
+import "excontrol.bb";
+import "exdata.bb";
+import "host.bb";
+import "mode.bb";
+import "sensor.bb";
+```
+
+In this example, the `omit_empty` option is set to `true`, and this `.bb` file will not generate as `all.xxx` file.
+
+You can use this option to generate multiple `.bb` files at once, without writing a external script to do multiple `bubbler` calls.
+
+##### `go_package`
+
+If `go_package` is set, the generated code will use the specified package name in the generated Go code.
+
+##### `cpp_namespace`
+
+If `cpp_namespace` is set, the generated code will use the specified namespace in the generated C++ code.
+
+##### `csharp_namespace`
+
+If `csharp_namespace` is set, the generated code will use the specified namespace in the generated C# code.
+
+##### `java_package`
+
+If `java_package` is set, the generated code will use the specified package name in the generated Java code.
 
 ### Import Statements
 

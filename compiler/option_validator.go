@@ -11,6 +11,7 @@ var EnumValueOptionValidator *OptionValidator
 
 func init() {
 	FileOptionValidator = NewOptionValidator()
+	FileOptionValidator.AddOption("omit_empty", definition.LiteralKindID_Bool)
 	FileOptionValidator.AddOption("csharp_namespace", definition.LiteralKindID_String)
 	FileOptionValidator.AddOption("cpp_namespace", definition.LiteralKindID_String)
 	FileOptionValidator.AddOption("go_package", definition.LiteralKindID_String)

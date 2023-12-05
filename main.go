@@ -38,7 +38,7 @@ func printBanner() {
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  -t <target>  Target language")
-	fmt.Println("  -o <output>  Output file")
+	fmt.Println("  -o <output>  Output Path")
 	fmt.Println()
 	fmt.Println("Targets:")
 	for _, gen := range generator.ListGenerators() {
@@ -46,7 +46,8 @@ func printBanner() {
 	}
 	fmt.Println()
 	fmt.Println("Examples:")
-	fmt.Println("  bubbler -t c -o gen.c example.bb")
+	fmt.Println("  bubble -t c -o output/ example.bb")
+	fmt.Println("  bubbler -t c-single -o gen.hpp example.bb")
 	fmt.Println("  bubbler -t dump example.bb")
 	fmt.Println()
 	fmt.Println("For more information, please visit: https://github.com/xaxys/bubbler")
@@ -62,7 +63,7 @@ func main() {
 	target := ""
 	output := ""
 	flag.StringVar(&target, "t", "", "Target Language")
-	flag.StringVar(&output, "o", "", "Output File")
+	flag.StringVar(&output, "o", "", "Output Path")
 	flag.Parse()
 
 	files := flag.Args()
@@ -91,7 +92,7 @@ func main() {
 	}
 
 	input := files[0]
-	unit, err, warning := compiler.Compile(input)
+	units, err, warning := compiler.Compile(input)
 	if warning != nil {
 		fmt.Fprintln(os.Stderr, warning)
 	}
@@ -100,7 +101,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = generator.Generate(target, output, unit)
+	err = generator.Generate(target, output, units...)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

@@ -1,3 +1,5 @@
+package api.rovlink.excomponent;
+
 struct RovExcomponentRelayData[6] {
     bool lazer[1];
     bool clamp[1];

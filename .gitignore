@@ -5,6 +5,7 @@
 .vs
 .vscode
 .example
+.Output
 
 # Binaries for programs and plugins
 *.exe

@@ -1,3 +1,5 @@
+package api.rovlink.host;
+
 enum RovCamaraType[1] {
     NO_CAM = 0;
     FRONT_CAM = 1;
@@ -5,10 +7,5 @@ enum RovCamaraType[1] {
 }
 
 struct RovHostCamaraData[6] {
-    RovCamaraType cam1;
-    RovCamaraType cam2;
-    RovCamaraType cam3;
-    RovCamaraType cam4;
-    RovCamaraType cam5;
-    RovCamaraType cam6;
+    RovCamaraType<6> camaraType;
 }

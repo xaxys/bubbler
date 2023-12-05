@@ -5,10 +5,12 @@ import (
 	"strings"
 
 	"github.com/xaxys/bubbler/definition"
-	"github.com/xaxys/bubbler/fileio"
-	"github.com/xaxys/bubbler/generator/c"
-	"github.com/xaxys/bubbler/generator/c_minimal"
-	"github.com/xaxys/bubbler/generator/dump"
+	"github.com/xaxys/bubbler/generator/genctx"
+	"github.com/xaxys/bubbler/generator/target/c"
+	"github.com/xaxys/bubbler/generator/target/c_minimal"
+	"github.com/xaxys/bubbler/generator/target/c_minimal_single"
+	"github.com/xaxys/bubbler/generator/target/c_single"
+	"github.com/xaxys/bubbler/generator/target/dump"
 	"github.com/xaxys/bubbler/util"
 )
 
@@ -17,15 +19,23 @@ var TargetMap *util.OrderedMap[string, Generator]
 func init() {
 	dumpGen := dump.NewDumpGenerator()
 	cGen := c.NewCGenerator()
+	c_singleGen := c_single.NewCSingleGenerator()
 	c_minimalGen := c_minimal.NewCMinimalGenerator()
+	c_minimal_singleGen := c_minimal_single.NewCMinimalSingleGenerator()
 
 	TargetMap = util.NewOrderedMap[string, Generator]()
 	TargetMap.Put("dump", dumpGen)
 	TargetMap.Put("c", cGen)
+	TargetMap.Put("c-single", c_singleGen)
+	TargetMap.Put("c_single", c_singleGen)
 	TargetMap.Put("c_minimal", c_minimalGen)
 	TargetMap.Put("c-minimal", c_minimalGen)
 	TargetMap.Put("c_min", c_minimalGen)
 	TargetMap.Put("c-min", c_minimalGen)
+	TargetMap.Put("c_minimal_single", c_minimal_singleGen)
+	TargetMap.Put("c-minimal-single", c_minimal_singleGen)
+	TargetMap.Put("c_min_single", c_minimal_singleGen)
+	TargetMap.Put("c-min-single", c_minimal_singleGen)
 }
 
 func ListGenerators() []string {
@@ -54,31 +64,22 @@ func ListGenerators() []string {
 }
 
 type Generator interface {
-	Generate(unit *definition.CompilationUnit) (string, error)
+	Generate(ctx *genctx.GenCtx) error
 }
 
-func Generate(target string, file string, unit *definition.CompilationUnit) error {
+func Generate(target string, output string, units ...*definition.CompilationUnit) error {
 	gen, ok := TargetMap.Get(target)
 	if !ok {
 		return fmt.Errorf("target %s is not supported", target)
 	}
 
-	text, err := gen.Generate(unit)
-	if err != nil {
-		return err
+	ctx := &genctx.GenCtx{
+		Units:      units,
+		OutputPath: output,
 	}
 
-	if file == "" {
-		fmt.Println(text)
-		return nil
-	}
+	err := gen.Generate(ctx)
 
-	id, err := fileio.GetFileIdentifer(file)
-	if err != nil {
-		return err
-	}
-
-	err = fileio.WriteFileContent(id, text)
 	if err != nil {
 		return err
 	}
