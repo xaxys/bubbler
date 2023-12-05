@@ -815,7 +815,7 @@ func (g *cGenCtx) generateEncoder(structDef *definition.Struct) string {
 			}
 
 			shiftLeft := i % 8
-			encodeStr += fmt.Sprintf("((uint8_t*)data)[%d] %s ((%s << %d) & 0b%b);\n", i/8, operator, fieldStr, shiftLeft, dataMask)
+			encodeStr += fmt.Sprintf("((uint8_t*)data)[%d] %s (((%s) << %d) & 0b%b);\n", i/8, operator, fieldStr, shiftLeft, dataMask)
 		}
 		return encodeStr
 	}
