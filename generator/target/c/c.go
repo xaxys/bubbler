@@ -141,13 +141,6 @@ var typeMap = map[definition.TypeID]string{
 	definition.TypeID_Bytes:   "uint8_t*",
 }
 
-var typeSizeMapInt = map[int64]string{
-	8:  "int8_t",
-	16: "int16_t",
-	32: "int32_t",
-	64: "int64_t",
-}
-
 var typeSizeMapUint = map[int64]string{
 	8:  "uint8_t",
 	16: "uint16_t",
@@ -780,7 +773,7 @@ func (g *cGenCtx) generateEnum(enumDef *definition.Enum) *GeneratedType {
 //
 // ==================== Encoder & Decoder ====================
 // TODO: Templateify the encoder & decoder
-//
+// FIXME: big endian & little endian support for float types
 
 func (g *cGenCtx) generateEncoderDecl(structDef *definition.Struct) string {
 	return fmt.Sprintf("void %s_encode(struct %s* structPtr, void* data);\n", structDef.StructName, structDef.StructName)
@@ -1255,7 +1248,7 @@ func (g *cGenCtx) generateDecoder(structDef *definition.Struct) string {
 					if basicTy.TypeTypeID.IsInt() && basicTy.TypeBitSize > val.FieldBitSize {
 						for i := int64(0); i < ty.Length; i++ {
 							elemName := fmt.Sprintf("(%s)[%d]", name, i)
-							decodeStr += fmt.Sprintf("%s = %s;\n", elemName, signExtend(val.FieldBitSize, basicTy.TypeBitSize, elemName))
+							decodeStr += fmt.Sprintf("%s = %s;\n", elemName, signExtend(elemBitSize, basicTy.TypeBitSize, elemName))
 						}
 					}
 				}

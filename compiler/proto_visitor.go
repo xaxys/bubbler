@@ -740,7 +740,10 @@ func (v *ProtoVisitor) VisitFieldConstant(ctx *parser.FieldConstantContext) any 
 			match = false
 		}
 	case definition.LiteralKindID_Int:
-		if !type_.TypeTypeID.IsInt() {
+		if !type_.TypeTypeID.IsIntOrUint() {
+			match = false
+		}
+		if constant.GetLiteralValue().(int64) < 0 && !type_.TypeTypeID.IsInt() {
 			match = false
 		}
 	case definition.LiteralKindID_Float:
@@ -748,7 +751,7 @@ func (v *ProtoVisitor) VisitFieldConstant(ctx *parser.FieldConstantContext) any 
 			match = false
 		}
 	case definition.LiteralKindID_String:
-		if type_.TypeTypeID != definition.TypeID_String {
+		if !type_.TypeTypeID.IsString() {
 			match = false
 		}
 	default:

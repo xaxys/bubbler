@@ -6,11 +6,11 @@ type TypeID int
 
 const (
 	TypeID_Bool TypeID = iota
-	TypeID_Int8
 	TypeID_Uint8
 	TypeID_Uint16
 	TypeID_Uint32
 	TypeID_Uint64
+	TypeID_Int8
 	TypeID_Int16
 	TypeID_Int32
 	TypeID_Int64

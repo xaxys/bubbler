@@ -13,6 +13,22 @@ const (
 	LiteralKindID_String
 )
 
+func (l LiteralKindID) IsBool() bool {
+	return l == LiteralKindID_Bool
+}
+
+func (l LiteralKindID) IsInt() bool {
+	return l == LiteralKindID_Int
+}
+
+func (l LiteralKindID) IsFloat() bool {
+	return l == LiteralKindID_Float
+}
+
+func (l LiteralKindID) IsString() bool {
+	return l == LiteralKindID_String
+}
+
 func (l LiteralKindID) String() string {
 	switch l {
 	case LiteralKindID_Bool:
