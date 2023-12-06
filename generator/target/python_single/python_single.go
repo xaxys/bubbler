@@ -155,7 +155,7 @@ func (g *PythonSingleGenerator) generateTypeDefaultValue(type_ definition.Type) 
 		return fmt.Sprintf("%s()", val.StructName)
 
 	case *definition.Enum:
-		return fmt.Sprintf("%s.%s", val.EnumName, val.EnumValues.Values()[0].EnumValueName)
+		return fmt.Sprintf("None")
 
 	case *definition.BasicType:
 		return typeDefaultValueMap[val.TypeTypeID]

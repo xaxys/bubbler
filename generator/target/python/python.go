@@ -178,7 +178,7 @@ func (g *pyGenCtx) generateTypeDefaultValue(type_ definition.Type) (def string) 
 		return fmt.Sprintf("%s()", val.StructName)
 
 	case *definition.Enum:
-		return fmt.Sprintf("%s.%s", val.EnumName, val.EnumValues.Values()[0].EnumValueName)
+		return fmt.Sprintf("None")
 
 	case *definition.BasicType:
 		return typeDefaultValueMap[val.TypeTypeID]
