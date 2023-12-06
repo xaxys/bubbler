@@ -48,15 +48,17 @@ Targets:
   c-single [c_single]
   c_minimal [c-minimal, c_min, c-min]
   c_minimal_single [c-minimal-single, c_min_single, c-min-single]
+  python-single [python_single, py-single, py_single]
 ```
 
-Alias names are also supported, for example, `c_minimal` can be abbreviated as `c-min`, `c_min`, or `c_minimal`.
+When selecting the target language, you can use the aliases inside `[]`. For example, `c_minimal` can be abbreviated as `c-min`, `c_min`, or `c_minimal`.
 
-- `dump`: Dump the parsed AST tree of the `.bb` file.
-- `c`: C language, output a `.bb.h` file and a `.bb.c` file for each `.bb` file.
-- `c-single`: C language, output a single file for each `.bb` file. The output file name (including extension name) is determined by the `-o` option.
-- `c_minimal`: C language, output a `.bb.h` file and a `.bb.c` file for each `.bb` file. No getter/setter methods are generated for fields.
-- `c_minimal_single`: C language, output a single file for each `.bb` file. The output file name (including extension name) is determined by the `-o` option. No getter/setter methods are generated for fields.
+- `dump`: Output the parse tree (intermediate representation) of the `.bb` file.
+- `c`: C language, output one `.bb.h` file and one `.bb.c` file for each `.bb` file.
+- `c-single`: C language, output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
+- `c_minimal`: C language, output one `.bb.h` file and one `.bb.c` file for each `.bb` file. Do not generate getter/setter methods for fields.
+- `c_minimal_single`: C language, output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option. Do not generate getter/setter methods for fields.
+- `python-single`: Python language, output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
 
 ## Protocol Syntax
 

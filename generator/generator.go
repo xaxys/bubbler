@@ -11,6 +11,7 @@ import (
 	"github.com/xaxys/bubbler/generator/target/c_minimal_single"
 	"github.com/xaxys/bubbler/generator/target/c_single"
 	"github.com/xaxys/bubbler/generator/target/dump"
+	"github.com/xaxys/bubbler/generator/target/python_single"
 	"github.com/xaxys/bubbler/util"
 )
 
@@ -22,6 +23,7 @@ func init() {
 	c_singleGen := c_single.NewCSingleGenerator()
 	c_minimalGen := c_minimal.NewCMinimalGenerator()
 	c_minimal_singleGen := c_minimal_single.NewCMinimalSingleGenerator()
+	python_singleGen := python_single.NewPythonSingleGenerator()
 
 	TargetMap = util.NewOrderedMap[string, Generator]()
 	TargetMap.Put("dump", dumpGen)
@@ -36,6 +38,10 @@ func init() {
 	TargetMap.Put("c-minimal-single", c_minimal_singleGen)
 	TargetMap.Put("c_min_single", c_minimal_singleGen)
 	TargetMap.Put("c-min-single", c_minimal_singleGen)
+	TargetMap.Put("python-single", python_singleGen)
+	TargetMap.Put("python_single", python_singleGen)
+	TargetMap.Put("py-single", python_singleGen)
+	TargetMap.Put("py_single", python_singleGen)
 }
 
 func ListGenerators() []string {
