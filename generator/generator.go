@@ -42,8 +42,8 @@ func init() {
 	TargetMap.Put("c-min-single", c_minimal_singleGen)
 	TargetMap.Put("python", pythonGen)
 	TargetMap.Put("py", pythonGen)
-	TargetMap.Put("python-single", python_singleGen)
 	TargetMap.Put("python_single", python_singleGen)
+	TargetMap.Put("python-single", python_singleGen)
 	TargetMap.Put("py-single", python_singleGen)
 	TargetMap.Put("py_single", python_singleGen)
 }

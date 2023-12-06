@@ -49,7 +49,7 @@ Targets:
   c_minimal [c-minimal, c_min, c-min]
   c_minimal_single [c-minimal-single, c_min_single, c-min-single]
   python [py]
-  python-single [python_single, py-single, py_single]
+  python_single [python-single, py-single, py_single]
 ```
 
 在选择目标语言时可以使用`[]`内的别名，例如，`c_minimal` 可以缩写为 `c-min`、`c_min` 或 `c_minimal`。

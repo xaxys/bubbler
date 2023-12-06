@@ -49,7 +49,7 @@ Targets:
   c_minimal [c-minimal, c_min, c-min]
   c_minimal_single [c-minimal-single, c_min_single, c-min-single]
   python [py]
-  python-single [python_single, py-single, py_single]
+  python_single [python-single, py-single, py_single]
 ```
 
 When selecting the target language, you can use the aliases inside `[]`. For example, `c_minimal` can be abbreviated as `c-min`, `c_min`, or `c_minimal`.
