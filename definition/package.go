@@ -78,8 +78,10 @@ func (p Package) Difference(other *Package) (diff []string) {
 // ToPath returns the path of this package
 //
 // sep must be a valid path separator (e.g. "/", ".")
-func (p Package) ToPath(sep string) string {
-	return strings.Join(p.PackageFullPaths, sep)
+//
+// ext must start with a dot (e.g. ".h", ".c", ".py")
+func (p Package) ToPath(sep, ext string) string {
+	return strings.Join(p.PackageFullPaths, sep) + ext
 }
 
 // ToFilePath returns the file path of this package

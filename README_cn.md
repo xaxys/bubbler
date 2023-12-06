@@ -48,6 +48,7 @@ Targets:
   c-single [c_single]
   c_minimal [c-minimal, c_min, c-min]
   c_minimal_single [c-minimal-single, c_min_single, c-min-single]
+  python [py]
   python-single [python_single, py-single, py_single]
 ```
 
@@ -58,6 +59,7 @@ Targets:
 - `c-single`：C 语言，为所有 `.bb` 文件输出一个包含所有定义的文件。输出文件名（包括扩展名）由 `-o` 选项确定。
 - `c_minimal`：C 语言，为每个 `.bb` 文件输出一个 `.bb.h` 文件和一个 `.bb.c` 文件。不为字段生成 getter/setter 方法。
 - `c_minimal_single`：C 语言，为所有 `.bb` 文件输出一个包含所有定义的文件。输出文件名（包括扩展名）由 `-o` 选项确定。不为字段生成 getter/setter 方法。
+- `python`：Python 语言，为每个 `.bb` 文件输出一个 `_bb.py` 文件。
 - `python-single`：Python 语言，为所有 `.bb` 文件输出一个包含所有定义的文件。输出文件名（包括扩展名）由 `-o` 选项确定。
 
 ## 协议语法

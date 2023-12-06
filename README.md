@@ -48,6 +48,7 @@ Targets:
   c-single [c_single]
   c_minimal [c-minimal, c_min, c-min]
   c_minimal_single [c-minimal-single, c_min_single, c-min-single]
+  python [py]
   python-single [python_single, py-single, py_single]
 ```
 
@@ -58,6 +59,7 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
 - `c-single`: C language, output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
 - `c_minimal`: C language, output one `.bb.h` file and one `.bb.c` file for each `.bb` file. Do not generate getter/setter methods for fields.
 - `c_minimal_single`: C language, output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option. Do not generate getter/setter methods for fields.
+- `python`: Python language, output one `_bb.py` file for each `.bb` file.
 - `python-single`: Python language, output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
 
 ## Protocol Syntax
