@@ -45,7 +45,7 @@ bubbler -t dump example.bb
 Targets:
   dump
   c
-  c-single [c_single]
+  c_single [c-single]
   c_minimal [c-minimal, c_min, c-min]
   c_minimal_single [c-minimal-single, c_min_single, c-min-single]
   python [py]
@@ -56,7 +56,7 @@ Targets:
 
 - `dump`：输出 `.bb` 文件的解析树（中间表示）。
 - `c`：C 语言，为每个 `.bb` 文件输出一个 `.bb.h` 文件和一个 `.bb.c` 文件。
-- `c-single`：C 语言，为所有 `.bb` 文件输出一个包含所有定义的文件。输出文件名（包括扩展名）由 `-o` 选项确定。
+- `c_single`：C 语言，为所有 `.bb` 文件输出一个包含所有定义的文件。输出文件名（包括扩展名）由 `-o` 选项确定。
 - `c_minimal`：C 语言，为每个 `.bb` 文件输出一个 `.bb.h` 文件和一个 `.bb.c` 文件。不为字段生成 getter/setter 方法。
 - `c_minimal_single`：C 语言，为所有 `.bb` 文件输出一个包含所有定义的文件。输出文件名（包括扩展名）由 `-o` 选项确定。不为字段生成 getter/setter 方法。
 - `python`：Python 语言，为每个 `.bb` 文件输出一个 `_bb.py` 文件。
