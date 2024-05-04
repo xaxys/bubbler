@@ -59,6 +59,13 @@ type GeneralWarning struct {
 }
 
 func (w GeneralWarning) String() string {
+	if w.Position == nil {
+		return fmt.Sprintf(
+			"%s %s",
+			color.FgYellow.Render("warning:"),
+			w.Warning,
+		)
+	}
 	return fmt.Sprintf(
 		"%s %s %s",
 		color.FgLightWhite.Sprintf("%s:", w.GetPositionString()),
@@ -89,6 +96,25 @@ func (w CompileWarning) String() string {
 }
 
 func (w CompileWarning) Error() string {
+	return w.String()
+}
+
+// --------------------
+
+type GenerateWarning struct {
+	TopLevelWarning
+	Warning error
+}
+
+func (w GenerateWarning) String() string {
+	return fmt.Sprintf(
+		"%s %s",
+		color.FgLightYellow.Render("generate warning:"),
+		w.Warning,
+	)
+}
+
+func (w GenerateWarning) Error() string {
 	return w.String()
 }
 
@@ -201,6 +227,29 @@ func (w OptionUnknownWarning) Error() string {
 
 // --------------------
 
+type OptionNotAvailableWarning struct {
+	OptionName string
+	Reason     string
+}
+
+func (w OptionNotAvailableWarning) String() string {
+	if w.Reason == "" {
+		return fmt.Sprintf("option '%s' not available in current settings",
+			color.FgLightWhite.Render(w.OptionName),
+		)
+	}
+	return fmt.Sprintf("option '%s' not available: %s",
+		color.FgLightWhite.Render(w.OptionName),
+		w.Reason,
+	)
+}
+
+func (w OptionNotAvailableWarning) Error() string {
+	return w.String()
+}
+
+// --------------------
+
 type NameStyleWarning struct {
 	Name string
 	Msg  string
@@ -214,5 +263,25 @@ func (w NameStyleWarning) String() string {
 }
 
 func (w NameStyleWarning) Error() string {
+	return w.String()
+}
+
+// --------------------
+
+type NameStyleNotStandardWarning struct {
+	OriginName string
+	RecommName string
+	Standard   string
+}
+
+func (w NameStyleNotStandardWarning) String() string {
+	return fmt.Sprintf("non-standard %s '%s', use '%s' instead",
+		w.Standard,
+		color.FgLightWhite.Render(w.OriginName),
+		color.FgLightWhite.Render(w.RecommName),
+	)
+}
+
+func (w NameStyleNotStandardWarning) Error() string {
 	return w.String()
 }

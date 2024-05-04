@@ -13,16 +13,16 @@ type Struct struct {
 
 	StructName    string
 	StructBitSize int64
-	StructFields  []Field
-}
-
-func (s Struct) ShortString() string {
-	return fmt.Sprintf("%s [%s] {%d fields}", s.StructName, util.ToSizeString(s.StructBitSize), len(s.StructFields))
+	StructFields  *util.OrderedMap[string, Field]
 }
 
 func (s Struct) String() string {
+	return fmt.Sprintf("%s [%s] {%d fields}", s.StructName, util.ToSizeString(s.StructBitSize), s.StructFields.Len())
+}
+
+func (s Struct) DumpString() string {
 	fields := "[\n"
-	for _, field := range s.StructFields {
+	for _, field := range s.StructFields.Values() {
 		fields += util.IndentSpace8(field) + "\n"
 	}
 	fields += "    ]"
@@ -46,45 +46,49 @@ func (s Struct) GetTypeBitSize() int64 {
 
 // ==================== Struct ====================
 
-func (s *Struct) GetFieldByName(name string) Field {
-	for _, field := range s.StructFields {
-		switch val := field.(type) {
-		case *NormalField:
-			if val.FieldName == name {
-				return val
-			}
-		}
-	}
-	return nil
-}
-
-func (s *Struct) GetFieldByUniqueName(name string) Field {
-	for _, field := range s.StructFields {
-		if field.GetFieldUniqueName() == name {
-			return field
-		}
-	}
-	return nil
-}
-
 func (s *Struct) SumFieldBitSize() (fixed_size int64, has_dynamic bool) {
 	sum := int64(0)
 	dynamic := false
-	for _, field := range s.StructFields {
+	for _, field := range s.StructFields.Values() {
 		if field.GetFieldBitSize() == -1 {
 			dynamic = true
+		} else {
+			sum += field.GetFieldBitSize()
 		}
-		sum += field.GetFieldBitSize()
 	}
 	return sum, dynamic
 }
 
-func (s *Struct) GetFieldsStartBit() []int64 {
-	startBits := []int64{}
+func (s *Struct) ForEachField(f func(field Field, index int, start int64) error) error {
 	startBit := int64(0)
-	for _, field := range s.StructFields {
-		startBits = append(startBits, startBit)
-		startBit += field.GetFieldBitSize()
+	for i, field := range s.StructFields.Values() {
+		if err := f(field, i, startBit); err != nil {
+			return err
+		}
+		if startBit != -1 && field.GetFieldBitSize() != -1 {
+			startBit += field.GetFieldBitSize()
+		} else {
+			startBit = -1
+		}
 	}
-	return startBits
+	return nil
+}
+
+func (s *Struct) ForEachFieldWithPos(f func(field Field, index int, start int64, pos string) error) error {
+	ToPosStr := func(start int64, size int64) string {
+		if size == 0 {
+			return "[virtual]"
+		}
+		if start == -1 {
+			return fmt.Sprintf("[dynamic:dynamic):%s", util.ToSizeString(size))
+		}
+		if size == -1 {
+			return fmt.Sprintf("[%s:dynamic)", util.ToSizeString(start))
+		}
+		return fmt.Sprintf("[%s:%s)", util.ToSizeString(start), util.ToSizeString(start+size))
+	}
+
+	return s.ForEachField(func(field Field, index int, start int64) error {
+		return f(field, index, start, ToPosStr(start, field.GetFieldBitSize()))
+	})
 }

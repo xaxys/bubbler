@@ -9,9 +9,9 @@ import (
 type EnumValue struct {
 	BasePosition
 
-	EnumValueName string
-	EnumValue     int64
-	EnumBelongs   *Enum
+	EnumValueName    string
+	EnumValue        int64
+	EnumValueBelongs *Enum
 }
 
 func (e EnumValue) String() string {
@@ -52,22 +52,4 @@ func (e *Enum) GetTypeName() string {
 
 func (e *Enum) GetTypeBitSize() int64 {
 	return e.EnumBitSize
-}
-
-func (e *Enum) GetEnumValueByName(name string) *EnumValue {
-	for _, enumValue := range e.EnumValues.Values() {
-		if enumValue.EnumValueName == name {
-			return enumValue
-		}
-	}
-	return nil
-}
-
-func (e *Enum) GetEnumValueByValue(value int64) *EnumValue {
-	for _, enumValue := range e.EnumValues.Values() {
-		if enumValue.EnumValue == value {
-			return enumValue
-		}
-	}
-	return nil
 }

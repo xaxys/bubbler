@@ -45,7 +45,7 @@ func NewCompilationUnit(name *FileIdentifer) *CompilationUnit {
 func (c *CompilationUnit) AddLocalType(ty CustomType) error {
 	if c.GlobalNames.Has(ty.GetTypeName()) {
 		prev := c.GlobalNames.MustGet(ty.GetTypeName())
-		if !prev.Eqauals(ty) {
+		if !prev.PositionEquals(ty) {
 			return &DefinitionDuplicateError{
 				PrevDef: prev,
 				DefName: ty.GetTypeName(),
@@ -65,7 +65,7 @@ func (c *CompilationUnit) AddLocalType(ty CustomType) error {
 func (c *CompilationUnit) AddLocalName(name string, pos Position) error {
 	if c.GlobalNames.Has(name) {
 		prev := c.GlobalNames.MustGet(name)
-		if !prev.Eqauals(pos) {
+		if !prev.PositionEquals(pos) {
 			return &DefinitionDuplicateError{
 				PrevDef: prev,
 				DefName: name,
@@ -87,7 +87,7 @@ func (c *CompilationUnit) AddLocalName(name string, pos Position) error {
 func (c *CompilationUnit) AddGlobalType(ty CustomType) error {
 	if c.GlobalNames.Has(ty.GetTypeName()) {
 		prev := c.GlobalNames.MustGet(ty.GetTypeName())
-		if !prev.Eqauals(ty) {
+		if !prev.PositionEquals(ty) {
 			return &DefinitionDuplicateError{
 				PrevDef: prev,
 				DefName: ty.GetTypeName(),
@@ -107,7 +107,7 @@ func (c *CompilationUnit) AddGlobalType(ty CustomType) error {
 func (c *CompilationUnit) AddGlobalName(name string, pos Position) error {
 	if c.GlobalNames.Has(name) {
 		prev := c.GlobalNames.MustGet(name)
-		if !prev.Eqauals(pos) {
+		if !prev.PositionEquals(pos) {
 			return &DefinitionDuplicateError{
 				PrevDef: prev,
 				DefName: name,

@@ -27,14 +27,19 @@ bubbler [options] <input file>
 ### 选项
 
 - `-t <target>`: 目标语言
-- `-o <output>`: 输出文件
+- `-o <output>`: 输出路径
+- `-inner`: 生成内部类（嵌套结构体）
+- `-single`: 生成单个文件（将所有定义合并到一个文件中，而不是每个源文件生成一个文件）
+- `-minimal`: 生成最小代码（通常不包含默认的getter/setter方法）
+- `-decnum`: 强制生成十进制格式的常量值（将 `0xFF` 翻译为 `255`, `0b1111` 翻译为 `15` 等）
+- `-signext`: 用于整数字段的符号扩展方法（选项: `shift`, `arith`）
 
 ### 示例
 
 ```sh
-bubble -t c -o output/ example.bb
-bubbler -t c-single -o gen.hpp example.bb
-bubbler -t dump example.bb
+bubbler -t c -minimal -o output/ example.bb
+bubbler -t c -single -o gen.hpp example.bb
+bubbler -t py -decnum -signext=arith -o output example.bb
 ```
 
 ### 目标语言
@@ -43,24 +48,20 @@ bubbler -t dump example.bb
 
 ```text
 Targets:
-  dump
   c
-  c_single [c-single]
-  c_minimal [c-minimal, c_min, c-min]
-  c_minimal_single [c-minimal-single, c_min_single, c-min-single]
   python [py]
-  python_single [python-single, py-single, py_single]
 ```
 
-在选择目标语言时可以使用`[]`内的别名，例如，`c_minimal` 可以缩写为 `c-min`、`c_min` 或 `c_minimal`。
+当选择目标语言时，可以使用 `[]` 中的别名。例如，`python` 可以缩写为 `py`。
 
 - `dump`：输出 `.bb` 文件的解析树（中间表示）。
+
 - `c`：C 语言，为每个 `.bb` 文件输出一个 `.bb.h` 文件和一个 `.bb.c` 文件。
-- `c_single`：C 语言，为所有 `.bb` 文件输出一个包含所有定义的文件。输出文件名（包括扩展名）由 `-o` 选项确定。
-- `c_minimal`：C 语言，为每个 `.bb` 文件输出一个 `.bb.h` 文件和一个 `.bb.c` 文件。不为字段生成 getter/setter 方法。
-- `c_minimal_single`：C 语言，为所有 `.bb` 文件输出一个包含所有定义的文件。输出文件名（包括扩展名）由 `-o` 选项确定。不为字段生成 getter/setter 方法。
+  - 使用 `-single`：输出单个文件，其中包含所有`.bb`文件的所有定义。输出文件名（包括扩展名）由`-o`选项确定。
+  - 使用 `-minimal`：不为字段生成默认的getter/setter方法函数。
+
 - `python`：Python 语言，为每个 `.bb` 文件输出一个 `_bb.py` 文件。
-- `python-single`：Python 语言，为所有 `.bb` 文件输出一个包含所有定义的文件。输出文件名（包括扩展名）由 `-o` 选项确定。
+  - 使用`-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
 
 ## 协议语法
 
@@ -313,6 +314,8 @@ struct AnotherTest {
 
 在这个例子中，`arr` 字段的字节顺序被设置为大端序。
 
+> 小贴士：大小端序的设置对于浮点类型同样有效，
+
 ### 自定义 getter/setter
 
 可以为字段定义自定义的 getter 和 setter 方法，用于在读取或写入字段值时执行特定的操作。例如：
@@ -320,20 +323,20 @@ struct AnotherTest {
 ```bubbler
 struct SensorTemperatureData {
     uint16 temperature[2] {
-        get(float64): value / 10 - 40;
-        set(float64): value == 0 ? 0 : (value + 40) * 10;
-        set AnotherCustomSet(uint8): value == 0 ? 0 : (value + 40) * 10;
+        get temperature_display(float64): value / 10 - 40;
+        set temperature_display(float64): value == 0 ? 0 : (value + 40) * 10;
+        set another_custom_setter(uint8): value == 0 ? 0 : (value + 40) * 10;
     };
 }
 ```
 
 在这个例子中，`temperature` 字段有一个自定义的 getter 方法和两个自定义的 setter 方法。
 
-默认getter返回`float64`类型，并根据`value / 10 - 40`计算结果返回。其中`value`被填充为字段的值，是uint16类型。
+自定义getter名为 `temperature_display`, 返回`float64` 类型，并根据 `value / 10 - 40` 计算结果返回。其中 `value` 被填充为字段的值，是uint16类型。
 
-默认setter接收`float64`类型的参数，并根据`value == 0 ? 0 : (value + 40) * 10`计算结果并以此设置字段的值。其中`value`被填充为参数的值，是float64类型。
+自定义setter名为 `temperature_display`, 接收`float64` 类型的参数，并根据 `value == 0 ? 0 : (value + 40) * 10` 计算结果并以此设置字段的值。其中 `value` 被填充为参数的值，是 `float64` 类型。
 
-自定义setter名为`AnotherCustomSet`，`uint8`是参数类型。并根据`value == 0 ? 0 : (value + 40) * 10`计算结果并以此设置字段的值。其中`value`被填充为参数的值，是uint8类型。
+自定义setter名为 `another_custom_setter`，`uint8`是参数类型。并根据 `value == 0 ? 0 : (value + 40) * 10` 计算结果并以此设置字段的值。其中 `value` 被填充为参数的值，是 `uint8` 类型。
 
 ## 贡献
 

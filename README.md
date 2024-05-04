@@ -28,13 +28,18 @@ bubbler [options] <input file>
 
 - `-t <target>`: Target language
 - `-o <output>`: Output Path
+- `-inner`: Generate Inner Class (Nested Struct)
+- `-single`: Generate Single File (Combine all definitions into one file, instead of one generated file per source file)
+- `-minimal`: Generate Minimal Code (Usually without default getter/setter methods)
+- `-decnum`: Force Generate Decimal Format for Constant Value (Translate `0xFF` to `255`, `0b1111` to `15`, etc.)
+- `-signext`: Sign Extension Method used for Integer Field (Options: `shift`, `arith`)
 
 ### Examples
 
 ```sh
-bubble -t c -o output/ example.bb
-bubbler -t c-single -o gen.hpp example.bb
-bubbler -t dump example.bb
+bubbler -t c -minimal -o output/ example.bb
+bubbler -t c -single -o gen.hpp example.bb
+bubbler -t py -decnum -signext=arith -o output example.bb
 ```
 
 ### Target Languages
@@ -43,24 +48,20 @@ Run `bubbler` to see the list of supported target languages.
 
 ```text
 Targets:
-  dump
   c
-  c_single [c-single]
-  c_minimal [c-minimal, c_min, c-min]
-  c_minimal_single [c-minimal-single, c_min_single, c-min-single]
   python [py]
-  python_single [python-single, py-single, py_single]
 ```
 
-When selecting the target language, you can use the aliases inside `[]`. For example, `c_minimal` can be abbreviated as `c-min`, `c_min`, or `c_minimal`.
+When selecting the target language, you can use the aliases inside `[]`. For example, `python` can be abbreviated as `py`.
 
 - `dump`: Output the parse tree (intermediate representation) of the `.bb` file.
+
 - `c`: C language, output one `.bb.h` file and one `.bb.c` file for each `.bb` file.
-- `c_single`: C language, output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
-- `c_minimal`: C language, output one `.bb.h` file and one `.bb.c` file for each `.bb` file. Do not generate getter/setter methods for fields.
-- `c_minimal_single`: C language, output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option. Do not generate getter/setter methods for fields.
+  - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
+  - With `-minimal`: No generation of getter/setter methods for fields.
+
 - `python`: Python language, output one `_bb.py` file for each `.bb` file.
-- `python-single`: Python language, output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
+  - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
 
 ## Protocol Syntax
 

@@ -4,10 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/xaxys/bubbler/compiler"
+	"github.com/xaxys/bubbler/definition"
 	"github.com/xaxys/bubbler/generator"
+	"github.com/xaxys/bubbler/generator/gen"
+	"github.com/xaxys/bubbler/util"
 )
 
 var (
@@ -19,39 +21,54 @@ var (
 
 // Font: slant
 // http://www.network-science.de/ascii/
+const bannerTemplate = `
+{{- define "banner" -}}
+    __          __    __    __       
+   / /_  __  __/ /_  / /_  / /__  ___
+  / __ \/ / / / __ \/ __ \/ / _ \/ _/
+ / /_/ / /_/ / /_/ / /_/ / /  __/ /  
+/_.___/\__,_/_.___/_.___/_/\___/_/   
+
+Welcome to use bubbler!
+Version:   {{ .BuildTags }}
+Built:     {{ .BuildTime }}
+GitCommit: {{ .GitCommit }}
+GoVersion: {{ .GoVersion }}
+
+Usage:
+  bubbler [options] <input file>
+
+Options:
+  -t <target>  Target Language
+  -o <output>  Output Path
+  -inner       Generate Inner Class
+  -single      Generate Single File
+  -minimal     Generate Minimal Code
+  -decnum      Force Generate Decimal Format for Constant Value
+  -signext     Sign Extension Method (shift, arith)
+
+Targets:
+{{ range .Generators }}  {{ . }}
+{{ end }}
+Examples:
+  bubbler -t c -minimal -o output/ example.bb
+  bubbler -t c -single -o gen.hpp example.bb
+  bubbler -t py -decnum -signext=arith -o output example.bb
+
+For more information, please visit: https://github.com/xaxys/bubbler
+{{ end }}
+`
+
 func printBanner() {
-	fmt.Println()
-	fmt.Println(`    __          __    __    __       `)
-	fmt.Println(`   / /_  __  __/ /_  / /_  / /__  ___`)
-	fmt.Println(`  / __ \/ / / / __ \/ __ \/ / _ \/ _/`)
-	fmt.Println(` / /_/ / /_/ / /_/ / /_/ / /  __/ /  `)
-	fmt.Println(`/_.___/\__,_/_.___/_.___/_/\___/_/   `)
-	fmt.Println()
-	fmt.Println("Welcome to use bubbler!")
-	fmt.Println("Version:   " + BuildTags)
-	fmt.Println("Built:     " + BuildTime)
-	fmt.Println("GitCommit: " + GitCommit)
-	fmt.Println("GoVersion: " + GoVersion)
-	fmt.Println()
-	fmt.Println("Usage:")
-	fmt.Println("  bubbler [options] <input file>")
-	fmt.Println()
-	fmt.Println("Options:")
-	fmt.Println("  -t <target>  Target language")
-	fmt.Println("  -o <output>  Output Path")
-	fmt.Println()
-	fmt.Println("Targets:")
-	for _, gen := range generator.ListGenerators() {
-		fmt.Println("  " + gen)
+	data := map[string]interface{}{
+		"BuildTags":  BuildTags,
+		"BuildTime":  BuildTime,
+		"GitCommit":  GitCommit,
+		"GoVersion":  GoVersion,
+		"Generators": generator.ListGenerators(),
 	}
-	fmt.Println()
-	fmt.Println("Examples:")
-	fmt.Println("  bubble -t c -o output/ example.bb")
-	fmt.Println("  bubbler -t c-single -o gen.hpp example.bb")
-	fmt.Println("  bubbler -t dump example.bb")
-	fmt.Println()
-	fmt.Println("For more information, please visit: https://github.com/xaxys/bubbler")
-	fmt.Println()
+	tmpl := util.ExecuteTemplate(bannerTemplate, "banner", nil, data)
+	fmt.Println(tmpl)
 }
 
 func main() {
@@ -62,35 +79,52 @@ func main() {
 
 	target := ""
 	output := ""
+	inner := false
+	single := false
+	minimal := false
+	decnum := false
+	signext := ""
 	flag.StringVar(&target, "t", "", "Target Language")
 	flag.StringVar(&output, "o", "", "Output Path")
+	flag.BoolVar(&inner, "inner", false, "Generate Inner Class")
+	flag.BoolVar(&single, "single", false, "Generate Single File")
+	flag.BoolVar(&minimal, "minimal", false, "Generate Minimal Code")
+	flag.BoolVar(&decnum, "decnum", false, "Force Generate Decimal Format for Constant Value")
+	flag.StringVar(&signext, "signext", "", "Sign Extension Method (shift, arith)")
 	flag.Parse()
 
+	// check input file
 	files := flag.Args()
 	if len(files) == 0 {
-		fmt.Fprintln(os.Stderr, "no input files")
+		fmt.Fprintln(os.Stderr, &definition.GeneralError{
+			Err: &definition.NoInputFileError{},
+		})
 		os.Exit(1)
 	}
 	if len(files) > 1 {
-		fmt.Fprintln(os.Stderr, "only single input file is supported")
-		for _, f := range files {
-			if strings.HasPrefix(f, "-") {
-				fmt.Fprintln(os.Stderr, "(please notice that all '-xxx' options should be placed before input file, or they will be treated as input file)")
-				break
-			}
-		}
+		fmt.Fprintln(os.Stderr, &definition.GeneralError{
+			Err: &definition.MultipleInputFileError{
+				Files: files,
+			},
+		})
 		os.Exit(1)
 	}
 
-	if target == "" {
-		fmt.Fprintln(os.Stderr, "no target specified")
-		os.Exit(1)
-	}
-	if !generator.TargetMap.Has(target) {
-		fmt.Fprintf(os.Stderr, "target %s is not supported\n", target)
+	// check target before compiling
+	gentor, err := generator.GetGenerator(target)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
+	// check option before compiling
+	signextOpt, err := gen.SignExtMethod(signext)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	// compile
 	input := files[0]
 	units, err, warning := compiler.Compile(input)
 	if warning != nil {
@@ -101,7 +135,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = generator.Generate(target, output, units...)
+	// generate
+	options := gen.NewGenOptions(
+		gen.SingleFile(single),
+		gen.InnerClass(inner),
+		gen.MinimalCode(minimal),
+		gen.DecimalNumber(decnum),
+		signextOpt,
+	)
+	ctx := &gen.GenCtx{
+		Units:      units,
+		GenOptions: options,
+		OutputPath: output,
+	}
+	err, warning = gentor.Generate(ctx)
+	if warning != nil {
+		fmt.Fprintln(os.Stderr, warning)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

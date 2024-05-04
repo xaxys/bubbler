@@ -26,52 +26,52 @@ struct RovControlPropellerDData[6] {
 
 struct RovControlLightAData[6] {
     uint16 l1[2] {
-        get percent(float64): (value / 20000.0) * 100.0;
-        get percentInt(int32): (int32)((value / 20000.0) * 100.0 + 0.5);
-        set percent(float64): value < 0.5 ? 0 : value;
+        get l1_percent(float64): (value / 20000.0) * 100.0;
+        get l1_percent_int(int32): (int32)((value / 20000.0) * 100.0 + 0.5);
+        set l1_percent_int(float64): value < 0.5 ? 0 : value;
     };
     uint16 l2[2] {
-        get percent(float64): (value / 20000.0) * 100.0;
-        get percentInt(int32): (int32)((value / 20000.0) * 100.0 + 0.5);
-        set percent(float64): value < 0.5 ? 0 : value;
+        get l2_percent(float64): (value / 20000.0) * 100.0;
+        get l2_percent_int(int32): (int32)((value / 20000.0) * 100.0 + 0.5);
+        set l2_percent(float64): value < 0.5 ? 0 : value;
     };
     uint16 l3[2] {
-        get percent(float64): (value / 20000.0) * 100.0;
-        get percentInt(int32): (int32)((value / 20000.0) * 100.0 + 0.5);
-        set percent(float64): value < 0.5 ? 0 : value;
+        get l3_percent(float64): (value / 20000.0) * 100.0;
+        get l3_percent_int(int32): (int32)((value / 20000.0) * 100.0 + 0.5);
+        set l3_percent(float64): value < 0.5 ? 0 : value;
     };
 }
 
 struct RovControlLightBData[6] {
     uint16 l4[2] {
-        get percent(float64): (value / 20000.0) * 100.0;
-        get percentInt(int32): (int32)((value / 20000.0) * 100.0 + 0.5);
-        set percent(float64): value < 0.5 ? 0 : value;
+        get l4_percent(float64): (value / 20000.0) * 100.0;
+        get l4_percent_int(int32): (int32)((value / 20000.0) * 100.0 + 0.5);
+        set l4_percent(float64): value < 0.5 ? 0 : value;
     };
     uint16 l5[2] {
-        get percent(float64): (value / 20000.0) * 100.0;
-        get percentInt(int32): (int32)((value / 20000.0) * 100.0 + 0.5);
-        set percent(float64): value < 0.5 ? 0 : value;
+        get l5_percent(float64): (value / 20000.0) * 100.0;
+        get l5_percent_int(int32): (int32)((value / 20000.0) * 100.0 + 0.5);
+        set l5_percent(float64): value < 0.5 ? 0 : value;
     };
     uint16 l6[2] {
-        get percent(float64): (value / 20000.0) * 100.0;
-        get percentInt(int32): (int32)((value / 20000.0) * 100.0 + 0.5);
-        set percent(float64): value < 0.5 ? 0 : value;
+        get l6_percent(float64): (value / 20000.0) * 100.0;
+        get l6_percent_int(int32): (int32)((value / 20000.0) * 100.0 + 0.5);
+        set l6_percent(float64): value < 0.5 ? 0 : value;
     };
 }
 
 struct RovControlPtzData[6] {
     uint16 th1[2] {
-        get angle(float64): ((int32)value - 1500.0) / 1000.0 * 166.0;
-        get angleInt(int32): (int32)(((int32)value - 1500.0) / 1000.0 * 166.0 + 0.5);
+        get th1_angle(float64): ((int32)value - 1500.0) / 1000.0 * 166.0;
+        get th1_angle_int(int32): (int32)(((int32)value - 1500.0) / 1000.0 * 166.0 + 0.5);
     };
     uint16 th2[2] {
-        get angle(float64): ((int32)value - 1500.0) / 1000.0 * 166.0;
-        get angleInt(int32): (int32)(((int32)value - 1500.0) / 1000.0 * 166.0 + 0.5);
+        get th2_angle(float64): ((int32)value - 1500.0) / 1000.0 * 166.0;
+        get th2_angle_int(int32): (int32)(((int32)value - 1500.0) / 1000.0 * 166.0 + 0.5);
     };
     uint16 th3[2] {
-        get angle(float64): ((int32)value - 1500.0) / 1000.0 * 166.0;
-        get angleInt(int32): (int32)(((int32)value - 1500.0) / 1000.0 * 166.0 + 0.5);
+        get th3_angle(float64): ((int32)value - 1500.0) / 1000.0 * 166.0;
+        get th3_angle_int(int32): (int32)(((int32)value - 1500.0) / 1000.0 * 166.0 + 0.5);
     };
 }
 
@@ -95,18 +95,18 @@ struct RovControlServoCData[6] {
 
 struct RovControlPostureData[6] {
     uint16 forward_backward[2] {
-        get percent(float64): ((int32)value - 1530.0) / 10.0 / 0.45;
-        get percentInt(int32): (int32)((((int32)value - 1530.0) / 10.0 / 0.45) + 0.5);
-        set percent(float64): (uint16)(value * 10 * 0.45 + 1530.0);
+        get forward_backward_percent(float64): ((int32)value - 1530.0) / 10.0 / 0.45;
+        get forward_backward_percent_int(int32): (int32)((((int32)value - 1530.0) / 10.0 / 0.45) + 0.5);
+        set forward_backward_percent(float64): (uint16)(value * 10 * 0.45 + 1530.0);
     };
     uint16 left_right[2] {
-        get percent(float64): ((int32)value - 1530.0) / 10.0 / 0.45;
-        get percentInt(int32): (int32)((((int32)value - 1530.0) / 10.0 / 0.45) + 0.5);
-        set percent(float64): (uint16)(value * 10 * 0.45 + 1530.0);
+        get left_right_percent(float64): ((int32)value - 1530.0) / 10.0 / 0.45;
+        get left_right_percent_int(int32): (int32)((((int32)value - 1530.0) / 10.0 / 0.45) + 0.5);
+        set left_right_percent(float64): (uint16)(value * 10 * 0.45 + 1530.0);
     };
     uint16 up_down[2] {
-        get percent(float64): ((int32)value - 1530.0) / 10.0 / 0.45;
-        get percentInt(int32): (int32)((((int32)value - 1530.0) / 10.0 / 0.45) + 0.5);
-        set percent(float64): (uint16)(value * 10 * 0.45 + 1530.0);
+        get up_down_percent(float64): ((int32)value - 1530.0) / 10.0 / 0.45;
+        get up_down_percent_int(int32): (int32)((((int32)value - 1530.0) / 10.0 / 0.45) + 0.5);
+        set up_down_percent(float64): (uint16)(value * 10 * 0.45 + 1530.0);
     };
 }

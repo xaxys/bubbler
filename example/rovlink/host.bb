@@ -7,5 +7,5 @@ enum RovCamaraType[1] {
 }
 
 struct RovHostCamaraData[6] {
-    RovCamaraType<6> camaraType;
+    RovCamaraType<6> camara_type;
 }

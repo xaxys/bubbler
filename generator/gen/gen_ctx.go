@@ -1,4 +1,4 @@
-package genctx
+package gen
 
 import (
 	"fmt"
@@ -9,8 +9,8 @@ import (
 )
 
 type GenCtx struct {
-	Units []*definition.CompilationUnit
-	// GenOptions *GenOptions
+	Units      []*definition.CompilationUnit
+	GenOptions *GenOptions
 	OutputPath string
 }
 

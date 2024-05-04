@@ -7,8 +7,13 @@ type Position interface {
 	GetLine() int
 	GetColumn() int
 	GetPositionString() string
-	Eqauals(Position) bool
+	PositionEquals(Position) bool
 }
+
+// ==================== BasePosition ====================
+
+// ensure BasePosition implements Position
+var _ Position = (*BasePosition)(nil)
 
 type BasePosition struct {
 	File   string
@@ -17,6 +22,9 @@ type BasePosition struct {
 }
 
 func (p BasePosition) String() string {
+	if p.Line < 0 || p.Column < 0 {
+		return p.File
+	}
 	return fmt.Sprintf("%s:%d:%d", p.File, p.Line, p.Column+1)
 }
 
@@ -36,6 +44,6 @@ func (p BasePosition) GetPositionString() string {
 	return p.String()
 }
 
-func (p BasePosition) Eqauals(pos Position) bool {
+func (p BasePosition) PositionEquals(pos Position) bool {
 	return p.File == pos.GetFile() && p.Line == pos.GetLine() && p.Column == pos.GetColumn()
 }

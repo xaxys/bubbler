@@ -10,6 +10,7 @@ func ExecuteTemplate(templ, templateName string, fns template.FuncMap, data inte
 		fns = make(template.FuncMap)
 	}
 	fns["panic"] = templatePanic
+	fns["calc"] = templateCalc
 	fns["dict"] = templateDict
 	fns["iterate"] = templateIterate
 	fns["ToPascalCase"] = ToPascalCase
@@ -52,4 +53,8 @@ func templateDict(keysAndValues ...interface{}) map[string]interface{} {
 		d[k] = keysAndValues[i+1]
 	}
 	return d
+}
+
+func templateCalc(args ...interface{}) interface{} {
+	return Calculate(args...)
 }

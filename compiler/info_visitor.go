@@ -34,8 +34,8 @@ func (v *InfoVisitor) VisitProto(ctx *parser.ProtoContext) any {
 		return &definition.CompileError{
 			Position: definition.BasePosition{
 				File:   v.Unit.UnitName.Path,
-				Line:   ctx.GetStart().GetLine(),
-				Column: ctx.GetStart().GetColumn(),
+				Line:   -1,
+				Column: -1,
 			},
 			Err: &definition.PackageNameNotSetError{},
 		}

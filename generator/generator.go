@@ -5,47 +5,28 @@ import (
 	"strings"
 
 	"github.com/xaxys/bubbler/definition"
-	"github.com/xaxys/bubbler/generator/genctx"
+	"github.com/xaxys/bubbler/generator/gen"
 	"github.com/xaxys/bubbler/generator/target/c"
-	"github.com/xaxys/bubbler/generator/target/c_minimal"
-	"github.com/xaxys/bubbler/generator/target/c_minimal_single"
-	"github.com/xaxys/bubbler/generator/target/c_single"
-	"github.com/xaxys/bubbler/generator/target/dump"
 	"github.com/xaxys/bubbler/generator/target/python"
-	"github.com/xaxys/bubbler/generator/target/python_single"
 	"github.com/xaxys/bubbler/util"
 )
+
+type Generator interface {
+	Generate(ctx *gen.GenCtx) (err error, warning error)
+}
 
 var TargetMap *util.OrderedMap[string, Generator]
 
 func init() {
-	dumpGen := dump.NewDumpGenerator()
+	// dumpGen := dump.NewDumpGenerator()
 	cGen := c.NewCGenerator()
-	c_singleGen := c_single.NewCSingleGenerator()
-	c_minimalGen := c_minimal.NewCMinimalGenerator()
-	c_minimal_singleGen := c_minimal_single.NewCMinimalSingleGenerator()
 	pythonGen := python.NewPythonGenerator()
-	python_singleGen := python_single.NewPythonSingleGenerator()
 
 	TargetMap = util.NewOrderedMap[string, Generator]()
-	TargetMap.Put("dump", dumpGen)
+	// TargetMap.Put("dump", dumpGen)
 	TargetMap.Put("c", cGen)
-	TargetMap.Put("c_single", c_singleGen)
-	TargetMap.Put("c-single", c_singleGen)
-	TargetMap.Put("c_minimal", c_minimalGen)
-	TargetMap.Put("c-minimal", c_minimalGen)
-	TargetMap.Put("c_min", c_minimalGen)
-	TargetMap.Put("c-min", c_minimalGen)
-	TargetMap.Put("c_minimal_single", c_minimal_singleGen)
-	TargetMap.Put("c-minimal-single", c_minimal_singleGen)
-	TargetMap.Put("c_min_single", c_minimal_singleGen)
-	TargetMap.Put("c-min-single", c_minimal_singleGen)
 	TargetMap.Put("python", pythonGen)
 	TargetMap.Put("py", pythonGen)
-	TargetMap.Put("python_single", python_singleGen)
-	TargetMap.Put("python-single", python_singleGen)
-	TargetMap.Put("py-single", python_singleGen)
-	TargetMap.Put("py_single", python_singleGen)
 }
 
 func ListGenerators() []string {
@@ -73,26 +54,36 @@ func ListGenerators() []string {
 	return ret
 }
 
-type Generator interface {
-	Generate(ctx *genctx.GenCtx) error
+func GetGenerator(target string) (Generator, error) {
+	if target == "" {
+		return nil, &definition.GeneralError{
+			Err: &definition.TargetNotSpecifiedError{},
+		}
+	}
+	generator, ok := TargetMap.Get(target)
+	if !ok {
+		return nil, &definition.GeneralError{
+			Err: &definition.TargetNotSupportedError{
+				Target: target,
+			},
+		}
+	}
+	return generator, nil
 }
 
-func Generate(target string, output string, units ...*definition.CompilationUnit) error {
-	gen, ok := TargetMap.Get(target)
-	if !ok {
-		return fmt.Errorf("target %s is not supported", target)
+func Generate(target string, output string, options *gen.GenOptions, units ...*definition.CompilationUnit) (retErr error, retWarning error) {
+	generator, err := GetGenerator(target)
+	if err != nil {
+		return err, nil
 	}
 
-	ctx := &genctx.GenCtx{
+	ctx := &gen.GenCtx{
 		Units:      units,
+		GenOptions: options,
 		OutputPath: output,
 	}
 
-	err := gen.Generate(ctx)
+	err, warning := generator.Generate(ctx)
 
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err, warning
 }

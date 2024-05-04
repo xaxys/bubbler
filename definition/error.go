@@ -59,6 +59,13 @@ type GeneralError struct {
 }
 
 func (e GeneralError) String() string {
+	if e.Position == nil {
+		return fmt.Sprintf(
+			"%s %s",
+			color.FgLightRed.Render("error:"),
+			e.Err,
+		)
+	}
 	return fmt.Sprintf(
 		"%s %s %s",
 		color.FgLightWhite.Sprintf("%s:", e.GetPositionString()),
@@ -110,6 +117,25 @@ func (e CompileError) String() string {
 }
 
 func (e CompileError) Error() string {
+	return e.String()
+}
+
+// --------------------
+
+type GenerateError struct {
+	TopLevelError
+	Err error
+}
+
+func (e GenerateError) String() string {
+	return fmt.Sprintf(
+		"%s %s",
+		color.FgLightRed.Render("generate error:"),
+		e.Err,
+	)
+}
+
+func (e GenerateError) Error() string {
 	return e.String()
 }
 
@@ -463,6 +489,32 @@ func (e OptionValueError) Error() string {
 
 // --------------------
 
+type FieldNotAlignedError struct {
+	FieldName string
+	Start     int64
+	Msg       string
+}
+
+func (e FieldNotAlignedError) String() string {
+	if e.Start == -1 {
+		return fmt.Sprintf("cannot determine field '%s' start: %s",
+			color.FgLightWhite.Render(e.FieldName),
+			e.Msg,
+		)
+	}
+	return fmt.Sprintf("field '%s' start at %s is not aligned: %s",
+		color.FgLightWhite.Render(e.FieldName),
+		color.FgLightWhite.Render(util.ToSizeString(e.Start)),
+		e.Msg,
+	)
+}
+
+func (e FieldNotAlignedError) Error() string {
+	return e.String()
+}
+
+// --------------------
+
 type FieldConstValueTypeError struct {
 	Constant string
 	Expect   string
@@ -617,5 +669,68 @@ func (e NameStyleError) String() string {
 }
 
 func (e NameStyleError) Error() string {
+	return e.String()
+}
+
+// --------------------
+
+type TargetNotSupportedError struct {
+	Target string
+}
+
+func (e TargetNotSupportedError) String() string {
+	return fmt.Sprintf("target '%s' not supported", e.Target)
+}
+
+func (e TargetNotSupportedError) Error() string {
+	return e.String()
+}
+
+// --------------------
+
+type TargetNotSpecifiedError struct{}
+
+func (e TargetNotSpecifiedError) String() string {
+	return fmt.Sprintf("target not specified")
+}
+
+func (e TargetNotSpecifiedError) Error() string {
+	return e.String()
+}
+
+// --------------------
+
+type NoInputFileError struct{}
+
+func (e NoInputFileError) String() string {
+	return fmt.Sprintf("no input file specified")
+}
+
+func (e NoInputFileError) Error() string {
+	return e.String()
+}
+
+// --------------------
+
+type MultipleInputFileError struct {
+	Files []string
+}
+
+func (e MultipleInputFileError) String() string {
+	hint := false
+	for i, file := range e.Files {
+		e.Files[i] = color.FgLightWhite.Render(file)
+		if strings.HasPrefix(file, "-") {
+			hint = true
+		}
+	}
+	str := fmt.Sprintf("only one input file is allowed, but got: %s", strings.Join(e.Files, ", "))
+	if hint {
+		str += "\n" + "(please notice that all '-xxx' options should be placed before input file, or they will be treated as input file)"
+	}
+	return str
+}
+
+func (e MultipleInputFileError) Error() string {
 	return e.String()
 }

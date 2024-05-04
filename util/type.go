@@ -356,8 +356,66 @@ func ToBool(v interface{}) bool {
 		return v != 0
 	case uint:
 		return v != 0
+	case float64:
+		return v != 0.0
+	case float32:
+		return v != 0.0
 	default:
 		panic("invalid type")
+	}
+}
+
+func IsBool(v interface{}) bool {
+	switch v.(type) {
+	case bool:
+		return true
+	default:
+		return false
+	}
+}
+
+func IsInt(v interface{}) bool {
+	switch v.(type) {
+	case int, int8, int16, int32, int64:
+		return true
+	default:
+		return false
+	}
+}
+
+func IsUint(v interface{}) bool {
+	switch v.(type) {
+	case uint, uint8, uint16, uint32, uint64:
+		return true
+	default:
+		return false
+	}
+}
+
+func IsIntOrUint(v interface{}) bool {
+	switch v.(type) {
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return true
+	default:
+		return false
+	}
+}
+
+func IsFloat(v interface{}) bool {
+	switch v.(type) {
+	case float32, float64:
+		return true
+	default:
+		return false
+	}
+}
+
+func IsNumber(v interface{}) bool {
+	switch v.(type) {
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return true
+	default:
+		return false
 	}
 }
 

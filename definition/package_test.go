@@ -31,11 +31,11 @@ func TestPackage_Equals(t *testing.T) {
 	p2 := NewPackage(nil, []string{"a", "b", "c", "d"})
 	p3 := NewPackage(nil, []string{"a", "b", "c", "e"})
 
-	if !p1.Equals(p2) {
+	if !p1.PackageEquals(p2) {
 		t.Errorf("Expected p1 to be equal to p2")
 	}
 
-	if p1.Equals(p3) {
+	if p1.PackageEquals(p3) {
 		t.Errorf("Expected p1 to be not equal to p3")
 	}
 }

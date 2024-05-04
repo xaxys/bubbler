@@ -110,27 +110,14 @@ func (v *ProtoVisitor) VisitStructDef(ctx *parser.StructDefContext) any {
 			panic("unreachable")
 		}
 	}
-	if size%8 != 0 {
-		return &definition.CompileError{
-			Position: definition.BasePosition{
-				File:   v.Unit.UnitName.Path,
-				Line:   ctx.Size_().GetStart().GetLine(),
-				Column: ctx.Size_().GetStart().GetColumn(),
-			},
-			Err: &definition.InvalidSizeError{
-				Size: size,
-				Msg:  "struct size cannot be non-byte-aligned (bit size must be multiple of 8)",
-			},
-		}
-	}
 
+	var fields *util.OrderedMap[string, definition.Field]
 	body := ctx.StructBody().Accept(v)
-	fields := make([]definition.Field, 0)
 	switch val := body.(type) {
 	case error:
 		return val
-	case []definition.Field:
-		if len(val) == 0 {
+	case *util.OrderedMap[string, definition.Field]:
+		if val.Len() == 0 {
 			return &definition.CompileError{
 				Position: definition.BasePosition{
 					File:   v.Unit.UnitName.Path,
@@ -159,34 +146,56 @@ func (v *ProtoVisitor) VisitStructDef(ctx *parser.StructDefContext) any {
 		StructFields:  fields,
 	}
 
-	for _, field := range fields {
+	// set field belongs
+	for _, field := range fields.Values() {
 		field.SetFieldBelongs(structDef)
 	}
 
-	// TODO: check if struct normal field is byte-aligned
-	if size == 0 {
-		fixedSize, dynamic := structDef.SumFieldBitSize()
-		if fixedSize%8 != 0 {
-			return &definition.CompileError{
-				Position: definition.BasePosition{
-					File:   v.Unit.UnitName.Path,
-					Line:   ctx.StructBody().GetStart().GetLine(),
-					Column: ctx.StructBody().GetStart().GetColumn(),
-				},
-				Err: &definition.InvalidSizeError{
-					Size: fixedSize,
-					Msg:  "struct fixed-size field must be byte-aligned (bit size must be multiple of 8)",
-				},
+	// check field alignment
+	err := structDef.ForEachField(func(field definition.Field, index int, start int64) error {
+		switch val := field.(type) {
+		case *definition.NormalField:
+			if val.FieldType.GetTypeID().IsStruct() && (start%8 != 0 || start == -1) {
+				return &definition.CompileError{
+					Position: val,
+					Err: &definition.FieldNotAlignedError{
+						FieldName: val.FieldName,
+						Start:     start,
+						Msg:       "struct type field must be byte-aligned (bit size must be multiple of 8)",
+					},
+				}
 			}
+		default:
 		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// check struct size
+	fixedSize, dynamic := structDef.SumFieldBitSize()
+	if fixedSize%8 != 0 {
+		return &definition.CompileError{
+			Position: &definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.StructName().GetStart().GetLine(),
+				Column: ctx.StructName().GetStart().GetColumn(),
+			},
+			Err: &definition.InvalidSizeError{
+				Size: fixedSize,
+				Msg:  "struct size cannot be non-byte-aligned (sum of fields' bit size must be multiple of 8)",
+			},
+		}
+	}
+
+	if size == 0 {
 		if dynamic {
 			structDef.StructBitSize = -1
 		} else {
 			structDef.StructBitSize = fixedSize
 		}
 	} else {
-		// check struct size
-		fixedSize, dynamic := structDef.SumFieldBitSize()
 		pos := definition.BasePosition{
 			File:   v.Unit.UnitName.Path,
 			Line:   ctx.Size_().GetStart().GetLine(),
@@ -238,9 +247,10 @@ func (v *ProtoVisitor) VisitStructName(ctx *parser.StructNameContext) any {
 				Line:   ctx.Ident().GetStart().GetLine(),
 				Column: ctx.Ident().GetStart().GetColumn(),
 			},
-			Warning: &definition.NameStyleWarning{
-				Name: name,
-				Msg:  fmt.Sprintf("non-standard PascalCase detected. use '%s' instead.", standard),
+			Warning: &definition.NameStyleNotStandardWarning{
+				OriginName: name,
+				RecommName: standard,
+				Standard:   "PascalCase",
 			},
 		}
 		v.Warning = definition.TopLevelWarningsJoin(v.Warning, warn)
@@ -250,43 +260,74 @@ func (v *ProtoVisitor) VisitStructName(ctx *parser.StructNameContext) any {
 
 func (v *ProtoVisitor) VisitStructBody(ctx *parser.StructBodyContext) any {
 	var errs definition.TopLevelError
+	names := util.NewOrderedMap[string, definition.Position]()
 	fields := util.NewOrderedMap[string, definition.Field]()
+
+	addName := func(name string, pos definition.Position) error {
+		prev, ok := names.Get(name)
+		if ok {
+			return &definition.CompileError{
+				Position: pos,
+				Err: &definition.DefinitionDuplicateError{
+					PrevDef: prev,
+					DefName: name,
+				},
+			}
+		}
+		names.Put(name, pos)
+		return nil
+	}
+
 	var addField func(f definition.Field) error
 	addField = func(f definition.Field) error {
 		switch val := f.(type) {
 		case *definition.NormalField:
-			prev, ok := fields.Get(val.FieldName)
-			if ok {
-				return &definition.CompileError{
-					Position: f,
-					Err: &definition.DefinitionDuplicateError{
-						PrevDef: prev,
-						DefName: val.FieldName,
-					},
+			for _, entry := range val.FieldMethods.Entries() {
+				name, group := entry.Key, entry.Value
+				err := addName(name, group.First().Value)
+				if err != nil {
+					return err
 				}
+			}
+			err := addName(val.FieldName, val)
+			if err != nil {
+				return err
 			}
 			fields.Put(val.FieldName, val)
 			return nil
 
 		case *definition.EmbeddedField:
-			prev, ok := fields.Get(val.FieldType.StructName)
-			if ok {
-				return &definition.CompileError{
-					Position: f,
-					Err: &definition.DefinitionDuplicateError{
-						PrevDef: prev,
-						DefName: val.FieldType.StructName,
-					},
-				}
+			err := addName(val.FieldType.StructName, val)
+			if err != nil {
+				return err
 			}
 			fields.Put(val.FieldType.StructName, val)
-
 			// extract only when first time
+			//
+			// example:
+			// struct OuterStruct {
+			//     int64 some_thing_from_outer;
+			//     struct FirstEmbed {
+			//         int64 some_thing_from_first;
+			//         struct SecondEmbed {
+			//             int64 some_thing_from_second;
+			//             // NormalField some_thing_from_first | Belongs: None -> SecondEmbed
+			//         };
+			//         // NormalField some_thing_from_first     | Belongs: None -> FirstEmbed
+			//         // EmbeddedField SecondEmbed             | Belongs: None -> FirstEmbed // <- extract this
+			//	       // NormalField some_thing_from_second    | Belongs: CopyResult SecondExtract -> FirstEmbed // from extract SecondEmbed
+			//     };
+			//     // NormalField some_thing_from_outer         | Belongs: None -> OuterStruct
+			//     // EmbeddedField FirstEmbed -> OuterStruct   | Belongs: None -> OuterStruct // <- extract this
+			//     // NormalField some_thing_from_first         | Belongs: CopyResult FirstEmbed -> OuterStruct // from extract FirstEmbed
+			//     // EmbeddedField SecondEmbed -> OuterStruct  | Belongs: CopyResult FirstEmbed -> OuterStruct // from extract FirstEmbed, no extract again
+			//     // NormalField some_thing_from_second        | Belongs: CopyResult FirstEmbed -> OuterStruct // from extract FirstEmbed
+			// }
 			if val.FieldBelongs == nil {
 				// flatten embedded struct embeddedFields to toplevel
 				// add virtual 0-bit size anonymous struct field as record
 				embeddedFields := val.FieldType.StructFields
-				for _, field := range embeddedFields {
+				for _, field := range embeddedFields.Values() {
 					// do copy
 					newField := field.Copy()
 					// newField.SetFieldFromEmbedded(val)
@@ -297,26 +338,23 @@ func (v *ProtoVisitor) VisitStructBody(ctx *parser.StructBodyContext) any {
 				}
 			}
 			return nil
+
 		case *definition.VoidField:
 			fields.PutAnonymous(val)
 			return nil
+
 		case *definition.ConstantField:
 			if val.FieldName == "" {
 				fields.PutAnonymous(val)
 				return nil
 			}
-			prev, ok := fields.Get(val.FieldName)
-			if ok {
-				return &definition.CompileError{
-					Position: f,
-					Err: &definition.DefinitionDuplicateError{
-						PrevDef: prev,
-						DefName: val.FieldName,
-					},
-				}
+			err := addName(val.FieldName, val)
+			if err != nil {
+				return err
 			}
 			fields.Put(val.FieldName, val)
 			return nil
+
 		default:
 			panic("unreachable")
 		}
@@ -367,7 +405,7 @@ func (v *ProtoVisitor) VisitStructBody(ctx *parser.StructBodyContext) any {
 		return errs
 	}
 
-	return fields.Values()
+	return fields
 }
 
 func (v *ProtoVisitor) VisitStructElement(ctx *parser.StructElementContext) any {
@@ -499,21 +537,7 @@ func (v *ProtoVisitor) VisitFieldNormal(ctx *parser.FieldNormalContext) any {
 		}
 	}
 
-	fieldDef := &definition.NormalField{
-		BasePosition: definition.BasePosition{
-			File:   v.Unit.UnitName.Path,
-			Line:   ctx.GetStart().GetLine(),
-			Column: ctx.GetStart().GetColumn(),
-		},
-		FieldName:    name,
-		FieldType:    type_,
-		FieldBitSize: size,
-		FieldBelongs: nil,
-		FieldMethods: nil,
-		FieldOptions: options,
-		FromEmbedded: nil,
-	}
-
+	methods := util.NewOrderedMap[string, *util.OrderedMap[definition.MethodKindID, definition.Method]]()
 	if ctx.FieldMethods() != nil {
 		basicType, ok := type_.(*definition.BasicType)
 		if !ok {
@@ -530,14 +554,35 @@ func (v *ProtoVisitor) VisitFieldNormal(ctx *parser.FieldNormalContext) any {
 			}
 		}
 		methodVisitor := NewMethodVisitor(v, basicType)
-		methods := ctx.FieldMethods().Accept(methodVisitor)
-		switch val := methods.(type) {
+		methodsRet := ctx.FieldMethods().Accept(methodVisitor)
+		switch val := methodsRet.(type) {
 		case error:
 			return val
-		case []*definition.Method:
-			fieldDef.FieldMethods = val
+		case *util.OrderedMap[string, *util.OrderedMap[definition.MethodKindID, definition.Method]]:
+			methods = val
 		default:
 			panic("unreachable")
+		}
+	}
+
+	fieldDef := &definition.NormalField{
+		BasePosition: definition.BasePosition{
+			File:   v.Unit.UnitName.Path,
+			Line:   ctx.GetStart().GetLine(),
+			Column: ctx.GetStart().GetColumn(),
+		},
+		FieldName:    name,
+		FieldType:    type_,
+		FieldBitSize: size,
+		FieldBelongs: nil,
+		FieldMethods: methods,
+		FieldOptions: options,
+	}
+
+	// set method belongs
+	for _, group := range methods.Values() {
+		for _, method := range group.Values() {
+			method.SetMethodBelongs(fieldDef)
 		}
 	}
 
@@ -563,39 +608,6 @@ func (v *ProtoVisitor) VisitFieldEmbedded(ctx *parser.FieldEmbeddedContext) any 
 		}
 	}
 
-	// TODO: allow unmatched size in embedded field
-	// size := int64(0)
-	// if ctx.Size_() != nil {
-	// 	ret := ctx.Size_().Accept(v)
-	// 	switch val := ret.(type) {
-	// 	case error:
-	// 		return val
-	// 	case int64:
-	// 		size = val
-	// 	default:
-	// 		panic("unreachable")
-	// 	}
-	// }
-
-	// if size == 0 {
-	// 	size = type_.GetTypeBitSize()
-	// } else {
-	// 	type_Size := type_.GetTypeBitSize()
-	// 	if size > type_Size {
-	// 		return &definition.CompileError{
-	// 			Position: definition.BasePosition{
-	// 				File:   v.Unit.UnitName.Path,
-	// 				Line:   ctx.Size_().GetStart().GetLine(),
-	// 				Column: ctx.Size_().GetStart().GetColumn(),
-	// 			},
-	// 			Err: &definition.InvalidSizeError{
-	// 				Size: size,
-	// 				Msg:  fmt.Sprintf("declared size cannot be greater than type size [%s] (%d bits)", util.ToSizeString(type_Size), type_Size),
-	// 			},
-	// 		}
-	// 	}
-	// }
-
 	options := util.NewOrderedMap[string, *definition.Option]()
 	if ctx.FieldOptions() != nil {
 		ret := ctx.FieldOptions().Accept(v)
@@ -619,7 +631,6 @@ func (v *ProtoVisitor) VisitFieldEmbedded(ctx *parser.FieldEmbeddedContext) any 
 		FieldBitSize: type_.StructBitSize,
 		FieldBelongs: nil,
 		FieldOptions: options,
-		FromEmbedded: nil,
 	}
 
 	return fieldDef
@@ -659,7 +670,6 @@ func (v *ProtoVisitor) VisitFieldVoid(ctx *parser.FieldVoidContext) any {
 		FieldBitSize: size,
 		FieldOptions: options,
 		FieldBelongs: nil,
-		FromEmbedded: nil,
 	}
 
 	return fieldDef
@@ -796,7 +806,6 @@ func (v *ProtoVisitor) VisitFieldConstant(ctx *parser.FieldConstantContext) any 
 		FieldConstant: constant,
 		FieldBelongs:  nil,
 		FieldOptions:  options,
-		FromEmbedded:  nil,
 	}
 
 	return fieldDef
@@ -875,9 +884,10 @@ func (v *ProtoVisitor) VisitFieldName(ctx *parser.FieldNameContext) any {
 				Line:   ctx.Ident().GetStart().GetLine(),
 				Column: ctx.Ident().GetStart().GetColumn(),
 			},
-			Warning: &definition.NameStyleWarning{
-				Name: name,
-				Msg:  fmt.Sprintf("non-standard snake_case detected. use '%s' instead.", standard),
+			Warning: &definition.NameStyleNotStandardWarning{
+				OriginName: name,
+				RecommName: standard,
+				Standard:   "snake_case",
 			},
 		}
 		v.Warning = definition.TopLevelWarningsJoin(v.Warning, warn)
@@ -984,34 +994,25 @@ func NewMethodVisitor(v *ProtoVisitor, fieldType *definition.BasicType) *MethodV
 }
 
 func (v *MethodVisitor) VisitFieldMethods(ctx *parser.FieldMethodsContext) any {
-	getters := util.NewOrderedMap[string, *definition.Method]()
-	setters := util.NewOrderedMap[string, *definition.Method]()
-	addGetter := func(m *definition.Method) error {
-		prev, ok := getters.Get(m.MethodName)
+	methods := util.NewOrderedMap[string, *util.OrderedMap[definition.MethodKindID, definition.Method]]()
+	addMethod := func(m definition.Method) error {
+		group, ok := methods.Get(m.GetMethodName())
 		if ok {
-			return &definition.CompileError{
-				Position: m,
-				Err: &definition.DefinitionDuplicateError{
-					PrevDef: prev,
-					DefName: m.MethodName,
-				},
+			prev, ok2 := group.Get(m.GetMethodKind())
+			if ok2 {
+				return &definition.CompileError{
+					Position: m,
+					Err: &definition.DefinitionDuplicateError{
+						PrevDef: prev,
+						DefName: m.GetMethodName(),
+					},
+				}
 			}
+		} else {
+			group = util.NewOrderedMap[definition.MethodKindID, definition.Method]()
+			methods.Put(m.GetMethodName(), group)
 		}
-		getters.Put(m.MethodName, m)
-		return nil
-	}
-	addSetter := func(m *definition.Method) error {
-		prev, ok := setters.Get(m.MethodName)
-		if ok {
-			return &definition.CompileError{
-				Position: m,
-				Err: &definition.DefinitionDuplicateError{
-					PrevDef: prev,
-					DefName: m.MethodName,
-				},
-			}
-		}
-		setters.Put(m.MethodName, m)
+		group.Put(m.GetMethodKind(), m)
 		return nil
 	}
 
@@ -1027,20 +1028,10 @@ func (v *MethodVisitor) VisitFieldMethods(ctx *parser.FieldMethodsContext) any {
 		case error:
 			return val
 
-		case *definition.Method:
-			switch val.MethodKind {
-			case definition.MethodKindID_Get:
-				err := addGetter(val)
-				if err != nil {
-					return err
-				}
-			case definition.MethodKindID_Set:
-				err := addSetter(val)
-				if err != nil {
-					return err
-				}
-			default:
-				panic("unreachable")
+		case definition.Method:
+			err := addMethod(val)
+			if err != nil {
+				return err
 			}
 
 		default:
@@ -1052,9 +1043,6 @@ func (v *MethodVisitor) VisitFieldMethods(ctx *parser.FieldMethodsContext) any {
 		return errs
 	}
 
-	gettersList := getters.Values()
-	settersList := setters.Values()
-	methods := append(gettersList, settersList...)
 	return methods
 }
 
@@ -1077,6 +1065,18 @@ func (v *MethodVisitor) VisitFieldMethod(ctx *parser.FieldMethodContext) any {
 			name = val
 		default:
 			panic("unreachable")
+		}
+	}
+
+	// TODO: support default (anonymous) method (method without name)
+	if name == "" {
+		return &definition.CompileError{
+			Position: definition.BasePosition{
+				File:   v.Unit.UnitName.Path,
+				Line:   ctx.GetOp().GetLine(),
+				Column: ctx.GetOp().GetColumn(),
+			},
+			Err: fmt.Errorf("anonymous method is not supported yet"),
 		}
 	}
 
@@ -1103,17 +1103,34 @@ func (v *MethodVisitor) VisitFieldMethod(ctx *parser.FieldMethodContext) any {
 		panic("unreachable")
 	}
 
-	methodDef := &definition.Method{
-		BasePosition: definition.BasePosition{
-			File:   v.Unit.UnitName.Path,
-			Line:   ctx.GetStart().GetLine(),
-			Column: ctx.GetStart().GetColumn(),
-		},
-		MethodKind:      kind,
-		MethodName:      name,
-		MethodParamType: type_,
-		MethodExpr:      expr,
-		MethodBelongs:   nil,
+	pos := definition.BasePosition{
+		File:   v.Unit.UnitName.Path,
+		Line:   ctx.GetStart().GetLine(),
+		Column: ctx.GetStart().GetColumn(),
+	}
+
+	var methodDef definition.Method
+	switch kind {
+	case definition.MethodKindID_Get:
+		methodDef = &definition.GetMethod{
+			BasePosition:  pos,
+			MethodName:    name,
+			MethodRetType: type_,
+			MethodExpr:    expr,
+			MethodBelongs: nil,
+		}
+
+	case definition.MethodKindID_Set:
+		methodDef = &definition.SetMethod{
+			BasePosition:    pos,
+			MethodName:      name,
+			MethodParamType: type_,
+			MethodExpr:      expr,
+			MethodBelongs:   nil,
+		}
+
+	default:
+		panic("unreachable")
 	}
 
 	return methodDef
@@ -1130,11 +1147,11 @@ func (v *MethodVisitor) VisitMethodName(ctx *parser.MethodNameContext) any {
 			},
 			Err: &definition.NameStyleError{
 				Name: name,
-				Msg:  "method name must be uncapitalized, recommended to use camelCase",
+				Msg:  "method name must be uncapitalized, recommended to use snake_case",
 			},
 		}
 	}
-	standard := util.TocamelCase(util.TocamelCase(name))
+	standard := util.Tosnake_case(util.Tosnake_case(name))
 	if name != standard {
 		warn := &definition.CompileWarning{
 			Position: definition.BasePosition{
@@ -1142,9 +1159,10 @@ func (v *MethodVisitor) VisitMethodName(ctx *parser.MethodNameContext) any {
 				Line:   ctx.Ident().GetStart().GetLine(),
 				Column: ctx.Ident().GetStart().GetColumn(),
 			},
-			Warning: &definition.NameStyleWarning{
-				Name: name,
-				Msg:  fmt.Sprintf("non-standard camelCase detected. use '%s' instead.", standard),
+			Warning: &definition.NameStyleNotStandardWarning{
+				OriginName: name,
+				RecommName: standard,
+				Standard:   "snake_case",
 			},
 		}
 		v.Warning = definition.TopLevelWarningsJoin(v.Warning, warn)
@@ -1992,15 +2010,7 @@ func (v *ProtoVisitor) VisitArrayElementType(ctx *parser.ArrayElementTypeContext
 		}
 	}
 	if ctx.StructType() != nil {
-		// TODO: return ctx.StructType().Accept(v)
-		return &definition.GeneralError{
-			Position: definition.BasePosition{
-				File:   v.Unit.UnitName.Path,
-				Line:   ctx.StructType().GetStart().GetLine(),
-				Column: ctx.StructType().GetStart().GetColumn(),
-			},
-			Err: fmt.Errorf("struct type as array element is not supported yet"),
-		}
+		return ctx.StructType().Accept(v)
 	}
 	if ctx.EnumType() != nil {
 		return ctx.EnumType().Accept(v)
@@ -2022,24 +2032,7 @@ func (v *ProtoVisitor) VisitArrayElementType(ctx *parser.ArrayElementTypeContext
 		}
 
 		ty := v.Unit.GlobalTypes.MustGet(name)
-		switch val := ty.(type) {
-		case *definition.Struct:
-			// TODO: support struct as array element
-			return &definition.GeneralError{
-				Position: definition.BasePosition{
-					File:   v.Unit.UnitName.Path,
-					Line:   ctx.Ident().GetStart().GetLine(),
-					Column: ctx.Ident().GetStart().GetColumn(),
-				},
-				Err: fmt.Errorf("struct type as array element is not supported yet"),
-			}
-
-		case *definition.Enum:
-			return val
-
-		default:
-			panic("unreachable")
-		}
+		return ty
 	}
 	panic("unreachable")
 }
@@ -2212,8 +2205,9 @@ func (v *ProtoVisitor) VisitEnumDef(ctx *parser.EnumDefContext) any {
 		EnumValues:  values,
 	}
 
+	// set enum belongs
 	for _, val := range values.Values() {
-		val.EnumBelongs = enumDef
+		val.EnumValueBelongs = enumDef
 	}
 
 	return enumDef
@@ -2338,9 +2332,9 @@ func (v *ProtoVisitor) VisitEnumValue(ctx *parser.EnumValueContext) any {
 			Line:   ctx.GetStart().GetLine(),
 			Column: ctx.GetStart().GetColumn(),
 		},
-		EnumValueName: name,
-		EnumValue:     value,
-		EnumBelongs:   nil,
+		EnumValueName:    name,
+		EnumValue:        value,
+		EnumValueBelongs: nil,
 	}
 
 	return fieldDef
@@ -2369,9 +2363,10 @@ func (v *ProtoVisitor) VisitEnumName(ctx *parser.EnumNameContext) any {
 				Line:   ctx.Ident().GetStart().GetLine(),
 				Column: ctx.Ident().GetStart().GetColumn(),
 			},
-			Warning: &definition.NameStyleWarning{
-				Name: name,
-				Msg:  fmt.Sprintf("non-standard PascalCase detected. use '%s' instead.", standard),
+			Warning: &definition.NameStyleNotStandardWarning{
+				OriginName: name,
+				RecommName: standard,
+				Standard:   "PascalCase",
 			},
 		}
 		v.Warning = definition.TopLevelWarningsJoin(v.Warning, warn)
@@ -2402,9 +2397,10 @@ func (v *ProtoVisitor) VisitEnumValueName(ctx *parser.EnumValueNameContext) any 
 				Line:   ctx.Ident().GetStart().GetLine(),
 				Column: ctx.Ident().GetStart().GetColumn(),
 			},
-			Warning: &definition.NameStyleWarning{
-				Name: name,
-				Msg:  fmt.Sprintf("non-standard ALLCAP_CASE detected. use '%s' instead.", standard),
+			Warning: &definition.NameStyleNotStandardWarning{
+				OriginName: name,
+				RecommName: standard,
+				Standard:   "ALLCAP_CASE",
 			},
 		}
 		v.Warning = definition.TopLevelWarningsJoin(v.Warning, warn)
@@ -2480,32 +2476,31 @@ func (v *ProtoVisitor) VisitEmptyStatement_(ctx *parser.EmptyStatement_Context) 
 
 // TypePromotion input basic type only
 // func TypePromotion(ty1, ty2 definition.TypeID) (ret definition.TypeID, warning error, err error) {
-// 	if !ty1.IsBasic() || !ty2.IsBasic() {
-// 		panic("unexpected usage")
-// 	}
-// 	if ty1 == ty2 {
-// 		return ty1, nil, nil
-// 	}
-// 	if ty1.IsBool() && ty2.IsBool() {
-// 		return definition.TypeID_Bool, nil, nil
-// 	}
-// 	if ty1.IsBool() || ty2.IsBool() {
-// 		return -1, nil, &definition.TypeNotMatchError{
-// 			Type1: ty1.String(),
-// 			Type2: ty2.String(),
-// 		}
-// 	}
-// 	if ty1.IsFloat() && ty2.IsFloat() {
-// 		ty := max(ty1, ty2)
-// 		return ty, nil, nil
-// 	}
-// 	if ty1.IsFloat() || ty2.IsFloat() {
-// 		ty := max(ty1, ty2)
-// 		return ty, nil, nil
-// 	}
-// 	if ty1.IsInt() && ty2.IsInt() {
-// 		ty := max(ty1, ty2)
-// 		return ty, nil, nil
-// 	}
-
+//    if !ty1.IsBasic() || !ty2.IsBasic() {
+//        panic("unexpected usage")
+//    }
+//    if ty1 == ty2 {
+//        return ty1, nil, nil
+//    }
+//    if ty1.IsBool() && ty2.IsBool() {
+//        return definition.TypeID_Bool, nil, nil
+//    }
+//    if ty1.IsBool() || ty2.IsBool() {
+//        return -1, nil, &definition.TypeNotMatchError{
+//            Type1: ty1.String(),
+//            Type2: ty2.String(),
+//        }
+//    }
+//    if ty1.IsFloat() && ty2.IsFloat() {
+//        ty := max(ty1, ty2)
+//        return ty, nil, nil
+//    }
+//    if ty1.IsFloat() || ty2.IsFloat() {
+//        ty := max(ty1, ty2)
+//        return ty, nil, nil
+//    }
+//    if ty1.IsInt() && ty2.IsInt() {
+//        ty := max(ty1, ty2)
+//        return ty, nil, nil
+//    }
 // }

@@ -19,6 +19,27 @@ func NewOrderedMap[K comparable, V any]() *OrderedMap[K, V] {
 	}
 }
 
+func (m *OrderedMap[K, V]) Sub(start, end int) *OrderedMap[K, V] {
+	if start < 0 {
+		start = len(m.entries) + start
+	}
+	if end < 0 {
+		end = len(m.entries) + end
+	}
+	if start > end {
+		return nil
+	}
+	copy := NewOrderedMap[K, V]()
+	for _, entry := range m.entries[start:end] {
+		if entry.Key != m.defaultK {
+			copy.Put(entry.Key, entry.Value)
+		} else {
+			copy.PutAnonymous(entry.Value)
+		}
+	}
+	return copy
+}
+
 func (m *OrderedMap[K, V]) Index(i int) Entry[K, V] {
 	return m.entries[i]
 }

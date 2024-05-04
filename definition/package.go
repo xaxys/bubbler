@@ -6,6 +6,7 @@ var EmptyPackage = &Package{}
 
 type Package struct {
 	BasePosition
+
 	PackageFullPaths []string // com.example.app.module.pkgname
 	PackagePath      []string // com.example.app.module
 	PackageName      string   // pkgname
@@ -30,7 +31,7 @@ func NewPackage(pos Position, fullPaths []string) *Package {
 	}
 }
 
-func (p Package) Equals(other *Package) bool {
+func (p Package) PackageEquals(other *Package) bool {
 	if len(p.PackageFullPaths) != len(other.PackageFullPaths) {
 		return false
 	}

@@ -6,7 +6,7 @@ import (
 	"github.com/xaxys/bubbler/util"
 )
 
-// ==================== Field ====================
+// ==================== FieldKindID ====================
 
 type FieldKindID int
 
@@ -17,40 +17,70 @@ const (
 	FieldKindID_Constant
 )
 
+func (f FieldKindID) IsNormal() bool {
+	return f == FieldKindID_Normal
+}
+
+func (f FieldKindID) IsVoid() bool {
+	return f == FieldKindID_Void
+}
+
+func (f FieldKindID) IsEmbedded() bool {
+	return f == FieldKindID_Embedded
+}
+
+func (f FieldKindID) IsConstant() bool {
+	return f == FieldKindID_Constant
+}
+
+var FieldKindIDStringsMap = map[FieldKindID]string{
+	FieldKindID_Normal:   "NormalField",
+	FieldKindID_Void:     "VoidField",
+	FieldKindID_Embedded: "EmbeddedField",
+	FieldKindID_Constant: "ConstantField",
+}
+
+func (f FieldKindID) String() string {
+	if str, ok := FieldKindIDStringsMap[f]; ok {
+		return str
+	}
+	return fmt.Sprintf("FieldKindID(%d)", f)
+}
+
+// ==================== Field ====================
+
 type Field interface {
 	Position
 	GetFieldKind() FieldKindID
 	GetFieldUniqueName() string
 	GetFieldBitSize() int64
 	GetFieldBelongs() *Struct
-	// GetFieldFromEmbedded() *EmbeddedField
 	SetFieldBelongs(*Struct)
-	// SetFieldFromEmbedded(*EmbeddedField)
 	Copy() Field
 }
 
 type NormalField struct {
 	BasePosition
+
 	FieldName    string
 	FieldType    Type
 	FieldBitSize int64
-	FieldBelongs *Struct
-	FieldMethods []*Method
+	FieldMethods *util.OrderedMap[string, *util.OrderedMap[MethodKindID, Method]]
 	FieldOptions *util.OrderedMap[string, *Option]
-	FromEmbedded *EmbeddedField
+	FieldBelongs *Struct
 }
 
 func (f NormalField) GetFieldKind() FieldKindID {
 	return FieldKindID_Normal
 }
 
-func (f NormalField) ShortString() string {
+func (f NormalField) String() string {
 	return fmt.Sprintf("%s %s[%s]", f.FieldType.GetTypeName(), f.FieldName, util.ToSizeString(f.FieldBitSize))
 }
 
-func (f NormalField) String() string {
+func (f NormalField) DumpString() string {
 	methods := "[\n"
-	for _, method := range f.FieldMethods {
+	for _, method := range f.FieldMethods.Values() {
 		methods += util.IndentSpace8(method) + "\n"
 	}
 	methods += "    ]"
@@ -68,12 +98,7 @@ func (f NormalField) String() string {
 		belongsStr = f.FieldBelongs.StructName
 	}
 
-	fromEmbeddedStr := "<nil>"
-	if f.FromEmbedded != nil {
-		fromEmbeddedStr = f.FromEmbedded.FieldType.StructName
-	}
-
-	return fmt.Sprintf("NormalField {\n    FieldName: %s\n    FieldType: %s\n    FieldBitSize: %d\n    FieldMethods: %s\n    FieldOptions: %s\n    FieldBelongs: %s\n    FromEmbedded: %s\n}", f.FieldName, typeStr, f.FieldBitSize, methods, options, belongsStr, fromEmbeddedStr)
+	return fmt.Sprintf("NormalField {\n    FieldName: %s\n    FieldType: %s\n    FieldBitSize: %d\n    FieldMethods: %s\n    FieldOptions: %s\n    FieldBelongs: %s\n}", f.FieldName, typeStr, f.FieldBitSize, methods, options, belongsStr)
 }
 
 func (f NormalField) GetFieldUniqueName() string {
@@ -88,16 +113,8 @@ func (f NormalField) GetFieldBelongs() *Struct {
 	return f.FieldBelongs
 }
 
-func (f NormalField) GetFieldFromEmbedded() *EmbeddedField {
-	return f.FromEmbedded
-}
-
 func (f *NormalField) SetFieldBelongs(s *Struct) {
 	f.FieldBelongs = s
-}
-
-func (f *NormalField) SetFieldFromEmbedded(e *EmbeddedField) {
-	f.FromEmbedded = e
 }
 
 func (f NormalField) Copy() Field {
@@ -109,28 +126,27 @@ func (f NormalField) Copy() Field {
 		FieldMethods: f.FieldMethods,
 		FieldOptions: f.FieldOptions,
 		FieldBelongs: f.FieldBelongs,
-		FromEmbedded: f.FromEmbedded,
 	}
 	return &newField
 }
 
 type VoidField struct {
 	BasePosition
+
 	FieldBitSize int64
-	FieldBelongs *Struct
 	FieldOptions *util.OrderedMap[string, *Option]
-	FromEmbedded *EmbeddedField
+	FieldBelongs *Struct
 }
 
 func (f VoidField) GetFieldKind() FieldKindID {
 	return FieldKindID_Void
 }
 
-func (f VoidField) ShortString() string {
+func (f VoidField) String() string {
 	return fmt.Sprintf("void [%s]", util.ToSizeString(f.FieldBitSize))
 }
 
-func (f VoidField) String() string {
+func (f VoidField) DumpString() string {
 	options := "[\n"
 	for _, option := range f.FieldOptions.Values() {
 		options += util.IndentSpace8(option) + "\n"
@@ -142,12 +158,7 @@ func (f VoidField) String() string {
 		belongsStr = f.FieldBelongs.StructName
 	}
 
-	fromEmbeddedStr := "<nil>"
-	if f.FromEmbedded != nil {
-		fromEmbeddedStr = f.FromEmbedded.FieldType.StructName
-	}
-
-	return fmt.Sprintf("VoidField {\n    FieldBitSize: %d\n    FieldOptions: %s\n    FieldBelongs: %s\n    FromEmbedded: %s\n}", f.FieldBitSize, options, belongsStr, fromEmbeddedStr)
+	return fmt.Sprintf("VoidField {\n    FieldBitSize: %d\n    FieldOptions: %s\n    FieldBelongs: %s\n}", f.FieldBitSize, options, belongsStr)
 }
 
 func (f VoidField) GetFieldUniqueName() string {
@@ -162,47 +173,38 @@ func (f VoidField) GetFieldBelongs() *Struct {
 	return f.FieldBelongs
 }
 
-func (f VoidField) GetFieldFromEmbedded() *EmbeddedField {
-	return f.FromEmbedded
-}
-
 func (f *VoidField) SetFieldBelongs(s *Struct) {
 	f.FieldBelongs = s
-}
-
-func (f *VoidField) SetFieldFromEmbedded(e *EmbeddedField) {
-	f.FromEmbedded = e
 }
 
 func (f VoidField) Copy() Field {
 	newField := VoidField{
 		BasePosition: f.BasePosition,
 		FieldBitSize: f.FieldBitSize,
-		FieldBelongs: f.FieldBelongs,
 		FieldOptions: f.FieldOptions,
-		FromEmbedded: f.FromEmbedded,
+		FieldBelongs: f.FieldBelongs,
 	}
 	return &newField
 }
 
 type EmbeddedField struct {
 	BasePosition
+
 	FieldType    *Struct
 	FieldBitSize int64
-	FieldBelongs *Struct
 	FieldOptions *util.OrderedMap[string, *Option]
-	FromEmbedded *EmbeddedField
+	FieldBelongs *Struct
 }
 
 func (f EmbeddedField) GetFieldKind() FieldKindID {
 	return FieldKindID_Embedded
 }
 
-func (f EmbeddedField) ShortString() string {
+func (f EmbeddedField) String() string {
 	return fmt.Sprintf("%s [%s]", f.FieldType.StructName, util.ToSizeString(f.FieldBitSize))
 }
 
-func (f EmbeddedField) String() string {
+func (f EmbeddedField) DumpString() string {
 	typeStr := util.IndentSpace4NoFirst(f.FieldType)
 
 	options := "[\n"
@@ -216,12 +218,7 @@ func (f EmbeddedField) String() string {
 		belongsStr = f.FieldBelongs.StructName
 	}
 
-	fromEmbeddedStr := "<nil>"
-	if f.FromEmbedded != nil {
-		fromEmbeddedStr = f.FromEmbedded.FieldType.StructName
-	}
-
-	return fmt.Sprintf("EmbeddedField {\n    FieldType: %s\n    FieldBitSize: %d\n    FieldOptions: %s\n    FieldBelongs: %s\n    FromEmbedded: %s\n}", typeStr, f.FieldBitSize, options, belongsStr, fromEmbeddedStr)
+	return fmt.Sprintf("EmbeddedField {\n    FieldType: %s\n    FieldBitSize: %d\n    FieldOptions: %s\n    FieldBelongs: %s\n}", typeStr, f.FieldBitSize, options, belongsStr)
 }
 
 func (f EmbeddedField) GetFieldUniqueName() string {
@@ -239,16 +236,8 @@ func (f EmbeddedField) GetFieldBelongs() *Struct {
 	return f.FieldBelongs
 }
 
-func (f EmbeddedField) GetFieldFromEmbedded() *EmbeddedField {
-	return f.FromEmbedded
-}
-
 func (f *EmbeddedField) SetFieldBelongs(s *Struct) {
 	f.FieldBelongs = s
-}
-
-func (f *EmbeddedField) SetFieldFromEmbedded(e *EmbeddedField) {
-	f.FromEmbedded = e
 }
 
 func (f EmbeddedField) Copy() Field {
@@ -256,33 +245,32 @@ func (f EmbeddedField) Copy() Field {
 		BasePosition: f.BasePosition,
 		FieldType:    f.FieldType,
 		FieldBitSize: f.FieldBitSize,
-		FieldBelongs: f.FieldBelongs,
 		FieldOptions: f.FieldOptions,
-		FromEmbedded: f.FromEmbedded,
+		FieldBelongs: f.FieldBelongs,
 	}
 	return &newField
 }
 
 type ConstantField struct {
 	BasePosition
+
 	FieldName     string // may be empty
 	FieldType     *BasicType
 	FieldBitSize  int64
 	FieldConstant Literal
-	FieldBelongs  *Struct
 	FieldOptions  *util.OrderedMap[string, *Option]
-	FromEmbedded  *EmbeddedField
+	FieldBelongs  *Struct
 }
 
 func (f ConstantField) GetFieldKind() FieldKindID {
 	return FieldKindID_Constant
 }
 
-func (f ConstantField) ShortString() string {
+func (f ConstantField) String() string {
 	return fmt.Sprintf("%s %s[%s] = %v", f.FieldType.GetTypeName(), f.FieldName, util.ToSizeString(f.FieldBitSize), f.FieldConstant)
 }
 
-func (f ConstantField) String() string {
+func (f ConstantField) DumpString() string {
 	typeStr := util.IndentSpace4NoFirst(f.FieldType)
 
 	options := "[\n"
@@ -296,12 +284,7 @@ func (f ConstantField) String() string {
 		belongsStr = f.FieldBelongs.StructName
 	}
 
-	fromEmbeddedStr := "<nil>"
-	if f.FromEmbedded != nil {
-		fromEmbeddedStr = f.FromEmbedded.FieldType.StructName
-	}
-
-	return fmt.Sprintf("ConstantField {\n    FieldName: %s\n    FieldType: %s\n    FieldBitSize: %d\n    FieldConstant: %s\n    FieldOptions: %s\n    FieldBelongs: %s\n    FromEmbedded: %s\n}", f.FieldName, typeStr, f.FieldBitSize, f.FieldConstant, options, belongsStr, fromEmbeddedStr)
+	return fmt.Sprintf("ConstantField {\n    FieldName: %s\n    FieldType: %s\n    FieldBitSize: %d\n    FieldConstant: %s\n    FieldOptions: %s\n    FieldBelongs: %s\n}", f.FieldName, typeStr, f.FieldBitSize, f.FieldConstant, options, belongsStr)
 }
 
 func (f ConstantField) GetFieldUniqueName() string {
@@ -316,16 +299,8 @@ func (f ConstantField) GetFieldBelongs() *Struct {
 	return f.FieldBelongs
 }
 
-func (f ConstantField) GetFieldFromEmbedded() *EmbeddedField {
-	return f.FromEmbedded
-}
-
 func (f *ConstantField) SetFieldBelongs(s *Struct) {
 	f.FieldBelongs = s
-}
-
-func (f *ConstantField) SetFieldFromEmbedded(e *EmbeddedField) {
-	f.FromEmbedded = e
 }
 
 func (f ConstantField) Copy() Field {
@@ -337,7 +312,6 @@ func (f ConstantField) Copy() Field {
 		FieldConstant: f.FieldConstant,
 		FieldOptions:  f.FieldOptions,
 		FieldBelongs:  f.FieldBelongs,
-		FromEmbedded:  f.FromEmbedded,
 	}
 	return &newField
 }

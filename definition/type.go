@@ -111,8 +111,8 @@ func (t TypeID) String() string {
 }
 
 type CustomType interface {
-	Type
 	Position
+	Type
 }
 
 type Type interface {
@@ -158,6 +158,27 @@ var (
 	Float32 = BasicType{TypeTypeID: TypeID_Float32, TypeName: "float32", TypeBitSize: 32}
 	Float64 = BasicType{TypeTypeID: TypeID_Float64, TypeName: "float64", TypeBitSize: 64}
 )
+
+var basicTypeMap = map[TypeID]BasicType{
+	TypeID_Bool:    Bool,
+	TypeID_Uint8:   Uint8,
+	TypeID_Uint16:  Uint16,
+	TypeID_Uint32:  Uint32,
+	TypeID_Uint64:  Uint64,
+	TypeID_Int8:    Int8,
+	TypeID_Int16:   Int16,
+	TypeID_Int32:   Int32,
+	TypeID_Int64:   Int64,
+	TypeID_Float32: Float32,
+	TypeID_Float64: Float64,
+}
+
+func GetBasicType(typeID TypeID) *BasicType {
+	if t, ok := basicTypeMap[typeID]; ok {
+		return &t
+	}
+	return nil
+}
 
 // ==================== StringType ====================
 
