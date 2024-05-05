@@ -39,13 +39,13 @@ Usage:
   bubbler [options] <input file>
 
 Options:
-  -t <target>  Target Language
-  -o <output>  Output Path
-  -inner       Generate Inner Class
-  -single      Generate Single File
-  -minimal     Generate Minimal Code
-  -decnum      Force Generate Decimal Format for Constant Value
-  -signext     Sign Extension Method (shift, arith)
+  -t <target>        Target Language
+  -o <output>        Output Path
+  -inner             Generate Inner Class
+  -single            Generate Single File
+  -minimal           Generate Minimal Code
+  -decnum            Force Generate Decimal Format for Constant Value
+  -signext <method>  Sign Extension Method (shift, arith)
 
 Targets:
 {{ range .Generators }}  {{ . }}
@@ -53,7 +53,7 @@ Targets:
 Examples:
   bubbler -t c -minimal -o output/ example.bb
   bubbler -t c -single -o gen.hpp example.bb
-  bubbler -t py -decnum -signext=arith -o output example.bb
+  bubbler -t py -decnum -signext arith -o output example.bb
 
 For more information, please visit: https://github.com/xaxys/bubbler
 {{ end }}

@@ -32,7 +32,7 @@ bubbler [options] <input file>
 - `-single`: Generate Single File (Combine all definitions into one file, instead of one generated file per source file)
 - `-minimal`: Generate Minimal Code (Usually without default getter/setter methods)
 - `-decnum`: Force Generate Decimal Format for Constant Value (Translate `0xFF` to `255`, `0b1111` to `15`, etc.)
-- `-signext`: Sign Extension Method used for Integer Field (Options: `shift`, `arith`)
+- `-signext <method>`: Sign Extension Method used for Integer Field (Options: `shift`, `arith`)
 
 ### Examples
 

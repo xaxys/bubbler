@@ -32,7 +32,7 @@ bubbler [options] <input file>
 - `-single`: 生成单个文件（将所有定义合并到一个文件中，而不是每个源文件生成一个文件）
 - `-minimal`: 生成最小代码（通常不包含默认的getter/setter方法）
 - `-decnum`: 强制生成十进制格式的常量值（将 `0xFF` 翻译为 `255`, `0b1111` 翻译为 `15` 等）
-- `-signext`: 用于整数字段的符号扩展方法（选项: `shift`, `arith`）
+- `-signext <method>`: 用于整数字段的符号扩展方法（选项: `shift`, `arith`）
 
 ### 示例
 
