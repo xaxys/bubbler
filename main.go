@@ -22,7 +22,7 @@ var (
 // Font: slant
 // http://www.network-science.de/ascii/
 const bannerTemplate = `
-{{- define "banner" -}}
+{{- define "banner" }}\
     __          __    __    __       
    / /_  __  __/ /_  / /_  / /__  ___
   / __ \/ / / / __ \/ __ \/ / _ \/ _/
