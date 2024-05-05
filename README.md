@@ -319,20 +319,20 @@ You can define custom getter and setter methods for a field to perform specific 
 ```c
 struct SensorTemperatureData {
     uint16 temperature[2] {
-        get(float64): value / 10 - 40;
-        set(float64): value == 0 ? 0 : (value + 40) * 10;
-        set AnotherCustomSet(uint8): value == 0 ? 0 : (value + 40) * 10;
+        get temperature_display(float64): value / 10 - 40;
+        set temperature_display(float64): value == 0 ? 0 : (value + 40) * 10;
+        set another_custom_setter(uint8): value == 0 ? 0 : (value + 40) * 10;
     };
 }
 ```
 
 In this example, the `temperature` field has a custom getter method and two custom setter methods.
 
-The default getter returns a `float64` type and calculates the result based on `value / 10 - 40`. Here, `value` is filled with the field value and is of type `uint16`.
+The custom getter named `temperature_display` returns a`float64` type and calculates the result based on `value / 10 - 40`. Here,`value` is filled with the field value and is of type `uint16`.
 
-The default setter accepts a `float64` type parameter and calculates the result based on `value == 0 ? 0 : (value + 40) * 10` to set the field value. Here, `value` is filled with the parameter value and is of type `float64`.
+The custom setter named `temperature_display` accepts a `float64` type parameter and calculates the result based on `value == 0 ? 0 : (value + 40) * 10` to set the field value. Here, `value` is filled with the parameter value and is of type `float64`.
 
-The custom setter named `AnotherCustomSet` takes a `uint8` type parameter. It calculates the result based on `value == 0 ? 0 : (value + 40) * 10` to set the field value. Here, `value` is filled with the parameter value and is of type `uint8`.
+The custom setter named `another_custom_setter` accepts a `uint8` type parameter and calculates the result based on `value == 0 ? 0 : (value + 40) * 10` to set the field value. Here, `value` is filled with the parameter value and is of type `uint8`.
 
 ## Contributing
 
