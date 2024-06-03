@@ -94,22 +94,22 @@ func (m *SetMethod) SetMethodBelongs(belongs *NormalField) {
 }
 
 // type Method struct {
-// 	BasePosition
+//     BasePosition
 
-// 	MethodKind      MethodKindID
-// 	MethodName      string
-// 	MethodParamType Type
-// 	MethodExpr      Expr
-// 	MethodBelongs   *NormalField
+//     MethodKind      MethodKindID
+//     MethodName      string
+//     MethodParamType Type
+//     MethodExpr      Expr
+//     MethodBelongs   *NormalField
 // }
 
 // func (m Method) String() string {
-// 	typeStr := util.IndentSpace4NoFirst(m.MethodParamType)
+//     typeStr := util.IndentSpace4NoFirst(m.MethodParamType)
 
-// 	belongsStr := "<nil>"
-// 	if m.MethodBelongs != nil {
-// 		belongsStr = m.MethodBelongs.FieldName
-// 	}
+//     belongsStr := "<nil>"
+//     if m.MethodBelongs != nil {
+//         belongsStr = m.MethodBelongs.FieldName
+//     }
 
-// 	return fmt.Sprintf("Method {\n    MethodKind: %s\n    MethodName: %s\n    MethodParamType: %s\n    MethodExpr: %s\n    MethodBelongs: %s\n}", m.MethodKind, m.MethodName, typeStr, m.MethodExpr, belongsStr)
+//     return fmt.Sprintf("Method {\n    MethodKind: %s\n    MethodName: %s\n    MethodParamType: %s\n    MethodExpr: %s\n    MethodBelongs: %s\n}", m.MethodKind, m.MethodName, typeStr, m.MethodExpr, belongsStr)
 // }

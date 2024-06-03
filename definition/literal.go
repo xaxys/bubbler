@@ -46,17 +46,17 @@ func (l LiteralKindID) String() string {
 }
 
 // var literalKindToTypeID = map[LiteralKindID]TypeID{
-// 	LiteralKindID_Bool:   TypeID_Bool,
-// 	LiteralKindID_Int:    TypeID_Int64,
-// 	LiteralKindID_Float:  TypeID_Float64,
-// 	LiteralKindID_String: TypeID_String,
+//     LiteralKindID_Bool:   TypeID_Bool,
+//     LiteralKindID_Int:    TypeID_Int64,
+//     LiteralKindID_Float:  TypeID_Float64,
+//     LiteralKindID_String: TypeID_String,
 // }
 
 // func (l LiteralKindID) ToTypeID() TypeID {
-// 	if typeID, ok := literalKindToTypeID[l]; ok {
-// 		return typeID
-// 	}
-// 	return TypeID_Int32
+//     if typeID, ok := literalKindToTypeID[l]; ok {
+//         return typeID
+//     }
+//     return TypeID_Int32
 // }
 
 // ==================== Literal ====================

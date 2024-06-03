@@ -465,8 +465,8 @@ var normalFieldTemplate = `
     {{- $field := .Field -}}
     {{- $fieldName := Tosnake_case .Field.FieldName -}}
     {{- $tyStr := GenerateType $field.FieldType -}}
-	{{- $tyDefValue := GenerateTypeDefaultValue $field.FieldType -}}
-    	self._{{ $fieldName }}: {{ $tyStr }} = {{ $tyDefValue }}
+    {{- $tyDefValue := GenerateTypeDefaultValue $field.FieldType -}}
+        self._{{ $fieldName }}: {{ $tyStr }} = {{ $tyDefValue }}
 {{- end -}}
 `
 
@@ -846,7 +846,7 @@ var typeSizeMapInt = map[int64]definition.TypeID{
 
 var encoderTemplate = `
 {{- define "encodeField" -}}
-	# {{ .Pos }} {{ .Field.GetFieldKind }}: {{ .Field }}
+    # {{ .Pos }} {{ .Field.GetFieldKind }}: {{ .Field }}
     {{- range $encodeStmt := .EncodeStmts }}
         {{ $encodeStmt }}
     {{- end -}}
@@ -1401,15 +1401,15 @@ func (g PythonGenerator) generateDecodeField(field definition.Field, startBits i
 
 var fieldDecoderTemplate = `
 {{- define "decodeTempVarName" -}}
-	temp_field_at_pos_{{ .StartBits }}
+    temp_field_at_pos_{{ .StartBits }}
 {{- end -}}
 
 {{- define "decodeStructFieldName" -}}
-	self._{{ .FieldName }}
+    self._{{ .FieldName }}
 {{- end -}}
 
 {{- define "decodeConstantField" -}}
-	if {{ .TempName }} != {{ .ConstantValue }}: return False
+    if {{ .TempName }} != {{ .ConstantValue }}: return False
 {{- end -}}
 
 {{- define "decodeNormalFieldStruct" -}}
@@ -1417,11 +1417,11 @@ var fieldDecoderTemplate = `
 {{- end -}}
 
 {{- define "decodeNormalFieldTempVarAssignEnum" -}}
-	{{ .FieldName }} = {{ .EnumName }}({{ .TempName }})
+    {{ .FieldName }} = {{ .EnumName }}({{ .TempName }})
 {{- end -}}
 
 {{- define "decodeNormalFieldFloatCast" -}}
-	{{ .FieldName }} = struct.unpack('<{{ .TyFloat }}', struct.pack('<{{ .TyUint }}', {{ .FieldName }}))[0]
+    {{ .FieldName }} = struct.unpack('<{{ .TyFloat }}', struct.pack('<{{ .TyUint }}', {{ .FieldName }}))[0]
 {{- end -}}
 
 {{- define "decodeImpl" -}}
