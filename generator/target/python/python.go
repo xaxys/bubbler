@@ -585,7 +585,7 @@ var defaultGetterTemplate = `
 {{- $exprStr := GenerateExpr .MethodDef.MethodExpr $valueStr -}}
     # DefaultGetter: {{ $fieldName }}
     @property
-    def {{ $fieldName }}(self) -> {{ $returnType }}:
+    def {{ $fieldName }}(self) -> {{ $retTyStr }}:
         return {{ $expr }}
 {{ end -}}
 `
@@ -929,7 +929,8 @@ var fieldEncoderTemplate = `
 {{- end -}}
 
 {{- define "encodeStructFieldName" -}}
-    self._{{ .FieldName }}
+{{- $fieldName := Tosnake_case .FieldName -}}
+	self._{{ .FieldName }}
 {{- end -}}
 
 {{- define "encodeNormalFieldStruct" -}}
@@ -1405,7 +1406,8 @@ var fieldDecoderTemplate = `
 {{- end -}}
 
 {{- define "decodeStructFieldName" -}}
-    self._{{ .FieldName }}
+{{- $fieldName := Tosnake_case .FieldName -}}
+	self._{{ .FieldName }}
 {{- end -}}
 
 {{- define "decodeConstantField" -}}
@@ -1464,9 +1466,14 @@ func (g PythonGenerator) generateDecodeConstantField(field *definition.ConstantF
 
 	decodeStmts = append(decodeStmts, stmts...)
 
+	literalValue, err := NewPythonLiteralGenerator().GenerateLiteral(field.FieldConstant)
+	if err != nil {
+		return nil, err
+	}
+
 	decodeConstantFieldData := map[string]any{
 		"TempName":      tempName,
-		"ConstantValue": field.FieldConstant.GetLiteralValue(),
+		"ConstantValue": literalValue,
 	}
 
 	checkStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeConstantField", nil, decodeConstantFieldData)
@@ -1897,7 +1904,7 @@ func (g PythonExprGenerator) GenerateTenaryExpr(expr *definition.TenaryExpr) (st
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("(%s if %s else %s)", cond, expr1, expr2), nil
+	return fmt.Sprintf("(%s if %s else %s)", expr1, cond, expr2), nil
 }
 
 func (g PythonExprGenerator) GenerateValueExpr(expr *definition.ValueExpr) (string, error) {

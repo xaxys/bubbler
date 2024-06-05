@@ -1284,7 +1284,8 @@ var fieldEncoderTemplate = `
 {{- end -}}
 
 {{- define "encodeStructFieldName" -}}
-	ptr->{{ .FieldName }}
+{{- $fieldName := Tosnake_case .FieldName -}}
+	ptr->{{ $fieldName }}
 {{- end -}}
 
 {{- define "encodeNormalFieldStruct" -}}
@@ -1780,7 +1781,8 @@ var fieldDecoderTemplate = `
 {{- end -}}
 
 {{- define "decodeStructFieldName" -}}
-	ptr->{{ .FieldName }}
+{{- $fieldName := Tosnake_case .FieldName -}}
+	ptr->{{ $fieldName }}
 {{- end -}}
 
 {{- define "decodeConstantField" -}}
@@ -1863,9 +1865,14 @@ func (g CGenerator) generateDecodeConstantField(field *definition.ConstantField,
 
 	decodeStmts = append(decodeStmts, stmts...)
 
+	literalValue, err := NewCLiteralGenerator().GenerateLiteral(field.FieldConstant)
+	if err != nil {
+		return nil, err
+	}
+
 	decodeConstantFieldData := map[string]any{
 		"TempName":      tempName,
-		"ConstantValue": field.FieldConstant.GetLiteralValue(),
+		"ConstantValue": literalValue,
 	}
 
 	checkStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeConstantField", nil, decodeConstantFieldData)
