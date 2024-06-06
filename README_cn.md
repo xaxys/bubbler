@@ -50,6 +50,7 @@ bubbler -t py -decnum -signext=arith -o output example.bb
 Targets:
   c
   python [py]
+  java
 ```
 
 当选择目标语言时，可以使用 `[]` 中的别名。例如，`python` 可以缩写为 `py`。
@@ -62,6 +63,8 @@ Targets:
 
 - `python`：Python 语言，为每个 `.bb` 文件输出一个 `_bb.py` 文件。
   - 使用`-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
+
+- `java`：Java 语言，为每个 `.bb` 文件中定义的每个数据结构生成一个 `.java` 文件。
 
 ## 协议语法
 

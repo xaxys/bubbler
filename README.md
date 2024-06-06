@@ -50,6 +50,7 @@ Run `bubbler` to see the list of supported target languages.
 Targets:
   c
   python [py]
+  java
 ```
 
 When selecting the target language, you can use the aliases inside `[]`. For example, `python` can be abbreviated as `py`.
@@ -62,6 +63,8 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
 
 - `python`: Python language, output one `_bb.py` file for each `.bb` file.
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
+
+- `java`: Java language, output one `.java` file for each structure defined in each `.bb` file.
 
 ## Protocol Syntax
 
