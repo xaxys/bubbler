@@ -868,8 +868,24 @@ public enum {{ .EnumDef.EnumName }} {
         return value;
     }
 
+    public static {{ .EnumDef.EnumName }} valueOf(byte value) {
+        return forNumber(value);
+    }
+
+    public static {{ .EnumDef.EnumName }} valueOf(short value) {
+        return forNumber(value);
+    }
+
     public static {{ .EnumDef.EnumName }} valueOf(int value) {
         return forNumber(value);
+    }
+
+    public static {{ .EnumDef.EnumName }} forNumber(byte value) {
+        return forNumber(Byte.toUnsignedInt(value));
+    }
+
+    public static {{ .EnumDef.EnumName }} forNumber(short value) {
+        return forNumber(Short.toUnsignedInt(value));
     }
 
     public static {{ .EnumDef.EnumName }} forNumber(int value) {
