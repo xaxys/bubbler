@@ -309,7 +309,7 @@ var structTemplate = `
 {{- $structDef := .StructDef -}}
 {{- $fieldStrs := .FieldStrs -}}
 // Struct: {{ $structDef }}
-@SuppressWarnings({"RedundantCast", "PointlessBitwiseExpression", "DuplicatedCode", "PointlessArithmeticExpression"})
+@SuppressWarnings({"RedundantCast", "PointlessBitwiseExpression", "DuplicatedCode", "PointlessArithmeticExpression", "RedundantIfStatement"})
 public final class {{ $structDef.StructName }} {
     {{ range $fieldStr := $fieldStrs }}
     {{ $fieldStr }}
