@@ -135,6 +135,9 @@ import {{ slice $pkgName.OptionValue 1 -1 }}.*;
 import {{ $unit.Package }}.*;
 {{ end -}}
 {{ end }}
+import java.util.Arrays;
+import java.util.Objects;
+
 {{ .GenType.GeneratedDef }}
 
 {{ end -}}
@@ -318,6 +321,43 @@ public final class {{ $structDef.StructName }} {
     {{ .EncoderStr }}
 
     {{ .DecoderStr }}
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+        if (obj == null) return false;
+        if (getClass() != obj.getClass()) return false;
+        {{ $structDef.StructName }} other = ({{ $structDef.StructName }}) obj;
+    {{- range $field := $structDef.StructFields.Values }}
+    {{- if $field.GetFieldKind.IsNormal }}
+        {{- $fieldName := TocamelCase $field.FieldName }}
+        {{- if $field.FieldType.GetTypeID.IsBasic }}
+        if (this.{{ $fieldName }} != other.{{ $fieldName }}) return false;
+        {{- else if $field.FieldType.GetTypeID.IsArray }}
+        if (!Arrays.equals(this.{{ $fieldName }}, other.{{ $fieldName }})) return false;
+        {{- else }}
+        if (!Objects.equals(this.{{ $fieldName }}, other.{{ $fieldName }})) return false;
+        {{- end }}
+    {{- end }}
+    {{- end }}
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = 17;
+    {{- range $field := $structDef.StructFields.Values }}
+    {{- if $field.GetFieldKind.IsNormal }}
+        {{- $fieldName := TocamelCase $field.FieldName }}
+        {{- if $field.FieldType.GetTypeID.IsArray }}
+        result = 31 * result + Arrays.hashCode({{ $fieldName }});
+        {{- else }}
+        result = 31 * result + Objects.hashCode({{ $fieldName }});
+        {{- end }}
+    {{- end }}
+    {{- end }}
+        return result;
+    }
 }
 {{- end -}}
 
