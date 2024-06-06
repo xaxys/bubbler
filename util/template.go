@@ -2,6 +2,7 @@ package util
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"text/template"
 )
@@ -14,6 +15,7 @@ func ExecuteTemplate(templ, templateName string, fns template.FuncMap, data inte
 	fns["calc"] = templateCalc
 	fns["dict"] = templateDict
 	fns["iterate"] = templateIterate
+	fns["slice"] = templateSlice
 	fns["ToPascalCase"] = ToPascalCase
 	fns["TocamelCase"] = TocamelCase
 	fns["Tosnake_case"] = Tosnake_case
@@ -34,7 +36,7 @@ func templatePanic(v interface{}) error {
 	panic(v)
 }
 
-func templateIterate(startValue, endValue any) []int64 {
+func templateIterate(startValue, endValue interface{}) []int64 {
 	start := ToInt64(startValue)
 	end := ToInt64(endValue)
 	var r []int64
@@ -61,4 +63,32 @@ func templateDict(keysAndValues ...interface{}) map[string]interface{} {
 
 func templateCalc(args ...interface{}) interface{} {
 	return Calculate(args...)
+}
+
+func templateSlice(args ...interface{}) string {
+	str := ""
+	start := int64(0)
+	end := int64(0)
+	if len(args) <= 0 {
+		return ""
+	}
+	if len(args) >= 1 {
+		str = fmt.Sprint(args[0])
+	}
+	if len(args) >= 2 {
+		start = ToInt64(args[1])
+		if start < 0 {
+			start = int64(len(str)) + start
+		}
+	}
+	if len(args) >= 3 {
+		end = ToInt64(args[2])
+	}
+	if end <= 0 {
+		end = int64(len(str)) + end
+	}
+	if len(args) >= 4 {
+		panic("too many arguments")
+	}
+	return str[start:end]
 }
