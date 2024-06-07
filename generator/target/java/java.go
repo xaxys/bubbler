@@ -139,7 +139,6 @@ import java.util.Arrays;
 import java.util.Objects;
 
 {{ .GenType.GeneratedDef }}
-
 {{ end -}}
 `
 
@@ -309,7 +308,7 @@ var structTemplate = `
 {{- $structDef := .StructDef -}}
 {{- $fieldStrs := .FieldStrs -}}
 // Struct: {{ $structDef }}
-@SuppressWarnings({"RedundantCast", "PointlessBitwiseExpression", "DuplicatedCode", "PointlessArithmeticExpression", "RedundantIfStatement"})
+@SuppressWarnings({"RedundantCast", "PointlessBitwiseExpression", "DuplicatedCode", "PointlessArithmeticExpression", "RedundantIfStatement", "RedundantSuppression"})
 public final class {{ $structDef.StructName }} {
     {{ range $fieldStr := $fieldStrs }}
     {{ $fieldStr }}
