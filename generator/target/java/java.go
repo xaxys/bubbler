@@ -1694,9 +1694,8 @@ func (g JavaGenerator) generateDecodeConstantField(field *definition.ConstantFie
 	tempName := g.generateDecodeTempVarName(startBits)
 
 	decodeNormalFieldTempVarDeclData := map[string]any{
-		"TyUint":    tyUint,
-		"TempName":  tempName,
-		"FieldName": field.FieldName,
+		"TyUint":   tyUint,
+		"TempName": tempName,
 	}
 	declStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, decodeNormalFieldTempVarDeclData)
 	decodeStmts = append(decodeStmts, declStr)
