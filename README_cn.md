@@ -49,8 +49,10 @@ bubbler -t py -decnum -signext=arith -o output example.bb
 ```text
 Targets:
   c
-  python [py]
+  commonjs
   java
+  python [py]
+
 ```
 
 当选择目标语言时，可以使用 `[]` 中的别名。例如，`python` 可以缩写为 `py`。
@@ -58,13 +60,16 @@ Targets:
 - `dump`：输出 `.bb` 文件的解析树（中间表示）。
 
 - `c`：C 语言，为每个 `.bb` 文件输出一个 `.bb.h` 文件和一个 `.bb.c` 文件。
-  - 使用 `-single`：输出单个文件，其中包含所有`.bb`文件的所有定义。输出文件名（包括扩展名）由`-o`选项确定。
+  - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由`-o`选项确定。
   - 使用 `-minimal`：不为字段生成默认的getter/setter方法函数。
+
+- `commonjs`：CommonJS模块，为每个 `.bb` 文件输出一个 `.bb.js` 文件。（请注意，`int64` 和 `uint64` 字段使用了 `BigInt`，在某些环境中可能不支持）
+  - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
+
+- `java`：Java 语言，为每个 `.bb` 文件中定义的每个数据结构生成一个 `.java` 文件。
 
 - `python`：Python 语言，为每个 `.bb` 文件输出一个 `_bb.py` 文件。
   - 使用`-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
-
-- `java`：Java 语言，为每个 `.bb` 文件中定义的每个数据结构生成一个 `.java` 文件。
 
 ## 协议语法
 

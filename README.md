@@ -49,8 +49,10 @@ Run `bubbler` to see the list of supported target languages.
 ```text
 Targets:
   c
-  python [py]
+  commonjs
   java
+  python [py]
+
 ```
 
 When selecting the target language, you can use the aliases inside `[]`. For example, `python` can be abbreviated as `py`.
@@ -61,10 +63,13 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
   - With `-minimal`: No generation of getter/setter methods for fields.
 
-- `python`: Python language, output one `_bb.py` file for each `.bb` file.
+- `commonjs`: CommonJS module, output one `.bb.js` file for each `.bb` file. (Please note that `BigInt` is used for `int64` and `uint64` fields, which is not supported in some environments.)
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
 
 - `java`: Java language, output one `.java` file for each structure defined in each `.bb` file.
+
+- `python`: Python language, output one `_bb.py` file for each `.bb` file.
+  - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
 
 ## Protocol Syntax
 
