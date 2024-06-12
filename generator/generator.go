@@ -7,6 +7,7 @@ import (
 	"github.com/xaxys/bubbler/definition"
 	"github.com/xaxys/bubbler/generator/gen"
 	"github.com/xaxys/bubbler/generator/target/c"
+	"github.com/xaxys/bubbler/generator/target/commonjs"
 	"github.com/xaxys/bubbler/generator/target/java"
 	"github.com/xaxys/bubbler/generator/target/python"
 	"github.com/xaxys/bubbler/util"
@@ -21,15 +22,17 @@ var TargetMap *util.OrderedMap[string, Generator]
 func init() {
 	// dumpGen := dump.NewDumpGenerator()
 	cGen := c.NewCGenerator()
-	pythonGen := python.NewPythonGenerator()
+	commonjsGen := commonjs.NewCommonJSGenerator()
 	javaGen := java.NewJavaGenerator()
+	pythonGen := python.NewPythonGenerator()
 
 	TargetMap = util.NewOrderedMap[string, Generator]()
 	// TargetMap.Put("dump", dumpGen)
 	TargetMap.Put("c", cGen)
+	TargetMap.Put("commonjs", commonjsGen)
+	TargetMap.Put("java", javaGen)
 	TargetMap.Put("python", pythonGen)
 	TargetMap.Put("py", pythonGen)
-	TargetMap.Put("java", javaGen)
 }
 
 func ListGenerators() []string {

@@ -92,6 +92,18 @@ func (p Package) ToFilePath(ext string) string {
 	return strings.Join(p.PackageFullPaths, "/") + ext
 }
 
+// ToRelativePathStrict returns the relative path of this package to other package
+// return path must start with "./" or "../"
+//
+// ext must start with a dot (e.g. ".h", ".c", ".py")
+func (p Package) ToRelativePathStrict(other *Package, ext string) string {
+	path := p.ToRelativePath(other, ext)
+	if strings.HasPrefix(path, "..") {
+		return path
+	}
+	return "./" + path
+}
+
 // ToRelativePath returns the relative path of this package to other package
 //
 // ext must start with a dot (e.g. ".h", ".c", ".py")

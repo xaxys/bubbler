@@ -14,6 +14,7 @@ type Struct struct {
 	StructName    string
 	StructBitSize int64
 	StructFields  *util.OrderedMap[string, Field]
+	StructBelongs *CompilationUnit
 }
 
 func (s Struct) String() string {
@@ -42,6 +43,30 @@ func (s Struct) GetTypeName() string {
 
 func (s Struct) GetTypeBitSize() int64 {
 	return s.StructBitSize
+}
+
+func (s Struct) GetBelongs() *CompilationUnit {
+	return s.StructBelongs
+}
+
+func (s *Struct) SetBelongs(c *CompilationUnit) {
+	s.StructBelongs = c
+	for _, field := range s.StructFields.Values() {
+		if normalField, ok := field.(*NormalField); ok {
+			switch ty := normalField.FieldType.(type) {
+			case CustomType:
+				if ty.GetBelongs() == nil {
+					ty.SetBelongs(c)
+				}
+			case *Array:
+				if customType, ok := ty.ElementType.(CustomType); ok {
+					if customType.GetBelongs() == nil {
+						customType.SetBelongs(c)
+					}
+				}
+			}
+		}
+	}
 }
 
 // ==================== Struct ====================

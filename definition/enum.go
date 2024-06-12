@@ -24,6 +24,7 @@ type Enum struct {
 	EnumName    string
 	EnumBitSize int64
 	EnumValues  *util.OrderedMap[string, *EnumValue]
+	EnumBelongs *CompilationUnit
 }
 
 func (e Enum) ShortString() string {
@@ -52,4 +53,12 @@ func (e *Enum) GetTypeName() string {
 
 func (e *Enum) GetTypeBitSize() int64 {
 	return e.EnumBitSize
+}
+
+func (e *Enum) GetBelongs() *CompilationUnit {
+	return e.EnumBelongs
+}
+
+func (e *Enum) SetBelongs(c *CompilationUnit) {
+	e.EnumBelongs = c
 }

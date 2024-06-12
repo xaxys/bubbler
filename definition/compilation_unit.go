@@ -56,6 +56,7 @@ func (c *CompilationUnit) AddLocalType(ty CustomType) error {
 	c.GlobalNames.Put(ty.GetTypeName(), ty)
 	c.LocalTypes.Put(ty.GetTypeName(), ty)
 	c.LocalNames.Put(ty.GetTypeName(), ty)
+	ty.SetBelongs(c)
 	return nil
 }
 

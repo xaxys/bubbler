@@ -113,6 +113,8 @@ func (t TypeID) String() string {
 type CustomType interface {
 	Position
 	Type
+	GetBelongs() *CompilationUnit
+	SetBelongs(*CompilationUnit)
 }
 
 type Type interface {
