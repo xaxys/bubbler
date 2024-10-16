@@ -872,7 +872,7 @@ func (v *ProtoVisitor) VisitFieldName(ctx *parser.FieldNameContext) any {
 			},
 			Err: &definition.NameStyleError{
 				Name: name,
-				Msg:  "struct name must be uncapitalized, recommended to use snake_case",
+				Msg:  "field name must be uncapitalized, recommended to use snake_case",
 			},
 		}
 	}
