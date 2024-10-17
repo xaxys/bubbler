@@ -49,7 +49,8 @@ bubbler -t py -decnum -signext=arith -o output example.bb
 ```text
 Targets:
   c
-  commonjs
+  csharp [cs]
+  commonjs [cjs]
   java
   python [py]
 
@@ -62,6 +63,9 @@ Targets:
 - `c`：C 语言，为每个 `.bb` 文件输出一个 `.bb.h` 文件和一个 `.bb.c` 文件。
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由`-o`选项确定。
   - 使用 `-minimal`：不为字段生成默认的getter/setter方法函数。
+
+- `csharp`：C# 语言，为每个 `.bb` 文件输出一个 `.bb.cs` 文件。
+  - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
 
 - `commonjs`：CommonJS模块，为每个 `.bb` 文件输出一个 `.bb.js` 文件。（请注意，`int64` 和 `uint64` 字段使用了 `BigInt`，在某些环境中可能不支持）
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
@@ -99,6 +103,7 @@ package com.example.rovlink;
 option omit_empty = true;
 option go_package = "example.com/rovlink";
 option cpp_namespace = "com::example::rovlink";
+option csharp_namespace = "Example.Rovlink";
 ```
 
 在 `.bb` 文件中，选项语句不能重复。
@@ -140,11 +145,11 @@ import "sensor.bb";
 
 ##### `csharp_namespace`
 
-如果设置了 `csharp_namespace`，生成的代码将在生成的 C# 代码中使用指定的命名空间。
+如果设置了 `csharp_namespace`，生成的代码将在生成的 C# 代码中使用指定的命名空间，但是文件夹结构不会受到影响。
 
 ##### `java_package`
 
-如果设置了 `java_package`，生成的代码将在生成的 Java 代码中使用指定的包名。
+如果设置了 `java_package`，生成的代码将在生成的 Java 代码中使用指定的包名，并且生成的文件夹结构将会根据该包名生成。
 
 ### 导入语句
 

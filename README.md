@@ -49,7 +49,8 @@ Run `bubbler` to see the list of supported target languages.
 ```text
 Targets:
   c
-  commonjs
+  csharp [cs]
+  commonjs [cjs]
   java
   python [py]
 
@@ -62,6 +63,9 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
 - `c`: C language, output one `.bb.h` file and one `.bb.c` file for each `.bb` file.
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
   - With `-minimal`: No generation of getter/setter methods for fields.
+
+- `csharp`: C# language, output one `.cs` file for each structure defined in each `.bb` file.
+  - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
 
 - `commonjs`: CommonJS module, output one `.bb.js` file for each `.bb` file. (Please note that `BigInt` is used for `int64` and `uint64` fields, which is not supported in some environments.)
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
@@ -97,6 +101,7 @@ Use the `option` keyword to define options. For example:
 option omit_empty = true;
 option go_package = "example.com/rovlink";
 option cpp_namespace = "com::example::rovlink";
+option csharp_namespace = "Example.Rovlink";
 ```
 
 The option statement cannot be duplicated in a `.bb` file.
@@ -138,11 +143,11 @@ If `cpp_namespace` is set, the generated code will use the specified namespace i
 
 ##### `csharp_namespace`
 
-If `csharp_namespace` is set, the generated code will use the specified namespace in the generated C# code.
+If `csharp_namespace` is set, the generated code will use the specified namespace in the generated C# code. The folder structure will not be affected.
 
 ##### `java_package`
 
-If `java_package` is set, the generated code will use the specified package name in the generated Java code.
+If `java_package` is set, the generated code will use the specified package name in the generated Java code. The generated folder structure will be based on the package name.
 
 ### Import Statements
 
