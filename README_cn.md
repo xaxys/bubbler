@@ -327,7 +327,7 @@ struct AnotherTest {
 
 在这个例子中，`arr` 字段的字节顺序被设置为大端序。
 
-> 小贴士：大小端序的设置对于浮点类型同样有效，
+> 小贴士：大小端序的设置对于浮点类型同样有效，但是目前浮点解读时一律按照小端序解读，即最高位存放符号位，然后是指数位，最后是尾数位。
 
 ### 自定义 getter/setter
 
@@ -350,6 +350,8 @@ struct SensorTemperatureData {
 自定义setter名为 `temperature_display`, 接收`float64` 类型的参数，并根据 `value == 0 ? 0 : (value + 40) * 10` 计算结果并以此设置字段的值。其中 `value` 被填充为参数的值，是 `float64` 类型。
 
 自定义setter名为 `another_custom_setter`，`uint8`是参数类型。并根据 `value == 0 ? 0 : (value + 40) * 10` 计算结果并以此设置字段的值。其中 `value` 被填充为参数的值，是 `uint8` 类型。
+
+请注意，自定义的 getter 和 setter 方法的名不可以与任何字段名相同，并且同名的 getter 和 setter 方法必须返回和接收相同的类型。
 
 ## 贡献
 

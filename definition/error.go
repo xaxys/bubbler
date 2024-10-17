@@ -535,6 +535,28 @@ func (e FieldConstValueTypeError) Error() string {
 
 // --------------------
 
+type MethodTypeError struct {
+	MethodName string
+	PrevDef    Position
+	Expect     string
+	Got        string
+}
+
+func (e MethodTypeError) String() string {
+	return fmt.Sprintf("method '%s' type '%s' does not match '%s', found previous definition at %s",
+		color.FgLightWhite.Render(e.MethodName),
+		color.FgLightWhite.Render(e.Got),
+		color.FgLightWhite.Render(e.Expect),
+		color.FgLightWhite.Render(e.PrevDef.GetPositionString()),
+	)
+}
+
+func (e MethodTypeError) Error() string {
+	return e.String()
+}
+
+// --------------------
+
 type EnumConstValueTypeError struct {
 	Constant string
 	Got      string

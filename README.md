@@ -325,6 +325,8 @@ struct AnotherTest {
 
 In this example, the byte order of the `arr` field is set to big-endian.
 
+> Note: The setting of endianness is also effective for floating-point types. However, currently, floating-point values are always interpreted in little-endian order, with the most significant bit storing the sign bit, followed by the exponent bits, and finally the fraction bits.
+
 ### Custom getter/setter
 
 You can define custom getter and setter methods for a field to perform specific operations when reading or writing field values. For example:
@@ -346,6 +348,8 @@ The custom getter named `temperature_display` returns a`float64` type and calcul
 The custom setter named `temperature_display` accepts a `float64` type parameter and calculates the result based on `value == 0 ? 0 : (value + 40) * 10` to set the field value. Here, `value` is filled with the parameter value and is of type `float64`.
 
 The custom setter named `another_custom_setter` accepts a `uint8` type parameter and calculates the result based on `value == 0 ? 0 : (value + 40) * 10` to set the field value. Here, `value` is filled with the parameter value and is of type `uint8`.
+
+Please note that the custom getter and setter method names cannot be the same as any field names, and getter and setter methods with the same name must return and accept the same type.
 
 ## Contributing
 

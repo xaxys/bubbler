@@ -729,13 +729,13 @@ var customGetterSetterTemplate = `
         // CustomGetterSetter: {{ $methodName }}
         public {{ $retTyStr }} {{ $methodName }}
         {
-            {{ if .GetMethod -}}
-            {{ $valueStr := printf "this.%s" $fieldName -}}
-            {{ $exprStr := GenerateExpr .GetMethod.MethodExpr $valueStr -}}
+            {{- if .GetMethod }}
+            {{- $valueStr := printf "this.%s" $fieldName }}
+            {{- $exprStr := GenerateExpr .GetMethod.MethodExpr $valueStr }}
             get => {{ $exprStr }};
             {{- end }}
-            {{ if .SetMethod -}}
-            {{ $exprStr := GenerateExpr .SetMethod.MethodExpr "value" -}}
+            {{- if .SetMethod }}
+            {{- $exprStr := GenerateExpr .SetMethod.MethodExpr "value" }}
             set => this.{{ $fieldName }} = {{ $exprStr }};
             {{- end }}
         }

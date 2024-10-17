@@ -282,16 +282,16 @@ func (v *ProtoVisitor) VisitStructBody(ctx *parser.StructBodyContext) any {
 	addField = func(f definition.Field) error {
 		switch val := f.(type) {
 		case *definition.NormalField:
+			err := addName(val.FieldName, val)
+			if err != nil {
+				return err
+			}
 			for _, entry := range val.FieldMethods.Entries() {
 				name, group := entry.Key, entry.Value
 				err := addName(name, group.First().Value)
 				if err != nil {
 					return err
 				}
-			}
-			err := addName(val.FieldName, val)
-			if err != nil {
-				return err
 			}
 			fields.Put(val.FieldName, val)
 			return nil
@@ -995,6 +995,18 @@ func NewMethodVisitor(v *ProtoVisitor, fieldType *definition.BasicType) *MethodV
 
 func (v *MethodVisitor) VisitFieldMethods(ctx *parser.FieldMethodsContext) any {
 	methods := util.NewOrderedMap[string, *util.OrderedMap[definition.MethodKindID, definition.Method]]()
+
+	getMethodType := func(m definition.Method) definition.Type {
+		switch val := m.(type) {
+		case *definition.GetMethod:
+			return val.MethodRetType
+		case *definition.SetMethod:
+			return val.MethodParamType
+		default:
+			panic("unreachable, must be GetMethod or SetMethod to get method return type")
+		}
+	}
+
 	addMethod := func(m definition.Method) error {
 		group, ok := methods.Get(m.GetMethodName())
 		if ok {
@@ -1005,6 +1017,21 @@ func (v *MethodVisitor) VisitFieldMethods(ctx *parser.FieldMethodsContext) any {
 					Err: &definition.DefinitionDuplicateError{
 						PrevDef: prev,
 						DefName: m.GetMethodName(),
+					},
+				}
+			}
+			method0 := group.First().Value
+			method0Type := getMethodType(method0)
+			methodMType := getMethodType(m)
+			if method0Type.GetTypeID() != methodMType.GetTypeID() ||
+				method0Type.GetTypeName() != methodMType.GetTypeName() {
+				return &definition.CompileError{
+					Position: m,
+					Err: &definition.MethodTypeError{
+						MethodName: m.GetMethodName(),
+						PrevDef:    method0,
+						Expect:     method0Type.GetTypeName(),
+						Got:        methodMType.GetTypeName(),
 					},
 				}
 			}
