@@ -89,6 +89,14 @@ func IsUncapitalized(s string) bool {
 }
 
 func ToPascalCase(s string) string {
+	segments := strings.Split(s, ".")
+	for i, seg := range segments {
+		segments[i] = toPascalCase(seg)
+	}
+	return strings.Join(segments, ".")
+}
+
+func toPascalCase(s string) string {
 	if len(s) == 0 {
 		return s
 	}
@@ -128,6 +136,14 @@ func ToPascalCase(s string) string {
 }
 
 func TocamelCase(s string) string {
+	segments := strings.Split(s, ".")
+	for i, seg := range segments {
+		segments[i] = tocamelCase(seg)
+	}
+	return strings.Join(segments, ".")
+}
+
+func tocamelCase(s string) string {
 	if len(s) == 0 {
 		return s
 	}
@@ -172,6 +188,14 @@ func TocamelCase(s string) string {
 }
 
 func Tosnake_case(s string) string {
+	segments := strings.Split(s, ".")
+	for i, seg := range segments {
+		segments[i] = tosnake_case(seg)
+	}
+	return strings.Join(segments, ".")
+}
+
+func tosnake_case(s string) string {
 	if len(s) == 0 {
 		return s
 	}
@@ -218,6 +242,14 @@ func Tosnake_case(s string) string {
 }
 
 func ToALLCAP_CASE(s string) string {
+	segments := strings.Split(s, ".")
+	for i, seg := range segments {
+		segments[i] = toALLCAP_CASE(seg)
+	}
+	return strings.Join(segments, ".")
+}
+
+func toALLCAP_CASE(s string) string {
 	if len(s) == 0 {
 		return s
 	}
