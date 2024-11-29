@@ -76,6 +76,26 @@ func (g *CommonJSGenerator) generateBinBigInt(value any) string {
 	return fmt.Sprintf("%sn", g.generateBin(value))
 }
 
+var structPackagePrefixTemplate = `
+{{- define "structPackagePrefix" -}}
+{{- $structDef := .StructDef -}}
+{{- $inPackage := .GenUnit.LocalNames.Has $structDef.StructName -}}
+{{- if $inPackage -}}
+    $package.{{ $structDef.StructName }}
+{{- else -}}
+    $root.{{ $structDef.StructBelongs.Package }}.{{ $structDef.StructName }}
+{{- end -}}
+{{- end -}}
+`
+
+func (g *CommonJSGenerator) generateStructPackagePrefix(structDef *definition.Struct) string {
+	data := map[string]any{
+		"StructDef": structDef,
+		"GenUnit":   g.GenUnits.Last().Value.SourceUnit,
+	}
+	return util.ExecuteTemplate(structPackagePrefixTemplate, "structPackagePrefix", nil, data)
+}
+
 // ==================== Generate ====================
 
 func (g *CommonJSGenerator) Generate(ctx *gen.GenCtx) (retErr error, retWarnings error) {
@@ -97,6 +117,25 @@ func (g *CommonJSGenerator) Generate(ctx *gen.GenCtx) (retErr error, retWarnings
 			},
 		}
 		g.Warning = definition.TopLevelWarningsJoin(g.Warning, warn)
+	}
+	if ctx.GenOptions.MinimalCode {
+		warn := &definition.GenerateWarning{
+			Warning: &definition.OptionNotAvailableWarning{
+				OptionName: "minimal",
+				Reason:     "CommonJS target does not support minimal code generation yet, this option will be ignored",
+			},
+		}
+		g.Warning = definition.TopLevelWarningsJoin(g.Warning, warn)
+	}
+	if !ctx.GenOptions.MemoryCopy {
+		warn := &definition.GenerateWarning{
+			Warning: &definition.OptionNotSetWarning{
+				OptionName: "memcpy",
+				Reason:     "CommonJS target does not support zero-copy, this option will be forced to be enabled",
+			},
+		}
+		g.Warning = definition.TopLevelWarningsJoin(g.Warning, warn)
+		ctx.GenOptions.MemoryCopy = true
 	}
 	var topErr definition.TopLevelError
 	genErr := g.AcceptGenCtx(ctx)
@@ -190,6 +229,14 @@ var fileTemplate = `
         return mergeDeep(target, ...sources);
     }
 
+    function createArray(length, init) {
+        var arr = new Array(length);
+        for (var i = 0; i < length; i++) {
+            arr[i] = init();
+        }
+        return arr;
+    }
+
     function floatToUint32Bits(value) {
         var buffer = new ArrayBuffer(4);
         var view = new DataView(buffer);
@@ -216,6 +263,63 @@ var fileTemplate = `
         var view = new DataView(buffer);
         view.setBigUint64(0, value, true); // true for little-endian
         return view.getFloat64(0, true);
+    }
+
+    function stringToUTF8BytesCount(str) {
+        var count = 0;
+        for (var i = 0; i < str.length; i++) {
+            var code = str.charCodeAt(i);
+            if (code < 0x80) count += 1;
+            else if (code < 0x800) count += 2;
+            else if (code < 0xD800 || code >= 0xE000) count += 3;
+            else { count += 4; i++; }
+        }
+        return count;
+    }
+
+    function stringToUTF8Bytes(str, data, start) {
+        var offset = start;
+        for (var i = 0; i < str.length; i++) {
+            var code = str.charCodeAt(i);
+            if (code < 0x80) {
+                data[offset++] = code;
+            } else if (code < 0x800) {
+                data[offset++] = 0xC0 | (code >> 6);
+                data[offset++] = 0x80 | (code & 0x3F);
+            } else if (code < 0xD800 || code >= 0xE000) {
+                data[offset++] = 0xE0 | (code >> 12);
+                data[offset++] = 0x80 | ((code >> 6) & 0x3F);
+                data[offset++] = 0x80 | (code & 0x3F);
+            } else {
+                i++;
+                code = 0x10000 + (((code & 0x3FF) << 10) | (str.charCodeAt(i) & 0x3FF));
+                data[offset++] = 0xF0 | (code >> 18);
+                data[offset++] = 0x80 | ((code >> 12) & 0x3F);
+                data[offset++] = 0x80 | ((code >> 6) & 0x3F);
+                data[offset++] = 0x80 | (code & 0x3F);
+            }
+        }
+        return offset - start;
+    }
+
+    function stringFromUTF8Bytes(data, start) {
+        var str = "";
+        var offset = start;
+        while (offset < data.length && data[offset] && data[offset] !== 0) {
+            var code = data[offset++];
+            if (code < 0x80) str += String.fromCharCode(code);
+            else if (code < 0xE0) str += String.fromCharCode(((code & 0x1F) << 6) | (data[offset++] & 0x3F));
+            else if (code < 0xF0) str += String.fromCharCode(((code & 0xF) << 12) | ((data[offset++] & 0x3F) << 6) | (data[offset++] & 0x3F));
+            else {
+                code = ((code & 0x7) << 18) | ((data[offset++] & 0x3F) << 12) | ((data[offset++] & 0x3F) << 6) | (data[offset++] & 0x3F);
+                if (code < 0x10000) str += String.fromCharCode(code);
+                else {
+                    code -= 0x10000;
+                    str += String.fromCharCode(0xD800 + (code >> 10), 0xDC00 + (code & 0x3FF));
+                }
+            }
+        }
+        return [str, offset - start];
     }
     
     // ====================== {{ $curUnit.Package }} ======================
@@ -288,6 +392,14 @@ var fileTemplate = `
         return mergeDeep(target, ...sources);
     }
 
+    function createArray(length, init) {
+        var arr = new Array(length);
+        for (var i = 0; i < length; i++) {
+            arr[i] = init();
+        }
+        return arr;
+    }
+
     function floatToUint32Bits(value) {
         var buffer = new ArrayBuffer(4);
         var view = new DataView(buffer);
@@ -314,6 +426,63 @@ var fileTemplate = `
         var view = new DataView(buffer);
         view.setBigUint64(0, value, true); // true for little-endian
         return view.getFloat64(0, true);
+    }
+
+    function stringToUTF8BytesCount(str) {
+        var count = 0;
+        for (var i = 0; i < str.length; i++) {
+            var code = str.charCodeAt(i);
+            if (code < 0x80) count += 1;
+            else if (code < 0x800) count += 2;
+            else if (code < 0xD800 || code >= 0xE000) count += 3;
+            else { count += 4; i++; }
+        }
+        return count;
+    }
+
+    function stringToUTF8Bytes(str, data, start) {
+        var offset = start;
+        for (var i = 0; i < str.length; i++) {
+            var code = str.charCodeAt(i);
+            if (code < 0x80) {
+                data[offset++] = code;
+            } else if (code < 0x800) {
+                data[offset++] = 0xC0 | (code >> 6);
+                data[offset++] = 0x80 | (code & 0x3F);
+            } else if (code < 0xD800 || code >= 0xE000) {
+                data[offset++] = 0xE0 | (code >> 12);
+                data[offset++] = 0x80 | ((code >> 6) & 0x3F);
+                data[offset++] = 0x80 | (code & 0x3F);
+            } else {
+                i++;
+                code = 0x10000 + (((code & 0x3FF) << 10) | (str.charCodeAt(i) & 0x3FF));
+                data[offset++] = 0xF0 | (code >> 18);
+                data[offset++] = 0x80 | ((code >> 12) & 0x3F);
+                data[offset++] = 0x80 | ((code >> 6) & 0x3F);
+                data[offset++] = 0x80 | (code & 0x3F);
+            }
+        }
+        return offset - start;
+    }
+
+    function stringFromUTF8Bytes(data, start) {
+        var str = "";
+        var offset = start;
+        while (offset < data.length && data[offset] && data[offset] !== 0) {
+            var code = data[offset++];
+            if (code < 0x80) str += String.fromCharCode(code);
+            else if (code < 0xE0) str += String.fromCharCode(((code & 0x1F) << 6) | (data[offset++] & 0x3F));
+            else if (code < 0xF0) str += String.fromCharCode(((code & 0xF) << 12) | ((data[offset++] & 0x3F) << 6) | (data[offset++] & 0x3F));
+            else {
+                code = ((code & 0x7) << 18) | ((data[offset++] & 0x3F) << 12) | ((data[offset++] & 0x3F) << 6) | (data[offset++] & 0x3F);
+                if (code < 0x10000) str += String.fromCharCode(code);
+                else {
+                    code -= 0x10000;
+                    str += String.fromCharCode(0xD800 + (code >> 10), 0xDC00 + (code & 0x3FF));
+                }
+            }
+        }
+        return [str, offset - start];
     }
 
     {{ range $genUnit := .GenUnits.Values -}}
@@ -433,7 +602,7 @@ var typeMap = map[definition.TypeID]string{
 	definition.TypeID_Float32: "Number",
 	definition.TypeID_Float64: "Number",
 	definition.TypeID_String:  "String",
-	definition.TypeID_Bytes:   "String",
+	definition.TypeID_Bytes:   "Array",
 }
 
 func (g CommonJSGenerator) GenerateBasicType(type_ *definition.BasicType) (string, error) {
@@ -481,13 +650,13 @@ func (g CommonJSGenerator) GenerateStringDefaultValue(string_ *definition.String
 // ==================== GenerateBytes ====================
 
 func (g CommonJSGenerator) GenerateBytes(bytes *definition.Bytes) (string, error) {
-	return "String", nil
+	return "Array", nil
 }
 
 // ==================== GenerateBytesDefaultValue ====================
 
 func (g CommonJSGenerator) GenerateBytesDefaultValue(bytes *definition.Bytes) (string, error) {
-	return `""`, nil
+	return `[]`, nil
 }
 
 // ==================== GenerateArray ====================
@@ -503,6 +672,15 @@ func (g CommonJSGenerator) GenerateArray(array *definition.Array) (string, error
 // ==================== GenerateArrayDefaultValue ====================
 
 func (g CommonJSGenerator) GenerateArrayDefaultValue(array *definition.Array) (string, error) {
+	// special case for struct array
+	if array.ElementType.GetTypeID().IsStruct() {
+		elemDefValue, err := g.GenerateTypeDefaultValue(array.ElementType)
+		if err != nil {
+			return "", err
+		}
+		length := g.generateDec(array.Length)
+		return fmt.Sprintf("createArray(%s, function() { return %s; })", length, elemDefValue), nil
+	}
 	return "[]", nil
 }
 
@@ -519,14 +697,25 @@ var structTemplate = `
 
 {{- define "structConst" -}}
                 /**
+                 * Check if this struct has dynamic size
+                 * @function dynamic
+                 * @memberof {{ .StructDef.StructBelongs.Package }}.{{ .StructDef.StructName }}
+                 * @static
+                 * @returns {Boolean} If this struct has dynamic size
+                 */
+                {{ .StructDef.StructName }}.dynamic = function() {
+                    return {{ if .StructDef.StructDynamic }}true{{ else }}false{{ end }};
+                };
+
+                /**
                  * Get the size of this struct
                  * @function size
                  * @memberof {{ .StructDef.StructBelongs.Package }}.{{ .StructDef.StructName }}
                  * @static
-                 * @returns {number} Size of this struct
+                 * @returns {Number} Size of this struct
                  */
                 {{ .StructDef.StructName }}.size = function() {
-                    return {{ .StructSize }};
+                    return {{ calc .StructDef.StructBitSize "/" 8 }};
                 };
 {{ end }}
 
@@ -646,7 +835,7 @@ func (g CommonJSGenerator) generateStruct(structDef *definition.Struct) (*Genera
 	}
 
 	fieldInitStrs := make([]string, structDef.StructFields.Len())
-	if err := structDef.ForEachFieldWithPos(func(field definition.Field, index int, start int64, pos string) error {
+	if err := structDef.ForEachFieldWithPos(func(field definition.Field, index int, start int64, dynamic bool, pos string) error {
 		fieldStr, err := g.GenerateField(field)
 		if err != nil {
 			return err
@@ -666,7 +855,7 @@ func (g CommonJSGenerator) generateStruct(structDef *definition.Struct) (*Genera
 	}
 
 	methodStrs := []string{}
-	if err := structDef.ForEachField(func(field definition.Field, index int, start int64) error {
+	if err := structDef.ForEachField(func(field definition.Field, index int, start int64, dynamic bool) error {
 		if !field.GetFieldKind().IsNormal() {
 			return nil
 		}
@@ -683,10 +872,8 @@ func (g CommonJSGenerator) generateStruct(structDef *definition.Struct) (*Genera
 		return nil, err
 	}
 
-	// TODO: handle dynamic size
 	constData := map[string]any{
-		"StructDef":  structDef,
-		"StructSize": structDef.StructBitSize / 8,
+		"StructDef": structDef,
 	}
 	constStr := util.ExecuteTemplate(structTemplate, "structConst", funcMap, constData)
 
@@ -719,26 +906,9 @@ func (g CommonJSGenerator) generateStruct(structDef *definition.Struct) (*Genera
 
 // ==================== GenerateStructDefaultValue ====================
 
-var structDefValueTemplate = `
-{{- define "structDefValue" -}}
-{{- $structDef := .StructDef -}}
-{{- $inPackage := .GenUnit.LocalNames.Has $structDef.StructName -}}
-{{- if $inPackage -}}
-    $package.{{ $structDef.StructName }}.create()
-{{- else -}}
-    $root.{{ $structDef.StructBelongs.Package }}.{{ $structDef.StructName }}.create()
-{{- end -}}
-{{- end -}}
-`
-
 func (g *CommonJSGenerator) GenerateStructDefaultValue(structDef *definition.Struct) (string, error) {
-	data := map[string]any{
-		"StructDef": structDef,
-		"GenUnit":   g.GenUnits.Last().Value.SourceUnit,
-	}
-
-	str := util.ExecuteTemplate(structDefValueTemplate, "structDefValue", nil, data)
-	return str, nil
+	prefix := g.generateStructPackagePrefix(structDef)
+	return fmt.Sprintf("%s.create()", prefix), nil
 }
 
 // ==================== GenerateField ====================
@@ -1030,23 +1200,87 @@ var encoderTemplate = `
 {{- define "encoder" -}}
 {{- $structName := .StructDef.StructName -}}
                 /**
+                 * Calculate encoded size of {{ $structName }} object
+                 * @function encode_size
+                 * @memberof {{ .StructDef.StructBelongs.Package }}.{{ $structName }}
+                 * @static
+                 * @param {{"{"}}{{ .StructDef.StructBelongs.Package }}.I{{ $structName }}} obj {{ $structName }} object
+                 * @returns {Number} Encoded size of {{ $structName }} object
+                 */
+                {{ $structName }}.encode_size = function(obj) {
+                    {{- if .StructDef.StructDynamic }}
+                    var size = {{ calc .StructDef.StructBitSize "/" 8 }}
+                    {{- range $field := .StructDef.StructFields.Values }}
+                        {{- if $field.GetFieldKind.IsNormal }}
+                        {{- $fieldName := Tosnake_case $field.FieldName }}
+                            {{- if $field.FieldType.GetTypeID.IsArray }}
+                                {{- if $field.FieldType.ElementType.GetTypeID.IsStruct }}
+                                    {{- if $field.FieldType.ElementType.GetTypeDynamic }}
+                                        {{- range $i := iterate 0 $field.FieldType.Length }}
+                    size += obj.{{ $fieldName }}[{{ $i }}].encode_size();
+                                        {{- end }}
+                                    {{- end }}
+                                {{- else if $field.FieldType.ElementType.GetTypeID.IsString }}
+                                    {{- range $i := iterate 0 $field.FieldType.Length }}
+                    size += stringToUTF8BytesCount(obj.{{ $fieldName }}[{{ $i }}]) + 1;
+                                    {{- end }}
+                                {{- else if $field.FieldType.ElementType.GetTypeID.IsBytes }}
+                                    {{- range $i := iterate 0 $field.FieldType.Length }}
+                    size += obj.{{ $fieldName }}[{{ $i }}].length;
+                    size += 1{{ range $j := iterate 1 5 }} + Boolean(obj.{{ $fieldName }}[{{ $i }}].length >> {{ calc $j "*" 7 }}){{ end }};
+                                    {{- end }}
+                                {{- end }}
+                            {{- else if $field.FieldType.GetTypeID.IsStruct }}
+                                {{- if $field.FieldType.GetTypeDynamic }}
+                    size += obj.{{ $fieldName }}.encode_size();
+                                {{- end }}
+                            {{- else if $field.FieldType.GetTypeID.IsString }}
+                    size += stringToUTF8BytesCount(obj.{{ $fieldName }}) + 1;
+                            {{- else if $field.FieldType.GetTypeID.IsBytes }}
+                    size += obj.{{ $fieldName }}.length;
+                    size += 1{{ range $j := iterate 1 5 }} + Boolean(obj.{{ $fieldName }}.length >> {{ calc $j "*" 7 }}){{ end }};
+                            {{- end }}
+                        {{- end }}
+                    {{- end }}
+                    return size;
+                    {{- else }}
+                    return {{ calc .StructDef.StructBitSize "/" 8 }};
+                    {{- end }}
+                };
+
+                /**
+                 * Calculate encoded size of {{ $structName }} object
+                 * @function encode_size
+                 * @memberof {{ .StructDef.StructBelongs.Package }}.{{ $structName }}
+                 * @instance
+                 * @returns {Number} Encoded size of {{ $structName }} object
+                 */
+                {{ $structName }}.prototype.encode_size = function() {
+                    return {{ $structName }}.encode_size(this);
+                };
+
+                /**
                  * Encode {{ $structName }} object to buffer
                  * @function encode
                  * @memberof {{ .StructDef.StructBelongs.Package }}.{{ $structName }}
                  * @static
                  * @param {{"{"}}{{ .StructDef.StructBelongs.Package }}.I{{ $structName }}} obj {{ $structName }} object
-                 * @param {Array} [data] Buffer to write
-                 * @param {number} [offset] Offset to write
-                 * @returns {Array} Buffer
+                 * @param {Array | Uint8Array} [buffer] The buffer to encode data
+                 * @param {Number} [start] The start position to store the encoded data
+                 * @returns {Array | Number} Array with encoded data if data is not provided, otherwise number of bytes encoded
                  */
-                {{ $structName }}.encode = function(obj, data, offset) {
-                    if (data === undefined) data = [];
-                    if (offset === undefined) offset = 0;
-                    if (obj === undefined) return data;
+                {{ $structName }}.encode = function(obj, buffer, start) {
+                    if (obj === undefined) return buffer === undefined ? -1 : undefined;
+                    var data = buffer;
+                    if (data === undefined) data = new Array({{ if .Dynamic }}obj.encode_size(){{ else }}{{ calc .StructDef.StructBitSize "/" 8 }}{{ end }});
+                    if (start === undefined) start = 0;
+                    {{- if .Dynamic }}
+                    var offset = 0;
+                    {{- end }}
                     {{- range $encodeStr := .EncodeStrs }}
                     {{ $encodeStr }}
                     {{- end }}
-                    return data;
+                    return buffer === undefined ? data : {{ if .Dynamic }}offset + {{ end }}{{ calc .StructDef.StructBitSize "/" 8 }}
                 };
 
                 /**
@@ -1054,19 +1288,19 @@ var encoderTemplate = `
                  * @function encode
                  * @memberof {{ .StructDef.StructBelongs.Package }}.{{ $structName }}
                  * @instance
-                 * @param {{"{"}}{{ .StructDef.StructBelongs.Package }}.I{{ $structName }}} data {{ $structName }} object
-                 * @param {number} [offset] Offset to write
-                 * @returns {Array} Buffer
+                 * @param {Array | Uint8Array} [data] The buffer to encode data
+                 * @param {Number} [start] The start position to store the encoded data
+                 * @returns {Array | Number} Array with encoded data if data is not provided, otherwise number of bytes encoded
                  */
-                {{ $structName }}.prototype.encode = function(data, offset) {
-                    return {{ $structName }}.encode(this, data, offset);
+                {{ $structName }}.prototype.encode = function(data, start) {
+                    return {{ $structName }}.encode(this, data, start);
                 };
 {{- end -}}
 `
 
 func (g CommonJSGenerator) GenerateEncoder(structDef *definition.Struct) (string, error) {
 	encodeStrs := []string{}
-	if err := structDef.ForEachFieldWithPos(func(field definition.Field, fieldIndex int, startBits int64, pos string) error {
+	if err := structDef.ForEachFieldWithPos(func(field definition.Field, fieldIndex int, startBits int64, dynamic bool, pos string) error {
 		encodeStmts, err := g.generateEncodeField(field, startBits)
 		if err != nil {
 			return err
@@ -1101,6 +1335,7 @@ func (g CommonJSGenerator) GenerateEncoder(structDef *definition.Struct) (string
 		"StructDef":  structDef,
 		"EncodeStrs": encodeStrs,
 		"GenOption":  g.GenCtx.GenOptions,
+		"Dynamic":    structDef.GetTypeDynamic(),
 	}
 
 	encoderStr := util.ExecuteTemplate(encoderTemplate, "encoder", nil, fieldData)
@@ -1134,7 +1369,8 @@ var fieldEncoderTemplate = `
 {{- end -}}
 
 {{- define "encodeNormalFieldStruct" -}}
-    {{ .FieldName }}.encode(data, offset + {{ .FromByte }});
+{{- $packagePrefix := call .GenerateStructPackagePrefix .FieldStruct -}}
+    {{ if .FieldStruct.GetTypeDynamic }}offset += {{ end }}{{ $packagePrefix }}.encode({{ .FieldName }}, data, {{ if .Dynamic }}offset + {{ end }}start + {{ .FromByte }});
 {{- end -}}
 
 {{- define "encodeNormalFieldTempVarDecl" -}}
@@ -1179,8 +1415,26 @@ var fieldEncoderTemplate = `
 {{- end -}}
 {{- end -}}
 
+{{- define "encodeNormalFieldString" -}}
+                    (function() {
+                        var {{ .TempName }} = stringToUTF8Bytes({{ .FieldName }}, data, offset + start + {{ .FromByte }});
+                        data[offset + start + {{ .FromByte }} + {{ .TempName }}] = 0;
+                        offset += {{ .TempName }} + 1;
+                    })();
+{{- end -}}
+
+{{- define "encodeNormalFieldBytes" -}}
+                    (function() {
+                        var {{ .TempName }} = {{ .FieldName }}.length;
+                        do { data[offset + start + {{ .FromByte }}] = {{ .TempName }} & {{ .GetMask }} | {{ .SetMask }}; offset++; {{ .TempName }} >>= {{ .Shift }}; } while ({{ .TempName }} > 0);
+                        data[offset - 1 + start + {{ .FromByte }}] &= ~{{ .SetMask }};
+                        for (var i = 0; i < {{ .FieldName }}.length; i++) data[offset + start + {{ .FromByte }} + i] = {{ .FieldName }}[i];
+                        offset += {{ .FieldName }}.length;
+                    })();
+{{- end -}}
+
 {{- define "encodeImpl" -}}
-    data[offset + {{ .BytePos }}] {{ .Operator }} {{ .FieldData }};
+    data[{{ if .Dynamic }}offset + {{ end }}start + {{ .BytePos }}] {{ .Operator }} {{ .FieldData }};
 {{- end -}}
 `
 
@@ -1201,6 +1455,7 @@ func (g CommonJSGenerator) generateEncodeStructFieldName(name string) string {
 }
 
 func (g CommonJSGenerator) generateEncodeConstantField(field *definition.ConstantField, startBits int64) ([]string, error) {
+	structDynamic := field.FieldBelongs.GetTypeDynamic()
 	var byteOrder binary.ByteOrder = binary.LittleEndian
 	if gen.MatchOption(field.FieldOptions, "order", "big") {
 		byteOrder = binary.BigEndian
@@ -1221,7 +1476,7 @@ func (g CommonJSGenerator) generateEncodeConstantField(field *definition.Constan
 	from := startBits
 	to := startBits + field.GetFieldBitSize()
 
-	encodeStmts := g.generateEncodeImpl(from, to, fieldData, g.generateBin, g.generateDec, false)
+	encodeStmts := g.generateEncodeImpl(from, to, fieldData, g.generateBin, g.generateDec, false, structDynamic)
 	return encodeStmts, nil
 }
 
@@ -1236,12 +1491,13 @@ func (g CommonJSGenerator) generateEncodeEmbeddedField(field *definition.Embedde
 func (g CommonJSGenerator) generateEncodeNormalField(field *definition.NormalField, startBits int64) ([]string, error) {
 	from := startBits
 	to := startBits + field.GetFieldBitSize()
+	structDynamic := field.FieldBelongs.GetTypeDynamic()
 	encodeStmts := []string{}
 
 	switch ty := field.FieldType.(type) {
-	case *definition.Struct:
+	case *definition.Struct, *definition.String, *definition.Bytes:
 		name := g.generateEncodeStructFieldName(field.FieldName)
-		stmts, err := g.generateEncodeNormalFieldImpl(name, ty, field.FieldOptions, from, to)
+		stmts, err := g.generateEncodeNormalFieldImpl(name, ty, field.FieldOptions, structDynamic, from, to)
 		if err != nil {
 			return nil, err
 		}
@@ -1265,7 +1521,7 @@ func (g CommonJSGenerator) generateEncodeNormalField(field *definition.NormalFie
 			name = tempName
 		}
 
-		stmts, err := g.generateEncodeNormalFieldImpl(name, ty, field.FieldOptions, from, to)
+		stmts, err := g.generateEncodeNormalFieldImpl(name, ty, field.FieldOptions, structDynamic, from, to)
 		if err != nil {
 			return nil, err
 		}
@@ -1285,7 +1541,7 @@ func (g CommonJSGenerator) generateEncodeNormalField(field *definition.NormalFie
 		declStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarDeclEnum", nil, encodeNormalFieldTempVarDeclData)
 		encodeStmts = append(encodeStmts, declStr)
 
-		stmts, err := g.generateEncodeNormalFieldImpl(tempName, tempTy, field.FieldOptions, from, to)
+		stmts, err := g.generateEncodeNormalFieldImpl(tempName, tempTy, field.FieldOptions, structDynamic, from, to)
 		if err != nil {
 			return nil, err
 		}
@@ -1300,7 +1556,7 @@ func (g CommonJSGenerator) generateEncodeNormalField(field *definition.NormalFie
 		// temp variable declaration
 		var nameIndex func(int64) string
 		switch ty.ElementType.(type) {
-		case *definition.Struct:
+		case *definition.Struct, *definition.String, *definition.Bytes:
 			nameIndex = func(index int64) string {
 				return fmt.Sprintf("%s[%d]", name, index)
 			}
@@ -1380,7 +1636,7 @@ func (g CommonJSGenerator) generateEncodeNormalField(field *definition.NormalFie
 			default:
 			}
 
-			stmts, err := g.generateEncodeNormalFieldImpl(subName, elemTy, field.FieldOptions, subFrom, subTo)
+			stmts, err := g.generateEncodeNormalFieldImpl(subName, elemTy, field.FieldOptions, structDynamic, subFrom, subTo)
 			if err != nil {
 				return nil, err
 			}
@@ -1396,17 +1652,18 @@ func (g CommonJSGenerator) generateEncodeNormalField(field *definition.NormalFie
 }
 
 // generateEncodeNormalFieldImpl does not handle array field or generate temp variable declaration
-func (g CommonJSGenerator) generateEncodeNormalFieldImpl(fieldNameStr string, fieldType definition.Type, fieldOptions *util.OrderedMap[string, *definition.Option], from, to int64) ([]string, error) {
+func (g CommonJSGenerator) generateEncodeNormalFieldImpl(fieldNameStr string, fieldType definition.Type, fieldOptions *util.OrderedMap[string, *definition.Option], structDynamic bool, from, to int64) ([]string, error) {
 	encodeStmts := []string{}
 	fieldBitSize := to - from
 
 	switch ty := fieldType.(type) {
 	case *definition.Struct:
 		encodeNormalFieldStructData := map[string]any{
-			"StructName": ty.StructName,
-			"FieldName":  fieldNameStr,
-			"FromByte":   from / 8,
-			"ToByte":     (to + 7) / 8,
+			"FieldStruct":                 ty,
+			"FieldName":                   fieldNameStr,
+			"FromByte":                    from / 8,
+			"Dynamic":                     structDynamic,
+			"GenerateStructPackagePrefix": g.generateStructPackagePrefix,
 		}
 
 		stmt := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldStruct", nil, encodeNormalFieldStructData)
@@ -1414,6 +1671,29 @@ func (g CommonJSGenerator) generateEncodeNormalFieldImpl(fieldNameStr string, fi
 
 	case *definition.Enum:
 		panic("unreachable, enum field should be handled in generateEncodeNormalField")
+
+	case *definition.String:
+		encodeNormalFieldStringData := map[string]any{
+			"FieldName": fieldNameStr,
+			"FromByte":  from / 8,
+			"TempName":  g.generateEncodeTempVarName(from),
+		}
+
+		stmt := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldString", nil, encodeNormalFieldStringData)
+		encodeStmts = append(encodeStmts, stmt)
+
+	case *definition.Bytes:
+		encodeNormalFieldBytesData := map[string]any{
+			"FieldName": fieldNameStr,
+			"FromByte":  from / 8,
+			"GetMask":   g.generateHex((1 << 7) - 1),
+			"SetMask":   g.generateHex(1 << 7),
+			"Shift":     7,
+			"TempName":  g.generateEncodeTempVarName(from),
+		}
+
+		stmt := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldBytes", nil, encodeNormalFieldBytesData)
+		encodeStmts = append(encodeStmts, stmt)
 
 	case *definition.BasicType:
 		generateDec := g.generateDec
@@ -1462,7 +1742,7 @@ func (g CommonJSGenerator) generateEncodeNormalFieldImpl(fieldNameStr string, fi
 				return exprStr
 			}
 		}
-		encodeStmts = append(encodeStmts, g.generateEncodeImpl(from, to, fieldData, generateBin, generateDec, cast)...)
+		encodeStmts = append(encodeStmts, g.generateEncodeImpl(from, to, fieldData, generateBin, generateDec, cast, structDynamic)...)
 
 	case *definition.Array:
 		panic("unreachable, array field should be handled in generateEncodeNormalField")
@@ -1492,7 +1772,7 @@ func (g CommonJSGenerator) generateEncodeNormalFieldImpl(fieldNameStr string, fi
 //	fieldData(1) -> ((structPtr->intField >> 16) & 0xff)
 //	fieldData(2) -> ((structPtr->intField >> 8) & 0xff)
 //	fieldData(3) -> ((structPtr->intField >> 0) & 0xff)
-func (g CommonJSGenerator) generateEncodeImpl(from, to int64, fieldData func(int64) string, generateBin func(any) string, generateDec func(any) string, cast bool) []string {
+func (g CommonJSGenerator) generateEncodeImpl(from, to int64, fieldData func(int64) string, generateBin func(any) string, generateDec func(any) string, cast bool, structDynamic bool) []string {
 	encodeStmts := []string{}
 	// generate encode implentation from 'from' bit to 'to' bit and align to 8 bits
 	// e.g. from = 3, to = 11 -> loop 2 times: 3-7, 8-11
@@ -1617,6 +1897,7 @@ func (g CommonJSGenerator) generateEncodeImpl(from, to int64, fieldData func(int
 			"BytePos":   i / 8,
 			"Operator":  operator,
 			"FieldData": exprStr,
+			"Dynamic":   structDynamic,
 		}
 
 		encodeStmt := util.ExecuteTemplate(fieldEncoderTemplate, "encodeImpl", nil, encodeImplData)
@@ -1644,18 +1925,21 @@ var decoderTemplate = `
                  * @memberof {{ .StructDef.StructBelongs.Package }}.{{ $structName }}
                  * @static
                  * @param {{"{"}}{{ .StructDef.StructBelongs.Package }}.I{{ $structName }}} obj {{ $structName }} object
-                 * @param {Array} data Buffer to read
-                 * @param {number} [offset] Offset to read
-                 * @returns {boolean} True if decode success, false otherwise
+                 * @param {Array | Uint8Array} data The buffer to decode from
+                 * @param {Number} [start] Start position of buffer to decode
+                 * @returns {Number} -1 if decode failed, otherwise number of bytes decoded
                  */
-                {{ $structName }}.decode = function(obj, data, offset) {
-                    if (obj === undefined) return false;
-                    if (data === undefined) return false;
-                    if (offset === undefined) offset = 0;
+                {{ $structName }}.decode = function(obj, data, start) {
+                    if (obj === undefined) return -1;
+                    if (data === undefined) return -1;
+                    if (start === undefined) start = 0;
+                    {{- if .Dynamic }}
+                    var offset = 0;
+                    {{- end }}
                     {{- range $decodeStr := .DecodeStrs }}
                     {{ $decodeStr }}
                     {{- end }}
-                    return true;
+                    return {{ if .Dynamic }}offset + {{ end }}{{ calc .StructDef.StructBitSize "/" 8 }};
                 };
 
                 /**
@@ -1663,19 +1947,19 @@ var decoderTemplate = `
                  * @function decode
                  * @memberof {{ .StructDef.StructBelongs.Package }}.{{ $structName }}
                  * @instance
-                 * @param {Array} data Buffer to read
-                 * @param {number} [offset] Offset to read
-                 * @returns {boolean} True if decode success, false otherwise
+                 * @param {Array | Uint8Array} data The buffer to decode from
+                 * @param {Number} [start] Start position of buffer to decode
+                 * @returns {Number} -1 if decode failed, otherwise number of bytes decoded
                  */
-                {{ $structName }}.prototype.decode = function(data, offset) {
-                    return {{ $structName }}.decode(this, data, offset);
+                {{ $structName }}.prototype.decode = function(data, start) {
+                    return {{ $structName }}.decode(this, data, start);
                 };
 {{- end -}}
 `
 
 func (g CommonJSGenerator) GenerateDecoder(structDef *definition.Struct) (string, error) {
 	decodeStrs := []string{}
-	if err := structDef.ForEachFieldWithPos(func(field definition.Field, fieldIndex int, startBits int64, pos string) error {
+	if err := structDef.ForEachFieldWithPos(func(field definition.Field, fieldIndex int, startBits int64, dynamic bool, pos string) error {
 		decodeStmts, err := g.generateDecodeField(field, startBits)
 		if err != nil {
 			return err
@@ -1710,6 +1994,7 @@ func (g CommonJSGenerator) GenerateDecoder(structDef *definition.Struct) (string
 		"StructDef":  structDef,
 		"DecodeStrs": decodeStrs,
 		"GenOption":  g.GenCtx.GenOptions,
+		"Dynamic":    structDef.GetTypeDynamic(),
 	}
 
 	decoderStr := util.ExecuteTemplate(decoderTemplate, "decoder", nil, fieldData)
@@ -1742,11 +2027,20 @@ var fieldDecoderTemplate = `
 {{- end -}}
 
 {{- define "decodeConstantField" -}}
-    if ({{ .TempName }} !== {{ .ConstantValue }}) return false;
+    if ({{ .TempName }} !== {{ .ConstantValue }}) return -1;
 {{- end -}}
 
 {{- define "decodeNormalFieldStruct" -}}
-    if (!{{ .FieldName }}.decode(data, offset + {{ .FromByte }})) return false;
+{{- $packagePrefix := call .GenerateStructPackagePrefix .FieldStruct -}}
+{{- if .FieldStruct.GetTypeDynamic -}}
+                    (function() {
+                        var {{ .TempName }} = {{ $packagePrefix }}.decode({{ .FieldName }}, data, offset + start + {{ .FromByte }});
+                        if ({{ .TempName }} < 0) return -1;
+                        offset += {{ .TempName }};
+                    })();
+{{- else -}}
+    if ({{ $packagePrefix }}.decode({{ .FieldName }}, data, {{ if .Dynamic }}offset + {{ end }}start + {{ .FromByte }}) < 0) return -1;
+{{- end -}}
 {{- end -}}
 
 {{- define "decodeNormalFieldTempVarDecl" -}}
@@ -1770,12 +2064,40 @@ var fieldDecoderTemplate = `
 {{- end -}}
 {{- end -}}
 
+{{- define "decodeNormalFieldString" -}}
+                    (function() {
+                        var result = stringFromUTF8Bytes(data, offset + start + {{ .FromByte }});
+                        {{ .FieldName }} = result[0];
+                        offset += result[1] + 1;
+                    })();
+{{- end -}}
+
+{{- define "decodeNormalFieldBytes" -}}
+                    (function() {
+                        var {{ .TempName }} = 0;
+                        var shift = 0;
+                        while ((data[offset + start + {{ .FromByte }}] & {{ .SetMask }}) !== 0) { {{ .TempName }} |= (data[offset + start + {{ .FromByte }}] & {{ .GetMask }}) << shift; shift += {{ .Shift }}; offset++; }
+                        {{ .TempName }} |= (data[offset + start + {{ .FromByte }}] & {{ .GetMask }}) << shift; offset++;
+                        {{ .FieldName }} = new Array({{ .TempName }});
+                        for (var i = 0; i < {{ .TempName }}; i++) {{ .FieldName }}[i] = data[offset + start + {{ .FromByte }} + i];
+                        offset += {{ .TempName }};
+                    })();
+{{- end -}}
+
+{{- define "decodeData" -}}
+    data[{{ if .Dynamic }}offset + {{ end }}start + {{ .BytePos }}]
+{{- end -}}
+
 {{- define "decodeImpl" -}}
     {{ .FieldName }} {{ .Operator }} {{ .Expr }};
 {{- end -}}
 
 {{- define "signExtendArith" -}}
     {{ .FieldName }} = (({{ .FieldName }}) ^ {{ .SignMask }}) - {{ .SignMask }};
+{{- end -}}
+
+{{- define "signExtendLogic" -}}
+    {{ .FieldName }} = ({{ .FieldName }} >>> {{ .SignShift }}) ? -(~{{ .FieldName }} + 1) : {{ .FieldName }};
 {{- end -}}
 `
 
@@ -1796,6 +2118,7 @@ func (g CommonJSGenerator) generateDecodeStructFieldName(name string) string {
 }
 
 func (g CommonJSGenerator) generateDecodeConstantField(field *definition.ConstantField, startBits int64) ([]string, error) {
+	structDynamic := field.FieldBelongs.GetTypeDynamic()
 	decodeStmts := []string{}
 
 	tempName := g.generateDecodeTempVarName(startBits)
@@ -1808,7 +2131,7 @@ func (g CommonJSGenerator) generateDecodeConstantField(field *definition.Constan
 	from := startBits
 	to := startBits + field.GetFieldBitSize()
 
-	stmts, err := g.generateDecodeNormalFieldImpl(tempName, field.FieldType, field.FieldOptions, from, to)
+	stmts, err := g.generateDecodeNormalFieldImpl(tempName, field.FieldType, field.FieldOptions, structDynamic, from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -1842,12 +2165,13 @@ func (g CommonJSGenerator) generateDecodeEmbeddedField(field *definition.Embedde
 func (g CommonJSGenerator) generateDecodeNormalField(field *definition.NormalField, startBits int64) ([]string, error) {
 	from := startBits
 	to := startBits + field.GetFieldBitSize()
+	structDynamic := field.FieldBelongs.GetTypeDynamic()
 	decodeStmts := []string{}
 
 	switch ty := field.FieldType.(type) {
-	case *definition.Struct:
+	case *definition.Struct, *definition.String, *definition.Bytes:
 		name := g.generateDecodeStructFieldName(field.FieldName)
-		stmts, err := g.generateDecodeNormalFieldImpl(name, ty, field.FieldOptions, from, to)
+		stmts, err := g.generateDecodeNormalFieldImpl(name, ty, field.FieldOptions, structDynamic, from, to)
 		if err != nil {
 			return nil, err
 		}
@@ -1869,7 +2193,7 @@ func (g CommonJSGenerator) generateDecodeNormalField(field *definition.NormalFie
 			declStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, decodeNormalFieldTempVarDeclData)
 			decodeStmts = append(decodeStmts, declStr)
 
-			stmts, err := g.generateDecodeNormalFieldImpl(tempName, tempTy, field.FieldOptions, from, to)
+			stmts, err := g.generateDecodeNormalFieldImpl(tempName, tempTy, field.FieldOptions, structDynamic, from, to)
 			if err != nil {
 				return nil, err
 			}
@@ -1886,7 +2210,7 @@ func (g CommonJSGenerator) generateDecodeNormalField(field *definition.NormalFie
 		} else {
 			// same as struct
 			name := g.generateDecodeStructFieldName(field.FieldName)
-			stmts, err := g.generateDecodeNormalFieldImpl(name, ty, field.FieldOptions, from, to)
+			stmts, err := g.generateDecodeNormalFieldImpl(name, ty, field.FieldOptions, structDynamic, from, to)
 			if err != nil {
 				return nil, err
 			}
@@ -1904,7 +2228,7 @@ func (g CommonJSGenerator) generateDecodeNormalField(field *definition.NormalFie
 		declStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, decodeNormalFieldTempVarDeclOnlyData)
 		decodeStmts = append(decodeStmts, declStr)
 
-		stmts, err := g.generateDecodeNormalFieldImpl(tempName, tempTy, field.FieldOptions, from, to)
+		stmts, err := g.generateDecodeNormalFieldImpl(tempName, tempTy, field.FieldOptions, structDynamic, from, to)
 		if err != nil {
 			return nil, err
 		}
@@ -1929,7 +2253,7 @@ func (g CommonJSGenerator) generateDecodeNormalField(field *definition.NormalFie
 		// temp variable declaration
 		var nameIndex func(int64) string
 		switch ty.ElementType.(type) {
-		case *definition.Struct:
+		case *definition.Struct, *definition.String, *definition.Bytes:
 			nameIndex = func(index int64) string {
 				return fmt.Sprintf("%s[%d]", name, index)
 			}
@@ -1983,7 +2307,7 @@ func (g CommonJSGenerator) generateDecodeNormalField(field *definition.NormalFie
 			subTo := from + (i+1)*elemBitSize
 			subName := nameIndex(i)
 
-			stmts, err := g.generateDecodeNormalFieldImpl(subName, elemTy, field.FieldOptions, subFrom, subTo)
+			stmts, err := g.generateDecodeNormalFieldImpl(subName, elemTy, field.FieldOptions, structDynamic, subFrom, subTo)
 			if err != nil {
 				return nil, err
 			}
@@ -2020,20 +2344,28 @@ func (g CommonJSGenerator) generateDecodeNormalField(field *definition.NormalFie
 	return decodeStmts, nil
 }
 
-func (g CommonJSGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fieldType definition.Type, fieldOptions *util.OrderedMap[string, *definition.Option], from, to int64) ([]string, error) {
+func (g CommonJSGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fieldType definition.Type, fieldOptions *util.OrderedMap[string, *definition.Option], structDynamic bool, from, to int64) ([]string, error) {
 	decodeStmts := []string{}
 	fieldBitSize := to - from
 
 	dataDataFunc := func(i int64) string {
-		return fmt.Sprintf("data[offset + %d]", i)
+		decodeDataData := map[string]any{
+			"Dynamic": structDynamic,
+			"BytePos": i,
+		}
+		return util.ExecuteTemplate(fieldDecoderTemplate, "decodeData", nil, decodeDataData)
 	}
 
 	switch ty := fieldType.(type) {
 	case *definition.Struct:
 		decodeNormalFieldStructData := map[string]any{
-			"FieldName": fieldNameStr,
-			"FromByte":  from / 8,
-			"ToByte":    (to + 7) / 8,
+			"FieldStruct":                 ty,
+			"FieldName":                   fieldNameStr,
+			"FromByte":                    from / 8,
+			"ToByte":                      (to + 7) / 8,
+			"Dynamic":                     structDynamic,
+			"TempName":                    g.generateDecodeTempVarName(from),
+			"GenerateStructPackagePrefix": g.generateStructPackagePrefix,
 		}
 
 		stmt := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldStruct", nil, decodeNormalFieldStructData)
@@ -2041,6 +2373,28 @@ func (g CommonJSGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fi
 
 	case *definition.Enum:
 		panic("unreachable, enum field should be handled in generateDecodeNormalField")
+
+	case *definition.String:
+		decodeNormalFieldStringData := map[string]any{
+			"FieldName": fieldNameStr,
+			"FromByte":  from / 8,
+		}
+
+		stmt := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldString", nil, decodeNormalFieldStringData)
+		decodeStmts = append(decodeStmts, stmt)
+
+	case *definition.Bytes:
+		decodeNormalFieldBytesData := map[string]any{
+			"FieldName": fieldNameStr,
+			"FromByte":  from / 8,
+			"GetMask":   g.generateHex((1 << 7) - 1),
+			"SetMask":   g.generateHex(1 << 7),
+			"Shift":     7,
+			"TempName":  g.generateDecodeTempVarName(from),
+		}
+
+		stmt := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldBytes", nil, decodeNormalFieldBytesData)
+		decodeStmts = append(decodeStmts, stmt)
 
 	case *definition.BasicType:
 		generateBin := g.generateBin
@@ -2118,15 +2472,28 @@ func (g CommonJSGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fi
 
 			switch g.GenCtx.GenOptions.SignExtMethod {
 			case gen.SignExtMethodDefault, gen.SignExtMethodShift, gen.SignExtMethodArith:
-				signMask := int64(1) << (originFromBitSize - 1)
-				signMaskStr := generateHex(signMask)
-				signExtendData := map[string]any{
-					"FieldName": fieldNameStr,
-					"SignMask":  signMaskStr,
-				}
+				// special case: sign extension for 32-bit integer
+				if originFromBitSize == 32 {
+					signShift := originFromBitSize - 1
+					signShiftStr := generateDec(signShift)
+					signExtendData := map[string]any{
+						"FieldName": fieldNameStr,
+						"SignShift": signShiftStr,
+					}
 
-				stmt := util.ExecuteTemplate(fieldDecoderTemplate, "signExtendArith", nil, signExtendData)
-				decodeStmts = append(decodeStmts, stmt)
+					stmt := util.ExecuteTemplate(fieldDecoderTemplate, "signExtendLogic", nil, signExtendData)
+					decodeStmts = append(decodeStmts, stmt)
+				} else {
+					signMask := int64(1) << (originFromBitSize - 1)
+					signMaskStr := generateHex(signMask)
+					signExtendData := map[string]any{
+						"FieldName": fieldNameStr,
+						"SignMask":  signMaskStr,
+					}
+
+					stmt := util.ExecuteTemplate(fieldDecoderTemplate, "signExtendArith", nil, signExtendData)
+					decodeStmts = append(decodeStmts, stmt)
+				}
 
 			default:
 				panic("unreachable, unknown sign extension method")

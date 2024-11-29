@@ -117,7 +117,7 @@ var fileTemplate = `
 
 import struct
 from enum import Enum
-from typing import List
+from typing import List, Tuple, Union, overload
 
 {{ $curUnit := .Unit -}}
 {{ range $unit := .Unit.LocalImports.Values -}}
@@ -141,7 +141,7 @@ from {{ $unit.Package.ToPath "." "_bb" }} import *
 
 import struct
 from enum import Enum
-from typing import List
+from typing import List, Tuple, Union, overload
 
 {{ range $entry := .GenTypes.Entries -}}
 {{- $type := $entry.Value -}}
@@ -267,7 +267,7 @@ func (g PythonGenerator) GenerateStringDefaultValue(string_ *definition.String) 
 // ==================== GenerateBytes ====================
 
 func (g PythonGenerator) GenerateBytes(bytes *definition.Bytes) (string, error) {
-	return "str", nil
+	return "Union[bytes, bytearray, memoryview]", nil
 }
 
 // ==================== GenerateBytesDefaultValue ====================
@@ -309,8 +309,12 @@ var structTemplate = `
 
 {{- define "structConst" -}}
     @staticmethod
+    def dynamic() -> bool:
+        return {{ if .StructDef.StructDynamic }}True{{ else }}False{{ end }}
+
+    @staticmethod
     def size() -> int:
-        return {{ .StructSize }}
+        return {{ calc .StructDef.StructBitSize "/" 8 }}
 {{ end }}
 
 {{- define "structDef" -}}
@@ -360,7 +364,7 @@ func (g PythonGenerator) GenerateStruct(structDef *definition.Struct) (string, e
 
 func (g PythonGenerator) generateStruct(structDef *definition.Struct) (*GeneratedType, error) {
 	fieldInitStrs := make([]string, structDef.StructFields.Len())
-	if err := structDef.ForEachFieldWithPos(func(field definition.Field, index int, start int64, pos string) error {
+	if err := structDef.ForEachFieldWithPos(func(field definition.Field, index int, start int64, dynamic bool, pos string) error {
 		fieldStr, err := g.GenerateField(field)
 		if err != nil {
 			return err
@@ -380,7 +384,7 @@ func (g PythonGenerator) generateStruct(structDef *definition.Struct) (*Generate
 	}
 
 	methodStrs := []string{}
-	if err := structDef.ForEachField(func(field definition.Field, index int, start int64) error {
+	if err := structDef.ForEachField(func(field definition.Field, index int, start int64, dynamic bool) error {
 		if !field.GetFieldKind().IsNormal() {
 			return nil
 		}
@@ -413,9 +417,8 @@ func (g PythonGenerator) generateStruct(structDef *definition.Struct) (*Generate
 		return nil, err
 	}
 
-	// TODO: handle dynamic size
 	constData := map[string]any{
-		"StructSize": structDef.StructBitSize / 8,
+		"StructDef": structDef,
 	}
 	constStr := util.ExecuteTemplate(structTemplate, "structConst", nil, constData)
 
@@ -854,19 +857,79 @@ var encoderTemplate = `
 
 {{- define "encoder" -}}
 {{- $structName := .StructDef.StructName -}}
+    # EncodeSize: {{ $structName }}
+    def encode_size(self) -> int:
+        {{- if .StructDef.StructDynamic }}
+        size = {{ calc .StructDef.StructBitSize "/" 8 }}
+        {{- range $field := .StructDef.StructFields.Values }}
+            {{- if $field.GetFieldKind.IsNormal }}
+            {{- $fieldName := Tosnake_case $field.FieldName }}
+                {{- if $field.FieldType.GetTypeID.IsArray }}
+                    {{- if $field.FieldType.ElementType.GetTypeID.IsStruct }}
+                        {{- if $field.FieldType.ElementType.GetTypeDynamic }}
+                            {{- range $i := iterate 0 $field.FieldType.Length }}
+        size += self._{{ $fieldName }}[{{ $i }}].encode_size()
+                            {{- end }}
+                        {{- end }}
+                    {{- else if $field.FieldType.ElementType.GetTypeID.IsString }}
+                        {{- range $i := iterate 0 $field.FieldType.Length }}
+        size += len(bytes(self._{{ $fieldName }}[{{ $i }}], 'utf-8')) + 1
+                        {{- end }}
+                    {{- else if $field.FieldType.ElementType.GetTypeID.IsBytes }}
+                        {{- range $i := iterate 0 $field.FieldType.Length }}
+        size += len(self._{{ $fieldName }}[{{ $i }}])
+        size += 1{{ range $j := iterate 1 10 }} + bool(len(self._{{ $fieldName }}[{{ $i }}]) >> {{ calc $j "*" 7 }}){{ end }}
+                        {{- end }}
+                    {{- end }}
+                {{- else if $field.FieldType.GetTypeID.IsStruct }}
+                    {{- if $field.FieldType.GetTypeDynamic }}
+        size += self._{{ $fieldName }}.encode_size()
+                    {{- end }}
+                {{- else if $field.FieldType.GetTypeID.IsString }}
+        size += len(bytes(self._{{ $fieldName }}, 'utf-8')) + 1
+                {{- else if $field.FieldType.GetTypeID.IsBytes }}
+        size += len(self._{{ $fieldName }})
+        size += 1{{ range $j := iterate 1 10 }} + bool(len(self._{{ $fieldName }}) >> {{ calc $j "*" 7 }}){{ end }}
+                {{- end }}
+            {{- end }}
+        {{- end }}
+        return size
+        {{- else }}
+        return {{ calc .StructDef.StructBitSize "/" 8 }}
+        {{- end }}
+
     # Encoder: {{ $structName }}
+    @overload
     def encode(self) -> bytearray:
-        data = bytearray({{ calc .StructDef.StructBitSize "/" 8 }})
+        ...
+
+    @overload
+    def encode(self, buffer: Union[bytearray, memoryview]) -> int:
+        ...
+
+    def encode(self, buffer: Union[None, bytearray, memoryview] = None) -> Union[bytearray, int]:
+        if buffer is None:
+            storage = bytearray({{ if .Dynamic }}self.encode_size(){{ else }}{{ calc .StructDef.StructBitSize "/" 8 }}{{ end }})
+            data = memoryview(storage)
+        elif not isinstance(buffer, memoryview):
+            data = memoryview(buffer)
+        else:
+            data = buffer
+        {{- if .Dynamic }}
+        offset = 0
+        {{- end }}
         {{- range $encodeStr := .EncodeStrs }}
         {{ $encodeStr }}
         {{- end }}
-        return data
+        if buffer is None:
+            return storage
+        return {{ if .Dynamic }}offset + {{ end }}{{ calc .StructDef.StructBitSize "/" 8 }}
 {{- end -}}
 `
 
 func (g PythonGenerator) GenerateEncoder(structDef *definition.Struct) (string, error) {
 	encodeStrs := []string{}
-	if err := structDef.ForEachFieldWithPos(func(field definition.Field, fieldIndex int, startBits int64, pos string) error {
+	if err := structDef.ForEachFieldWithPos(func(field definition.Field, fieldIndex int, startBits int64, dynamic bool, pos string) error {
 		encodeStmts, err := g.generateEncodeField(field, startBits)
 		if err != nil {
 			return err
@@ -901,6 +964,7 @@ func (g PythonGenerator) GenerateEncoder(structDef *definition.Struct) (string, 
 		"StructDef":  structDef,
 		"EncodeStrs": encodeStrs,
 		"GenOption":  g.GenCtx.GenOptions,
+		"Dynamic":    structDef.GetTypeDynamic(),
 	}
 
 	encoderStr := util.ExecuteTemplate(encoderTemplate, "encoder", nil, fieldData)
@@ -930,12 +994,12 @@ var fieldEncoderTemplate = `
 
 {{- define "encodeStructFieldName" -}}
 {{- $fieldName := Tosnake_case .FieldName -}}
-	self._{{ .FieldName }}
+    self._{{ $fieldName }}
 {{- end -}}
 
 {{- define "encodeNormalFieldStruct" -}}
-    data[{{ .FromByte }}:{{ .ToByte }}] = {{ .FieldName }}.encode()
-{{- end -}}
+    {{ if .FieldStruct.GetTypeDynamic }}offset += {{ end }}{{ .FieldName }}.encode(data[{{ if .Dynamic }}offset+{{ end }}{{ .FromByte }}:])
+{{- end -}} 
 
 {{- define "encodeNormalFieldTempVarAssignEnum" -}}
     {{ .TempName }} = {{ .FieldName }}.value
@@ -945,8 +1009,28 @@ var fieldEncoderTemplate = `
     {{ .TempName }} = struct.unpack('<{{ .TyUint }}', struct.pack('<{{ .TyFloat }}', {{ .FieldName }}))[0]
 {{- end -}}
 
+{{- define "encodeNormalFieldString" -}}
+        {{ .TempName }} = bytes({{ .FieldName }}, 'utf-8')
+        data[offset+{{ .FromByte }}:offset+{{ .FromByte }}+len({{ .TempName }})] = {{ .TempName }}
+        data[offset+{{ .FromByte }}+len({{ .TempName }})] = 0
+        offset += len({{ .TempName }}) + 1
+{{- end -}}
+
+{{- define "encodeNormalFieldBytes" -}}
+        {{ .TempName }} = len({{ .FieldName }})
+        while True:
+            data[offset+{{ .FromByte }}] = ({{ .TempName }} & {{ .GetMask }}) | {{ .SetMask }}
+            {{ .TempName }} >>= {{ .Shift }}
+            offset += 1
+            if {{ .TempName }} == 0:
+                break
+        data[offset-1+{{ .FromByte }}] &= ~{{ .SetMask }}
+        data[offset+{{ .FromByte }}:offset+{{ .FromByte }}+len({{ .FieldName }})] = {{ .FieldName }}
+        offset += len({{ .FieldName }})
+{{- end -}}
+
 {{- define "encodeImpl" -}}
-    data[{{ .BytePos }}] {{ .Operator }} {{ .FieldData }}
+    data[{{ if .Dynamic }}offset+{{ end }}{{ .BytePos }}] {{ .Operator }} {{ .FieldData }}
 {{- end -}}
 `
 
@@ -967,6 +1051,7 @@ func (g PythonGenerator) generateEncodeStructFieldName(name string) string {
 }
 
 func (g PythonGenerator) generateEncodeConstantField(field *definition.ConstantField, startBits int64) ([]string, error) {
+	structDynamic := field.FieldBelongs.GetTypeDynamic()
 	var byteOrder binary.ByteOrder = binary.LittleEndian
 	if gen.MatchOption(field.FieldOptions, "order", "big") {
 		byteOrder = binary.BigEndian
@@ -987,7 +1072,7 @@ func (g PythonGenerator) generateEncodeConstantField(field *definition.ConstantF
 	from := startBits
 	to := startBits + field.GetFieldBitSize()
 
-	encodeStmts := g.generateEncodeImpl(from, to, fieldData)
+	encodeStmts := g.generateEncodeImpl(from, to, fieldData, structDynamic)
 	return encodeStmts, nil
 }
 
@@ -1003,11 +1088,12 @@ func (g PythonGenerator) generateEncodeNormalField(field *definition.NormalField
 	from := startBits
 	to := startBits + field.GetFieldBitSize()
 	encodeStmts := []string{}
+	structDynamic := field.FieldBelongs.GetTypeDynamic()
 
 	switch ty := field.FieldType.(type) {
-	case *definition.Struct, *definition.BasicType:
+	case *definition.Struct, *definition.BasicType, *definition.String, *definition.Bytes:
 		name := g.generateEncodeStructFieldName(field.FieldName)
-		stmts, err := g.generateEncodeNormalFieldImpl(name, ty, field.FieldOptions, from, to)
+		stmts, err := g.generateEncodeNormalFieldImpl(name, ty, field.FieldOptions, structDynamic, from, to)
 		if err != nil {
 			return nil, err
 		}
@@ -1025,7 +1111,7 @@ func (g PythonGenerator) generateEncodeNormalField(field *definition.NormalField
 		declStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarAssignEnum", nil, encodeNormalFieldTempVarAssignData)
 		encodeStmts = append(encodeStmts, declStr)
 
-		stmts, err := g.generateEncodeNormalFieldImpl(tempName, tempTy, field.FieldOptions, from, to)
+		stmts, err := g.generateEncodeNormalFieldImpl(tempName, tempTy, field.FieldOptions, structDynamic, from, to)
 		if err != nil {
 			return nil, err
 		}
@@ -1040,7 +1126,7 @@ func (g PythonGenerator) generateEncodeNormalField(field *definition.NormalField
 		// temp variable declaration
 		var nameIndex func(int64) string
 		switch ty.ElementType.(type) {
-		case *definition.Struct, *definition.BasicType:
+		case *definition.Struct, *definition.BasicType, *definition.String, *definition.Bytes:
 			nameIndex = func(index int64) string {
 				return fmt.Sprintf("%s[%d]", name, index)
 			}
@@ -1074,7 +1160,7 @@ func (g PythonGenerator) generateEncodeNormalField(field *definition.NormalField
 			default:
 			}
 
-			stmts, err := g.generateEncodeNormalFieldImpl(subName, elemTy, field.FieldOptions, subFrom, subTo)
+			stmts, err := g.generateEncodeNormalFieldImpl(subName, elemTy, field.FieldOptions, structDynamic, subFrom, subTo)
 			if err != nil {
 				return nil, err
 			}
@@ -1090,17 +1176,18 @@ func (g PythonGenerator) generateEncodeNormalField(field *definition.NormalField
 }
 
 // generateEncodeNormalFieldImpl does not handle array field or generate temp variable declaration
-func (g PythonGenerator) generateEncodeNormalFieldImpl(fieldNameStr string, fieldType definition.Type, fieldOptions *util.OrderedMap[string, *definition.Option], from, to int64) ([]string, error) {
+func (g PythonGenerator) generateEncodeNormalFieldImpl(fieldNameStr string, fieldType definition.Type, fieldOptions *util.OrderedMap[string, *definition.Option], structDynamic bool, from, to int64) ([]string, error) {
 	encodeStmts := []string{}
 	fieldBitSize := to - from
 
 	switch ty := fieldType.(type) {
 	case *definition.Struct:
 		encodeNormalFieldStructData := map[string]any{
-			"StructName": ty.StructName,
-			"FieldName":  fieldNameStr,
-			"FromByte":   from / 8,
-			"ToByte":     (to + 7) / 8,
+			"FieldStruct": ty,
+			"FieldName":   fieldNameStr,
+			"FromByte":    from / 8,
+			"ToByte":      (to + 7) / 8,
+			"Dynamic":     structDynamic,
 		}
 
 		stmt := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldStruct", nil, encodeNormalFieldStructData)
@@ -1108,6 +1195,29 @@ func (g PythonGenerator) generateEncodeNormalFieldImpl(fieldNameStr string, fiel
 
 	case *definition.Enum:
 		panic("unreachable, enum field should be handled in generateEncodeNormalField")
+
+	case *definition.String:
+		encodeNormalFieldStringData := map[string]any{
+			"FieldName": fieldNameStr,
+			"FromByte":  from / 8,
+			"TempName":  g.generateEncodeTempVarName(from),
+		}
+
+		stmt := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldString", nil, encodeNormalFieldStringData)
+		encodeStmts = append(encodeStmts, stmt)
+
+	case *definition.Bytes:
+		encodeNormalFieldBytesData := map[string]any{
+			"FieldName": fieldNameStr,
+			"FromByte":  from / 8,
+			"GetMask":   g.generateHex((1 << 7) - 1),
+			"SetMask":   g.generateHex(1 << 7),
+			"Shift":     7,
+			"TempName":  g.generateEncodeTempVarName(from),
+		}
+
+		stmt := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldBytes", nil, encodeNormalFieldBytesData)
+		encodeStmts = append(encodeStmts, stmt)
 
 	case *definition.BasicType:
 		tyUintID := typeSizeMapUint[ty.TypeBitSize]
@@ -1167,7 +1277,7 @@ func (g PythonGenerator) generateEncodeNormalFieldImpl(fieldNameStr string, fiel
 				return exprStr
 			}
 		}
-		encodeStmts = append(encodeStmts, g.generateEncodeImpl(from, to, fieldData)...)
+		encodeStmts = append(encodeStmts, g.generateEncodeImpl(from, to, fieldData, structDynamic)...)
 
 	case *definition.Array:
 		panic("unreachable, array field should be handled in generateEncodeNormalField")
@@ -1197,7 +1307,7 @@ func (g PythonGenerator) generateEncodeNormalFieldImpl(fieldNameStr string, fiel
 //	fieldData(1) -> ((structPtr->intField >> 16) & 0xff)
 //	fieldData(2) -> ((structPtr->intField >> 8) & 0xff)
 //	fieldData(3) -> ((structPtr->intField >> 0) & 0xff)
-func (g PythonGenerator) generateEncodeImpl(from, to int64, fieldData func(int64) string) []string {
+func (g PythonGenerator) generateEncodeImpl(from, to int64, fieldData func(int64) string, structDynamic bool) []string {
 	encodeStmts := []string{}
 	// generate encode implentation from 'from' bit to 'to' bit and align to 8 bits
 	// e.g. from = 3, to = 11 -> loop 2 times: 3-7, 8-11
@@ -1313,6 +1423,7 @@ func (g PythonGenerator) generateEncodeImpl(from, to int64, fieldData func(int64
 			"BytePos":   i / 8,
 			"Operator":  operator,
 			"FieldData": exprStr,
+			"Dynamic":   structDynamic,
 		}
 
 		encodeStmt := util.ExecuteTemplate(fieldEncoderTemplate, "encodeImpl", nil, encodeImplData)
@@ -1334,17 +1445,22 @@ var decoderTemplate = `
 {{- define "decoder" -}}
 {{- $structName := .StructDef.StructName -}}
     # Decoder: {{ $structName }}
-    def decode(self, data: bytearray) -> bool:
+    def decode(self, data: Union[bytes, bytearray, memoryview]) -> Tuple[bool, int]:
+        if not isinstance(data, memoryview):
+            data = memoryview(data)
+        {{- if .Dynamic }}
+        offset = 0
+        {{- end }}
         {{- range $decodeStr := .DecodeStrs }}
         {{ $decodeStr }}
         {{- end }}
-        return True
+        return True, {{ if .Dynamic }}offset + {{ end }}{{ calc .StructDef.StructBitSize "/" 8 }}
 {{- end -}}
 `
 
 func (g PythonGenerator) GenerateDecoder(structDef *definition.Struct) (string, error) {
 	decodeStrs := []string{}
-	if err := structDef.ForEachFieldWithPos(func(field definition.Field, fieldIndex int, startBits int64, pos string) error {
+	if err := structDef.ForEachFieldWithPos(func(field definition.Field, fieldIndex int, startBits int64, dynamic bool, pos string) error {
 		decodeStmts, err := g.generateDecodeField(field, startBits)
 		if err != nil {
 			return err
@@ -1379,6 +1495,7 @@ func (g PythonGenerator) GenerateDecoder(structDef *definition.Struct) (string, 
 		"StructDef":  structDef,
 		"DecodeStrs": decodeStrs,
 		"GenOption":  g.GenCtx.GenOptions,
+		"Dynamic":    structDef.GetTypeDynamic(),
 	}
 
 	decoderStr := util.ExecuteTemplate(decoderTemplate, "decoder", nil, fieldData)
@@ -1407,7 +1524,7 @@ var fieldDecoderTemplate = `
 
 {{- define "decodeStructFieldName" -}}
 {{- $fieldName := Tosnake_case .FieldName -}}
-	self._{{ .FieldName }}
+    self._{{ $fieldName }}
 {{- end -}}
 
 {{- define "decodeConstantField" -}}
@@ -1415,7 +1532,13 @@ var fieldDecoderTemplate = `
 {{- end -}}
 
 {{- define "decodeNormalFieldStruct" -}}
-    if not {{ .FieldName }}.decode(data[{{ .FromByte }}:{{ .ToByte }}]): return False
+{{- if .FieldStruct.GetTypeDynamic -}}
+        success, {{ .TempName }} = {{ .FieldName }}.decode(data[offset+{{ .FromByte }}:])
+        if not success: return False
+        offset += {{ .TempName }}
+{{- else -}}
+    if not {{ .FieldName }}.decode(data[{{ if .Dynamic }}offset+{{ end }}{{ .FromByte }}:]): return False
+{{- end -}}
 {{- end -}}
 
 {{- define "decodeNormalFieldTempVarAssignEnum" -}}
@@ -1424,6 +1547,34 @@ var fieldDecoderTemplate = `
 
 {{- define "decodeNormalFieldFloatCast" -}}
     {{ .FieldName }} = struct.unpack('<{{ .TyFloat }}', struct.pack('<{{ .TyUint }}', {{ .FieldName }}))[0]
+{{- end -}}
+
+{{- define "decodeNormalFieldString" -}}
+        {{ .TempName }} = offset
+        while data[{{ .TempName }}+{{ .FromByte }}] != 0: {{ .TempName }} += 1
+        {{ .FieldName }} = str(data[offset+{{ .FromByte }}:{{ .TempName }}+{{ .FromByte }}], 'utf-8')
+        offset = {{ .TempName }} + 1
+{{- end -}}
+
+{{- define "decodeNormalFieldBytes" -}}
+        {{ .TempName }} = 0
+        shift = 0
+        while data[offset+{{ .FromByte }}] & {{ .SetMask }}:
+            {{ .TempName }} |= (data[offset+{{ .FromByte }}] & {{ .GetMask }}) << shift
+            shift += {{ .Shift }}
+            offset += 1
+        {{ .TempName }} |= (data[offset+{{ .FromByte }}] & {{ .GetMask }}) << shift
+        offset += 1
+        {{ if .MemoryCopy -}}
+        {{ .FieldName }} = bytearray(data[offset+{{ .FromByte }}:offset+{{ .FromByte }}+{{ .TempName }}])
+        {{- else -}}
+        {{ .FieldName }} = data[offset+{{ .FromByte }}:offset+{{ .FromByte }}+{{ .TempName }}]
+        {{- end }}
+        offset += {{ .TempName }}
+{{- end -}}
+
+{{- define "decodeData" -}}
+    data[{{ if .Dynamic }}offset+{{ end }}{{ .BytePos }}]
 {{- end -}}
 
 {{- define "decodeImpl" -}}
@@ -1452,6 +1603,7 @@ func (g PythonGenerator) generateDecodeStructFieldName(name string) string {
 }
 
 func (g PythonGenerator) generateDecodeConstantField(field *definition.ConstantField, startBits int64) ([]string, error) {
+	structDynamic := field.FieldBelongs.GetTypeDynamic()
 	decodeStmts := []string{}
 
 	tempName := g.generateDecodeTempVarName(startBits)
@@ -1459,7 +1611,7 @@ func (g PythonGenerator) generateDecodeConstantField(field *definition.ConstantF
 	from := startBits
 	to := startBits + field.GetFieldBitSize()
 
-	stmts, err := g.generateDecodeNormalFieldImpl(tempName, field.FieldType, field.FieldOptions, from, to)
+	stmts, err := g.generateDecodeNormalFieldImpl(tempName, field.FieldType, field.FieldOptions, structDynamic, from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -1493,12 +1645,13 @@ func (g PythonGenerator) generateDecodeEmbeddedField(field *definition.EmbeddedF
 func (g PythonGenerator) generateDecodeNormalField(field *definition.NormalField, startBits int64) ([]string, error) {
 	from := startBits
 	to := startBits + field.GetFieldBitSize()
+	structDynamic := field.FieldBelongs.GetTypeDynamic()
 	decodeStmts := []string{}
 
 	switch ty := field.FieldType.(type) {
-	case *definition.Struct, *definition.BasicType:
+	case *definition.Struct, *definition.BasicType, *definition.String, *definition.Bytes:
 		name := g.generateDecodeStructFieldName(field.FieldName)
-		stmts, err := g.generateDecodeNormalFieldImpl(name, ty, field.FieldOptions, from, to)
+		stmts, err := g.generateDecodeNormalFieldImpl(name, ty, field.FieldOptions, structDynamic, from, to)
 		if err != nil {
 			return nil, err
 		}
@@ -1509,7 +1662,7 @@ func (g PythonGenerator) generateDecodeNormalField(field *definition.NormalField
 		tempTy := &definition.Uint64
 		tempName := g.generateDecodeTempVarName(startBits)
 
-		stmts, err := g.generateDecodeNormalFieldImpl(tempName, tempTy, field.FieldOptions, from, to)
+		stmts, err := g.generateDecodeNormalFieldImpl(tempName, tempTy, field.FieldOptions, structDynamic, from, to)
 		if err != nil {
 			return nil, err
 		}
@@ -1533,7 +1686,7 @@ func (g PythonGenerator) generateDecodeNormalField(field *definition.NormalField
 		// temp variable declaration
 		var nameIndex func(int64) string
 		switch ty.ElementType.(type) {
-		case *definition.Struct, *definition.BasicType:
+		case *definition.Struct, *definition.BasicType, *definition.String, *definition.Bytes:
 			nameIndex = func(index int64) string {
 				return fmt.Sprintf("%s[%d]", name, index)
 			}
@@ -1555,7 +1708,7 @@ func (g PythonGenerator) generateDecodeNormalField(field *definition.NormalField
 			subTo := from + (i+1)*elemBitSize
 			subName := nameIndex(i)
 
-			stmts, err := g.generateDecodeNormalFieldImpl(subName, elemTy, field.FieldOptions, subFrom, subTo)
+			stmts, err := g.generateDecodeNormalFieldImpl(subName, elemTy, field.FieldOptions, structDynamic, subFrom, subTo)
 			if err != nil {
 				return nil, err
 			}
@@ -1581,15 +1734,27 @@ func (g PythonGenerator) generateDecodeNormalField(field *definition.NormalField
 	return decodeStmts, nil
 }
 
-func (g PythonGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fieldType definition.Type, fieldOptions *util.OrderedMap[string, *definition.Option], from, to int64) ([]string, error) {
+func (g PythonGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fieldType definition.Type, fieldOptions *util.OrderedMap[string, *definition.Option], structDynamic bool, from, to int64) ([]string, error) {
 	decodeStmts := []string{}
 	fieldBitSize := to - from
+
+	dataDataFunc := func(i int64) string {
+		decodeDataData := map[string]any{
+			"Dynamic": structDynamic,
+			"BytePos": i,
+		}
+		return util.ExecuteTemplate(fieldDecoderTemplate, "decodeData", nil, decodeDataData)
+	}
+
 	switch ty := fieldType.(type) {
 	case *definition.Struct:
 		decodeNormalFieldStructData := map[string]any{
-			"FieldName": fieldNameStr,
-			"FromByte":  from / 8,
-			"ToByte":    (to + 7) / 8,
+			"FieldStruct": ty,
+			"FieldName":   fieldNameStr,
+			"FromByte":    from / 8,
+			"ToByte":      (to + 7) / 8,
+			"Dynamic":     structDynamic,
+			"TempName":    g.generateDecodeTempVarName(from),
 		}
 
 		stmt := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldStruct", nil, decodeNormalFieldStructData)
@@ -1597,6 +1762,30 @@ func (g PythonGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fiel
 
 	case *definition.Enum:
 		panic("unreachable, enum field should be handled in generateDecodeNormalField")
+
+	case *definition.String:
+		decodeNormalFieldStringData := map[string]any{
+			"FieldName": fieldNameStr,
+			"FromByte":  from / 8,
+			"TempName":  g.generateDecodeTempVarName(from),
+		}
+
+		stmt := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldString", nil, decodeNormalFieldStringData)
+		decodeStmts = append(decodeStmts, stmt)
+
+	case *definition.Bytes:
+		decodeNormalFieldBytesData := map[string]any{
+			"FieldName":  fieldNameStr,
+			"FromByte":   from / 8,
+			"GetMask":    g.generateHex((1 << 7) - 1),
+			"SetMask":    g.generateHex(1 << 7),
+			"Shift":      7,
+			"MemoryCopy": g.GenCtx.GenOptions.MemoryCopy,
+			"TempName":   g.generateDecodeTempVarName(from),
+		}
+
+		stmt := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldBytes", nil, decodeNormalFieldBytesData)
+		decodeStmts = append(decodeStmts, stmt)
 
 	case *definition.BasicType:
 		// little endian as default
@@ -1644,7 +1833,7 @@ func (g PythonGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fiel
 			return util.ExecuteTemplate(fieldDecoderTemplate, "decodeImpl", nil, decodeImplData)
 		}
 
-		decodeStmts = append(decodeStmts, g.generateDecodeImpl(from, to, fieldProcessor)...)
+		decodeStmts = append(decodeStmts, g.generateDecodeImpl(from, to, fieldProcessor, dataDataFunc)...)
 
 		// set sign bit
 		if ty.GetTypeID().IsInt() {
@@ -1710,7 +1899,7 @@ func (g PythonGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fiel
 //	fieldProcessor(exprOfExtract2ndByteFromEncodedData, 1) -> (*(uint32_t*)(&(structPtr->intField))) |= (exprOfExtract2ndByteFromEncodedData << 8)
 //	fieldProcessor(exprOfExtract3rdByteFromEncodedData, 2) -> (*(uint32_t*)(&(structPtr->intField))) |= (exprOfExtract3rdByteFromEncodedData << 16)
 //	fieldProcessor(exprOfExtract4thByteFromEncodedData, 3) -> (*(uint32_t*)(&(structPtr->intField))) |= (exprOfExtract4thByteFromEncodedData << 24)
-func (g PythonGenerator) generateDecodeImpl(from, to int64, fieldProcessor func(string, int64) string) []string {
+func (g PythonGenerator) generateDecodeImpl(from, to int64, fieldProcessor func(string, int64) string, dataData func(int64) string) []string {
 	decodeStmts := []string{}
 	// generate decode implentation from 'from' bit to 'to' bit per 8 bits
 	// e.g. from = 3, to = 19 -> loop 2 times: 3-10, 11-19 (not aligned to 8 bits!!!)
@@ -1736,7 +1925,7 @@ func (g PythonGenerator) generateDecodeImpl(from, to int64, fieldProcessor func(
 				Expr1: &definition.BinopExpr{
 					Op: definition.ExprOp_BAND,
 					Expr1: &definition.RawExpr{
-						Expr: fmt.Sprintf("data[%d]", begin/8),
+						Expr: dataData(begin / 8),
 					},
 					Expr2: &definition.RawExpr{
 						Expr: g.generateBin(fieldMask),
@@ -1762,7 +1951,7 @@ func (g PythonGenerator) generateDecodeImpl(from, to int64, fieldProcessor func(
 					Expr1: &definition.BinopExpr{
 						Op: definition.ExprOp_BAND,
 						Expr1: &definition.RawExpr{
-							Expr: fmt.Sprintf("data[%d]", sep/8),
+							Expr: dataData(sep / 8),
 						},
 						Expr2: &definition.RawExpr{
 							Expr: g.generateBin(fieldMask),

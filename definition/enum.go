@@ -55,6 +55,10 @@ func (e *Enum) GetTypeBitSize() int64 {
 	return e.EnumBitSize
 }
 
+func (e *Enum) GetTypeDynamic() bool {
+	return false
+}
+
 func (e *Enum) GetBelongs() *CompilationUnit {
 	return e.EnumBelongs
 }

@@ -13,12 +13,13 @@ type Struct struct {
 
 	StructName    string
 	StructBitSize int64
+	StructDynamic bool
 	StructFields  *util.OrderedMap[string, Field]
 	StructBelongs *CompilationUnit
 }
 
 func (s Struct) String() string {
-	return fmt.Sprintf("%s [%s] {%d fields}", s.StructName, util.ToSizeString(s.StructBitSize), s.StructFields.Len())
+	return fmt.Sprintf("%s [%s] {%d fields}", s.StructName, util.ToSizeStringDynamic(s.StructBitSize, s.StructDynamic, 0), s.StructFields.Len())
 }
 
 func (s Struct) DumpString() string {
@@ -28,7 +29,7 @@ func (s Struct) DumpString() string {
 	}
 	fields += "    ]"
 
-	return fmt.Sprintf("Struct {\n    StructName: %s\n    StructBitSize: %d\n    StructFields: %s\n}", s.StructName, s.StructBitSize, fields)
+	return fmt.Sprintf("Struct {\n    StructName: %s\n    StructDynamic: %t\n    StructBitSize: %s\n    StructFields: %s\n}", s.StructName, s.StructDynamic, util.ToSizeString(s.StructBitSize), fields)
 }
 
 // ==================== For StructType ====================
@@ -43,6 +44,10 @@ func (s Struct) GetTypeName() string {
 
 func (s Struct) GetTypeBitSize() int64 {
 	return s.StructBitSize
+}
+
+func (s Struct) GetTypeDynamic() bool {
+	return s.StructDynamic
 }
 
 func (s Struct) GetBelongs() *CompilationUnit {
@@ -71,7 +76,7 @@ func (s *Struct) SetBelongs(c *CompilationUnit) {
 
 // ==================== Struct ====================
 
-func (s *Struct) SumFieldBitSize() (fixed_size int64, has_dynamic bool) {
+func (s *Struct) SumFieldBitSize() (fixedSize int64, hasDynamic bool) {
 	sum := int64(0)
 	dynamic := false
 	for _, field := range s.StructFields.Values() {
@@ -84,36 +89,33 @@ func (s *Struct) SumFieldBitSize() (fixed_size int64, has_dynamic bool) {
 	return sum, dynamic
 }
 
-func (s *Struct) ForEachField(f func(field Field, index int, start int64) error) error {
+func (s *Struct) ForEachField(f func(field Field, index int, fixedStart int64, isDynamicStart bool) error) error {
 	startBit := int64(0)
+	dynamicStart := false
 	for i, field := range s.StructFields.Values() {
-		if err := f(field, i, startBit); err != nil {
+		if err := f(field, i, startBit, dynamicStart); err != nil {
 			return err
 		}
-		if startBit != -1 && field.GetFieldBitSize() != -1 {
+		if field.GetFieldBitSize() != -1 {
 			startBit += field.GetFieldBitSize()
 		} else {
-			startBit = -1
+			dynamicStart = true
 		}
 	}
 	return nil
 }
 
-func (s *Struct) ForEachFieldWithPos(f func(field Field, index int, start int64, pos string) error) error {
-	ToPosStr := func(start int64, size int64) string {
+func (s *Struct) ForEachFieldWithPos(f func(field Field, index int, fixedStart int64, isDynamicStart bool, pos string) error) error {
+	ToPosStr := func(start int64, size int64, isDynamicStart bool) string {
 		if size == 0 {
 			return "[virtual]"
 		}
-		if start == -1 {
-			return fmt.Sprintf("[dynamic:dynamic):%s", util.ToSizeString(size))
-		}
-		if size == -1 {
-			return fmt.Sprintf("[%s:dynamic)", util.ToSizeString(start))
-		}
-		return fmt.Sprintf("[%s:%s)", util.ToSizeString(start), util.ToSizeString(start+size))
+		startStr := util.ToSizeStringDynamic(start, isDynamicStart, 0)
+		endStr := util.ToSizeStringDynamic(start, isDynamicStart, size)
+		return fmt.Sprintf("[%s:%s)", startStr, endStr)
 	}
 
-	return s.ForEachField(func(field Field, index int, start int64) error {
-		return f(field, index, start, ToPosStr(start, field.GetFieldBitSize()))
+	return s.ForEachField(func(field Field, index int, fixedStart int64, isDynamicStart bool) error {
+		return f(field, index, fixedStart, isDynamicStart, ToPosStr(fixedStart, field.GetFieldBitSize(), isDynamicStart))
 	})
 }

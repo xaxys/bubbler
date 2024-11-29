@@ -227,6 +227,29 @@ func (w OptionUnknownWarning) Error() string {
 
 // --------------------
 
+type OptionNotSetWarning struct {
+	OptionName string
+	Reason     string
+}
+
+func (w OptionNotSetWarning) String() string {
+	if w.Reason == "" {
+		return fmt.Sprintf("option '%s' not set in current settings",
+			color.FgLightWhite.Render(w.OptionName),
+		)
+	}
+	return fmt.Sprintf("option '%s' not set: %s",
+		color.FgLightWhite.Render(w.OptionName),
+		w.Reason,
+	)
+}
+
+func (w OptionNotSetWarning) Error() string {
+	return w.String()
+}
+
+// --------------------
+
 type OptionNotAvailableWarning struct {
 	OptionName string
 	Reason     string

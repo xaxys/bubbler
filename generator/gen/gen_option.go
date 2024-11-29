@@ -21,6 +21,7 @@ type GenOptions struct {
 	SingleFile    bool
 	MinimalCode   bool
 	DecimalNumber bool
+	MemoryCopy    bool
 	SignExtMethod SignExtMethodID
 }
 
@@ -30,6 +31,7 @@ func NewGenOptions(setter ...GenOptionSetter) *GenOptions {
 		InnerClass:    false,
 		MinimalCode:   false,
 		DecimalNumber: false,
+		MemoryCopy:    false,
 		SignExtMethod: SignExtMethodDefault,
 	}
 	for _, s := range setter {
@@ -59,6 +61,12 @@ func MinimalCode(minimal bool) GenOptionSetter {
 func DecimalNumber(decnum bool) GenOptionSetter {
 	return func(options *GenOptions) {
 		options.DecimalNumber = decnum
+	}
+}
+
+func MemoryCopy(memcopy bool) GenOptionSetter {
+	return func(options *GenOptions) {
+		options.MemoryCopy = memcopy
 	}
 }
 

@@ -53,6 +53,13 @@ type Field interface {
 	Position
 	GetFieldKind() FieldKindID
 	GetFieldUniqueName() string
+	// FieldBitSize only indicates the size defined in the field,
+	// which may be different from the actual field type size.
+	// For example, a field of type "int32" may have a FieldBitSize
+	// of 16, although its type size is 32.
+	// Or a embedded field may have GetFieldBitSize return 0. But
+	// stored actual size in FieldBitSize.
+	// Or a variable length field may have GetFieldBitSize return -1.
 	GetFieldBitSize() int64
 	GetFieldBelongs() *Struct
 	SetFieldBelongs(*Struct)

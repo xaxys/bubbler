@@ -121,6 +121,7 @@ type Type interface {
 	GetTypeID() TypeID
 	GetTypeName() string
 	GetTypeBitSize() int64
+	GetTypeDynamic() bool
 }
 
 // ==================== BasicType ====================
@@ -145,6 +146,10 @@ func (t BasicType) GetTypeName() string {
 
 func (t BasicType) GetTypeBitSize() int64 {
 	return t.TypeBitSize
+}
+
+func (t BasicType) GetTypeDynamic() bool {
+	return false
 }
 
 var (
@@ -202,6 +207,10 @@ func (t String) GetTypeBitSize() int64 {
 	return -1
 }
 
+func (t String) GetTypeDynamic() bool {
+	return true
+}
+
 // ==================== BytesType ====================
 
 type Bytes struct{}
@@ -220,6 +229,10 @@ func (t Bytes) GetTypeName() string {
 
 func (t Bytes) GetTypeBitSize() int64 {
 	return -1
+}
+
+func (t Bytes) GetTypeDynamic() bool {
+	return true
 }
 
 // ==================== ArrayType ====================
@@ -243,5 +256,12 @@ func (t Array) GetTypeName() string {
 }
 
 func (t Array) GetTypeBitSize() int64 {
+	if t.ElementType.GetTypeDynamic() {
+		return -1
+	}
 	return t.ElementType.GetTypeBitSize() * t.Length
+}
+
+func (t Array) GetTypeDynamic() bool {
+	return t.ElementType.GetTypeDynamic()
 }

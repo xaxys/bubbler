@@ -20,10 +20,10 @@ topLevelDef: enumDef | structDef;
 // Size
 
 size_:
-	LB (
-		( byteSize ( HASH bitSize )? )
-		| ( HASH bitSize )
-	) RB;
+    LB (
+        ( byteSize ( HASH bitSize )? )
+        | ( HASH bitSize )
+    ) RB;
 
 byteSize: intLit;
 
@@ -56,7 +56,7 @@ fieldVoid:
     VOID size_ fieldOptions? SEMI;
 
 fieldConstant:
-    basicType fieldName? size_? ASSIGN constant fieldOptions? SEMI;
+    basicType fieldName? size_? ASSIGN ( constant | ident ) fieldOptions? SEMI;
 
 fieldEmbedded:
     type_ fieldOptions? SEMI;
@@ -112,7 +112,7 @@ enumBody: LC enumElement* RC;
 
 enumElement: enumValue | emptyStatement_;
 
-enumValue: enumValueName ( ASSIGN constant )? enumValueOptions? ( SEMI | COMMA );
+enumValue: enumValueName ( ASSIGN ( constant | ident ) )? enumValueOptions? ( SEMI | COMMA );
 
 enumValueOptions:
     LB enumValueOption ( COMMA enumValueOption )* RB;
@@ -146,7 +146,7 @@ expr:
     | expr BOR expr                             # ExprBitOr
     | expr AND expr                             # ExprLogicalAnd
     | expr OR expr                              # ExprLogicalOr
-	| expr QUESTION expr COLON expr             # ExprTernary
+    | expr QUESTION expr COLON expr             # ExprTernary
     ;
 
 // lexical

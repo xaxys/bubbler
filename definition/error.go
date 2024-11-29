@@ -491,14 +491,16 @@ func (e OptionValueError) Error() string {
 
 type FieldNotAlignedError struct {
 	FieldName string
+	DynStart  bool
 	Start     int64
 	Msg       string
 }
 
 func (e FieldNotAlignedError) String() string {
-	if e.Start == -1 {
-		return fmt.Sprintf("cannot determine field '%s' start: %s",
+	if e.DynStart {
+		return fmt.Sprintf("field '%s' start at dynamic+%s is not aligned: %s",
 			color.FgLightWhite.Render(e.FieldName),
+			color.FgLightWhite.Render(util.ToSizeString(e.Start)),
 			e.Msg,
 		)
 	}
@@ -570,6 +572,24 @@ func (e EnumConstValueTypeError) String() string {
 }
 
 func (e EnumConstValueTypeError) Error() string {
+	return e.String()
+}
+
+// --------------------
+
+type InvalidConstIdentifierError struct {
+	Name    string
+	PrevDef Position
+}
+
+func (e InvalidConstIdentifierError) String() string {
+	return fmt.Sprintf("identifier '%s' is not a valid constant, previous definition at %s",
+		color.FgLightWhite.Render(e.Name),
+		color.FgLightWhite.Render(e.PrevDef.GetPositionString()),
+	)
+}
+
+func (e InvalidConstIdentifierError) Error() string {
 	return e.String()
 }
 

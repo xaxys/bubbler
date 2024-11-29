@@ -143,6 +143,7 @@ func (v *ProtoVisitor) VisitStructDef(ctx *parser.StructDefContext) any {
 		},
 		StructName:    name,
 		StructBitSize: size,
+		StructDynamic: false,
 		StructFields:  fields,
 	}
 
@@ -152,16 +153,35 @@ func (v *ProtoVisitor) VisitStructDef(ctx *parser.StructDefContext) any {
 	}
 
 	// check field alignment
-	err := structDef.ForEachField(func(field definition.Field, index int, start int64) error {
+	err := structDef.ForEachField(func(field definition.Field, index int, fixedStart int64, isDynamicStart bool) error {
+
+		var isMustAlignedType func(normalField *definition.NormalField, ty definition.Type) bool
+		isMustAlignedType = func(normalField *definition.NormalField, ty definition.Type) bool {
+			switch cty := ty.(type) {
+			case *definition.Struct, *definition.String, *definition.Bytes:
+				if fixedStart%8 != 0 {
+					return true
+				}
+			case *definition.Array:
+				if isMustAlignedType(normalField, cty.ElementType) {
+					return true
+				}
+			default:
+				return false
+			}
+			return false
+		}
+
 		switch val := field.(type) {
 		case *definition.NormalField:
-			if val.FieldType.GetTypeID().IsStruct() && (start%8 != 0 || start == -1) {
+			if isMustAlignedType(val, val.FieldType) {
 				return &definition.CompileError{
 					Position: val,
 					Err: &definition.FieldNotAlignedError{
 						FieldName: val.FieldName,
-						Start:     start,
-						Msg:       "struct type field must be byte-aligned (bit size must be multiple of 8)",
+						DynStart:  isDynamicStart,
+						Start:     fixedStart,
+						Msg:       fmt.Sprintf("%s type field must be byte-aligned (bit size must be multiple of 8)", val.FieldType.GetTypeName()),
 					},
 				}
 			}
@@ -190,11 +210,8 @@ func (v *ProtoVisitor) VisitStructDef(ctx *parser.StructDefContext) any {
 	}
 
 	if size == 0 {
-		if dynamic {
-			structDef.StructBitSize = -1
-		} else {
-			structDef.StructBitSize = fixedSize
-		}
+		structDef.StructBitSize = fixedSize
+		structDef.StructDynamic = dynamic
 	} else {
 		pos := definition.BasePosition{
 			File:   v.Unit.UnitName.Path,
@@ -315,7 +332,7 @@ func (v *ProtoVisitor) VisitStructBody(ctx *parser.StructBodyContext) any {
 			//         };
 			//         // NormalField some_thing_from_first     | Belongs: None -> FirstEmbed
 			//         // EmbeddedField SecondEmbed             | Belongs: None -> FirstEmbed // <- extract this
-			//	       // NormalField some_thing_from_second    | Belongs: CopyResult SecondExtract -> FirstEmbed // from extract SecondEmbed
+			//         // NormalField some_thing_from_second    | Belongs: CopyResult SecondExtract -> FirstEmbed // from extract SecondEmbed
 			//     };
 			//     // NormalField some_thing_from_outer         | Belongs: None -> OuterStruct
 			//     // EmbeddedField FirstEmbed -> OuterStruct   | Belongs: None -> OuterStruct // <- extract this
@@ -734,15 +751,55 @@ func (v *ProtoVisitor) VisitFieldConstant(ctx *parser.FieldConstantContext) any 
 	}
 
 	var constant definition.Literal
-	constantRet := ctx.Constant().Accept(v)
-	switch val := constantRet.(type) {
-	case error:
-		return val
-	case definition.Literal:
-		constant = val
-	default:
-		panic("unreachable")
+	var pos definition.Position
+	if ctx.Constant() != nil {
+		pos = &definition.BasePosition{
+			File:   v.Unit.UnitName.Path,
+			Line:   ctx.Constant().GetStart().GetLine(),
+			Column: ctx.Constant().GetStart().GetColumn(),
+		}
+		constantRet := ctx.Constant().Accept(v)
+		switch val := constantRet.(type) {
+		case error:
+			return val
+		case definition.Literal:
+			constant = val
+		default:
+			panic("unreachable")
+		}
 	}
+	if ctx.Ident() != nil {
+		pos = &definition.BasePosition{
+			File:   v.Unit.UnitName.Path,
+			Line:   ctx.Ident().GetStart().GetLine(),
+			Column: ctx.Ident().GetStart().GetColumn(),
+		}
+		constantName := ctx.Ident().GetText()
+		prevDef, ok := v.Unit.GlobalNames.Get(constantName)
+		if !ok {
+			return &definition.CompileError{
+				Position: pos,
+				Err: &definition.DefinitionNotFoundError{
+					DefName: constantName,
+				},
+			}
+		}
+		enumValue, ok := prevDef.(*definition.EnumValue)
+		if !ok {
+			return &definition.CompileError{
+				Position: pos,
+				Err: &definition.InvalidConstIdentifierError{
+					Name:    constantName,
+					PrevDef: prevDef,
+				},
+			}
+		}
+		constant = &definition.IntLiteral{
+			BasePosition: enumValue.BasePosition,
+			IntValue:     enumValue.EnumValue,
+		}
+	}
+
 	match := true
 	switch constant.GetLiteralKind() {
 	case definition.LiteralKindID_Bool:
@@ -769,11 +826,7 @@ func (v *ProtoVisitor) VisitFieldConstant(ctx *parser.FieldConstantContext) any 
 	}
 	if !match {
 		return &definition.CompileError{
-			Position: definition.BasePosition{
-				File:   v.Unit.UnitName.Path,
-				Line:   ctx.Constant().GetStart().GetLine(),
-				Column: ctx.Constant().GetStart().GetColumn(),
-			},
+			Position: pos,
 			Err: &definition.TypeNotMatchError{
 				Type1: type_.String(),
 				Type2: constant.GetLiteralKind().String(),
@@ -1875,28 +1928,10 @@ func (v *ProtoVisitor) VisitType_(ctx *parser.Type_Context) any {
 		return ctx.BasicType().Accept(v)
 	}
 	if ctx.STRING() != nil {
-		// TODO: return &definition.String{}
-		// return &definition.String{}
-		return &definition.GeneralError{
-			Position: definition.BasePosition{
-				File:   v.Unit.UnitName.Path,
-				Line:   ctx.STRING().GetSymbol().GetLine(),
-				Column: ctx.STRING().GetSymbol().GetColumn(),
-			},
-			Err: fmt.Errorf("string type is not supported yet"),
-		}
+		return &definition.String{}
 	}
 	if ctx.BYTES() != nil {
-		// TODO: return &definition.Bytes{}
-		// return &definition.Bytes{}
-		return &definition.GeneralError{
-			Position: definition.BasePosition{
-				File:   v.Unit.UnitName.Path,
-				Line:   ctx.BYTES().GetSymbol().GetLine(),
-				Column: ctx.BYTES().GetSymbol().GetColumn(),
-			},
-			Err: fmt.Errorf("bytes type is not supported yet"),
-		}
+		return &definition.Bytes{}
 	}
 	if ctx.ArrayType() != nil {
 		return ctx.ArrayType().Accept(v)
@@ -2015,26 +2050,10 @@ func (v *ProtoVisitor) VisitArrayElementType(ctx *parser.ArrayElementTypeContext
 		return ctx.BasicType().Accept(v)
 	}
 	if ctx.STRING() != nil {
-		// TODO: return &definition.String{}
-		return &definition.GeneralError{
-			Position: definition.BasePosition{
-				File:   v.Unit.UnitName.Path,
-				Line:   ctx.STRING().GetSymbol().GetLine(),
-				Column: ctx.STRING().GetSymbol().GetColumn(),
-			},
-			Err: fmt.Errorf("string type is not supported yet"),
-		}
+		return &definition.String{}
 	}
 	if ctx.BYTES() != nil {
-		// TODO: return &definition.Bytes{}
-		return &definition.GeneralError{
-			Position: definition.BasePosition{
-				File:   v.Unit.UnitName.Path,
-				Line:   ctx.BYTES().GetSymbol().GetLine(),
-				Column: ctx.BYTES().GetSymbol().GetColumn(),
-			},
-			Err: fmt.Errorf("bytes type is not supported yet"),
-		}
+		return &definition.Bytes{}
 	}
 	if ctx.StructType() != nil {
 		return ctx.StructType().Accept(v)
@@ -2344,10 +2363,40 @@ func (v *ProtoVisitor) VisitEnumValue(ctx *parser.EnumValueContext) any {
 					},
 				}
 			}
-
 		default:
 			panic("unreachable")
 		}
+	}
+	if ctx.Ident() != nil {
+		constantName := ctx.Ident().GetText()
+		pos, ok := v.Unit.GlobalNames.Get(constantName)
+		if !ok {
+			return &definition.CompileError{
+				Position: definition.BasePosition{
+					File:   v.Unit.UnitName.Path,
+					Line:   ctx.Ident().GetStart().GetLine(),
+					Column: ctx.Ident().GetStart().GetColumn(),
+				},
+				Err: &definition.DefinitionNotFoundError{
+					DefName: constantName,
+				},
+			}
+		}
+		enumValue, ok := pos.(*definition.EnumValue)
+		if !ok {
+			return &definition.CompileError{
+				Position: definition.BasePosition{
+					File:   v.Unit.UnitName.Path,
+					Line:   ctx.Ident().GetStart().GetLine(),
+					Column: ctx.Ident().GetStart().GetColumn(),
+				},
+				Err: &definition.InvalidConstIdentifierError{
+					Name:    constantName,
+					PrevDef: pos,
+				},
+			}
+		}
+		value = enumValue.EnumValue
 	}
 
 	// TODO: parse enum options
