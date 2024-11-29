@@ -32,6 +32,7 @@ bubbler [options] <input file>
 - `-single`: 生成单个文件（将所有定义合并到一个文件中，而不是每个源文件生成一个文件）
 - `-minimal`: 生成最小代码（通常不包含默认的getter/setter方法）
 - `-decnum`: 强制生成十进制格式的常量值（将 `0xFF` 翻译为 `255`, `0b1111` 翻译为 `15` 等）
+- `-memcpy`: 启用字段的内存复制（解码时复制 `string` 和 `bytes` 字段的内容，而不是直接引用原始解码缓冲区）
 - `-signext <method>`: 用于整数字段的符号扩展方法（选项: `shift`, `arith`）
 
 ### 示例
@@ -63,17 +64,24 @@ Targets:
 - `c`：C 语言，为每个 `.bb` 文件输出一个 `.bb.h` 文件和一个 `.bb.c` 文件。
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由`-o`选项确定。
   - 使用 `-minimal`：不为字段生成默认的getter/setter方法函数。
+  - 使用 `-memcpy`：将使用 `malloc` 为 `string` 和 `bytes` 字段在堆上分配内存，并从原始缓冲区复制内容。
+  - 不使用 `-memcpy`：`string` 和 `bytes` 字段的指针将直接引用原始解码缓冲区。提供零拷贝和零堆分配。
 
 - `csharp`：C# 语言，为每个 `.bb` 文件输出一个 `.bb.cs` 文件。
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
+  - 使用 `-memcpy`：使用 `byte[]` 作为 `bytes` 字段的类型。编码和解码方法将仅兼容 `byte[]` 类型参数。旧版 .NET Framework 应使用此选项。
+  - 不使用 `-memcpy`：使用 `Memory<byte>` 作为 `bytes` 字段的类型。编码和解码方法将兼容 `byte[]`、`Memory<byte>` 和 `Span<byte>`（仅编码）类型参数。此情况下需要 `System.Memory` 包。
 
 - `commonjs`：CommonJS模块，为每个 `.bb` 文件输出一个 `.bb.js` 文件。（请注意，`int64` 和 `uint64` 字段使用了 `BigInt`，在某些环境中可能不支持）
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
+  - 强制启用：`-memcpy`。
 
 - `java`：Java 语言，为每个 `.bb` 文件中定义的每个数据结构生成一个 `.java` 文件。
+  - 强制启用：`-memcpy`。
 
 - `python`：Python 语言，为每个 `.bb` 文件输出一个 `_bb.py` 文件。
   - 使用`-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
+  - 强制启用：`-memcpy`。
 
 ## 协议语法
 
@@ -300,6 +308,19 @@ struct Frame {
 ```
 
 在这个例子中，`FRAME_HEADER` 是一个常量字段，其值为 `0xAA`。
+
+或者你可以使用之前定义的枚举类型的枚举值作为常量值：
+
+```c
+enum FrameType[1] {
+    FRAME_KEEPALIVE = 0x00,
+    FRAME_DATA = 0x01,
+};
+
+struct Frame {
+    FrameType opcode = FRAME_DATA;
+    bytes data;
+};
 
 常量字段的值在编码时会被忽略，解码时会被检查，如果不匹配，会报错。
 

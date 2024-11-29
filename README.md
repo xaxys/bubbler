@@ -32,6 +32,7 @@ bubbler [options] <input file>
 - `-single`: Generate Single File (Combine all definitions into one file, instead of one generated file per source file)
 - `-minimal`: Generate Minimal Code (Usually without default getter/setter methods)
 - `-decnum`: Force Generate Decimal Format for Constant Value (Translate `0xFF` to `255`, `0b1111` to `15`, etc.)
+- `-memcpy`: Enable memory copy for fields (Duplicate content of `string` and `bytes` fields when decoding, instead of directly referencing the original buffer)
 - `-signext <method>`: Sign Extension Method used for Integer Field (Options: `shift`, `arith`)
 
 ### Examples
@@ -63,17 +64,24 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
 - `c`: C language, output one `.bb.h` file and one `.bb.c` file for each `.bb` file.
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
   - With `-minimal`: No generation of getter/setter methods for fields.
+  - With `-memcpy`: Use `malloc` to heap allocate memory for `string` and `bytes` fields, and copy the content from the original buffer.
+  - Without `-memcpy`: Pointer reference to the original buffer for `string` and `bytes` fields. Zero-copy and zero-heap-allocate.
 
 - `csharp`: C# language, output one `.cs` file for each structure defined in each `.bb` file.
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
+  - With `-memcpy`: Use `byte[]` as the type for `bytes` fields. Encode and decode methods will only be compatible with `byte[]` parameters. Old .NET Framework versions should use this option.
+  - Without `-memcpy`: Use `Memory<byte>` as the type for `bytes` fields. Encode and decode methods will be compatible with `byte[]`, `Memory<byte>` and `Span<byte>`(encode only) parameters. `System.Memory` package is required for this case.
 
 - `commonjs`: CommonJS module, output one `.bb.js` file for each `.bb` file. (Please note that `BigInt` is used for `int64` and `uint64` fields, which is not supported in some environments.)
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
+  - Force enabled: `-memcpy`.
 
 - `java`: Java language, output one `.java` file for each structure defined in each `.bb` file.
+  - Force enabled: `-memcpy`.
 
 - `python`: Python language, output one `_bb.py` file for each `.bb` file.
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
+  - Force enabled: `-memcpy`.
 
 ## Protocol Syntax
 
@@ -298,6 +306,19 @@ struct Frame {
 ```
 
 In this example, `FRAME_HEADER` is a constant field with a value of `0xAA`.
+
+Or you can use enum value defined in previous enum type as constant value:
+
+```c
+enum FrameType[1] {
+    FRAME_KEEPALIVE = 0x00,
+    FRAME_DATA = 0x01,
+};
+
+struct Frame {
+    FrameType opcode = FRAME_DATA;
+    bytes data;
+};
 
 The value of the constant field will be ignored during encoding and checked during decoding. If it does not match, an error will be reported.
 
