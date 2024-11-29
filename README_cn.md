@@ -321,6 +321,7 @@ struct Frame {
     FrameType opcode = FRAME_DATA;
     bytes data;
 };
+```
 
 常量字段的值在编码时会被忽略，解码时会被检查，如果不匹配，会报错。
 

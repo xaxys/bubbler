@@ -319,6 +319,7 @@ struct Frame {
     FrameType opcode = FRAME_DATA;
     bytes data;
 };
+```
 
 The value of the constant field will be ignored during encoding and checked during decoding. If it does not match, an error will be reported.
 
