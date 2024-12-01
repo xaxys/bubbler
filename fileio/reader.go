@@ -9,9 +9,11 @@ import (
 func GetFileContent(file *definition.FileIdentifer) (string, error) {
 	content, err := ReadFile(file.Path)
 	if err != nil {
-		return "", &definition.FileReadError{
-			File: file,
-			Err:  err,
+		return "", &definition.GeneralError{
+			Err: &definition.FileReadError{
+				File: file,
+				Err:  err,
+			},
 		}
 	}
 	return string(content), nil
