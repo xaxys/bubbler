@@ -23,12 +23,29 @@ type GeneratedType struct {
 
 // ==================== CommonJS Generator ====================
 
+type CommonJSGeneratorState struct {
+	UseFloat32     bool
+	UseFloat64     bool
+	UseString      bool
+	UseStructArray bool
+}
+
+func NewCommonJSGeneratorState() *CommonJSGeneratorState {
+	return &CommonJSGeneratorState{
+		UseFloat32:     false,
+		UseFloat64:     false,
+		UseString:      false,
+		UseStructArray: false,
+	}
+}
+
 type CommonJSGenerator struct {
 	*gen.GenDispatcher
 	GenCtx   *gen.GenCtx
 	GenUnits *util.OrderedMap[string, *GeneratedUnit]
 	GenTypes *util.OrderedMap[string, *GeneratedType]
 	GenStack *util.OrderedMap[string, any]
+	GenState *CommonJSGeneratorState
 	Warning  definition.TopLevelWarning
 }
 
@@ -38,6 +55,7 @@ func NewCommonJSGenerator() *CommonJSGenerator {
 		GenUnits:      util.NewOrderedMap[string, *GeneratedUnit](),
 		GenTypes:      util.NewOrderedMap[string, *GeneratedType](),
 		GenStack:      util.NewOrderedMap[string, any](),
+		GenState:      NewCommonJSGeneratorState(),
 		Warning:       nil,
 	}
 	generator.GenDispatcher = gen.NewGenDispatcher(generator)
@@ -152,6 +170,7 @@ func (g *CommonJSGenerator) Generate(ctx *gen.GenCtx) (retErr error, retWarnings
 	if g.GenCtx.GenOptions.SingleFile {
 		singleData := map[string]any{
 			"GenUnits": g.GenUnits,
+			"GenState": g.GenState,
 		}
 
 		singleStr := util.ExecuteTemplate(fileTemplate, "singleFile", nil, singleData)
@@ -229,6 +248,8 @@ var fileTemplate = `
         return mergeDeep(target, ...sources);
     }
 
+    {{- if .GenState.UseStructArray }}
+
     function createArray(length, init) {
         var arr = new Array(length);
         for (var i = 0; i < length; i++) {
@@ -236,6 +257,9 @@ var fileTemplate = `
         }
         return arr;
     }
+    {{- end }}
+
+    {{- if .GenState.UseFloat32 }}
 
     function floatToUint32Bits(value) {
         var buffer = new ArrayBuffer(4);
@@ -244,18 +268,21 @@ var fileTemplate = `
         return view.getUint32(0, true);
     }
 
-    function doubleToUint64Bits(value) {
-        var buffer = new ArrayBuffer(8);
-        var view = new DataView(buffer);
-        view.setFloat64(0, value, true); // true for little-endian
-        return view.getBigUint64(0, true);
-    }
-
     function uint32BitsToFloat(value) {
         var buffer = new ArrayBuffer(4);
         var view = new DataView(buffer);
         view.setUint32(0, value, true); // true for little-endian
         return view.getFloat32(0, true);
+    }
+    {{- end }}
+
+    {{- if .GenState.UseFloat64 }}
+
+    function doubleToUint64Bits(value) {
+        var buffer = new ArrayBuffer(8);
+        var view = new DataView(buffer);
+        view.setFloat64(0, value, true); // true for little-endian
+        return view.getBigUint64(0, true);
     }
 
     function uint64BitsToDouble(value) {
@@ -264,6 +291,9 @@ var fileTemplate = `
         view.setBigUint64(0, value, true); // true for little-endian
         return view.getFloat64(0, true);
     }
+    {{- end }}
+
+    {{- if .GenState.UseString }}
 
     function stringToUTF8BytesCount(str) {
         var count = 0;
@@ -321,6 +351,7 @@ var fileTemplate = `
         }
         return [str, offset - start];
     }
+    {{- end }}
     
     // ====================== {{ $curUnit.Package }} ======================
 
@@ -392,6 +423,8 @@ var fileTemplate = `
         return mergeDeep(target, ...sources);
     }
 
+    {{- if .GenState.UseStructArray }}
+
     function createArray(length, init) {
         var arr = new Array(length);
         for (var i = 0; i < length; i++) {
@@ -399,6 +432,9 @@ var fileTemplate = `
         }
         return arr;
     }
+    {{- end }}
+
+    {{- if .GenState.UseFloat32 }}
 
     function floatToUint32Bits(value) {
         var buffer = new ArrayBuffer(4);
@@ -407,18 +443,21 @@ var fileTemplate = `
         return view.getUint32(0, true);
     }
 
-    function doubleToUint64Bits(value) {
-        var buffer = new ArrayBuffer(8);
-        var view = new DataView(buffer);
-        view.setFloat64(0, value, true); // true for little-endian
-        return view.getBigUint64(0, true);
-    }
-
     function uint32BitsToFloat(value) {
         var buffer = new ArrayBuffer(4);
         var view = new DataView(buffer);
         view.setUint32(0, value, true); // true for little-endian
         return view.getFloat32(0, true);
+    }
+    {{- end }}
+
+    {{- if .GenState.UseFloat64 }}
+
+    function doubleToUint64Bits(value) {
+        var buffer = new ArrayBuffer(8);
+        var view = new DataView(buffer);
+        view.setFloat64(0, value, true); // true for little-endian
+        return view.getBigUint64(0, true);
     }
 
     function uint64BitsToDouble(value) {
@@ -427,6 +466,9 @@ var fileTemplate = `
         view.setBigUint64(0, value, true); // true for little-endian
         return view.getFloat64(0, true);
     }
+    {{- end }}
+
+    {{- if .GenState.UseString }}
 
     function stringToUTF8BytesCount(str) {
         var count = 0;
@@ -484,6 +526,7 @@ var fileTemplate = `
         }
         return [str, offset - start];
     }
+    {{- end }}
 
     {{ range $genUnit := .GenUnits.Values -}}
     {{- $curUnit := $genUnit.SourceUnit -}}
@@ -530,7 +573,7 @@ var fileTemplate = `
 {{- end -}}
 `
 
-func (g CommonJSGenerator) GenerateUnit(unit *definition.CompilationUnit) error {
+func (g *CommonJSGenerator) GenerateUnit(unit *definition.CompilationUnit) error {
 	if unit.LocalTypes.Len() == 0 && gen.MatchOption(unit.Options, "omit_empty", true) {
 		return nil
 	}
@@ -564,6 +607,7 @@ func (g CommonJSGenerator) GenerateUnit(unit *definition.CompilationUnit) error 
 	fileData := map[string]any{
 		"Unit":     unit,
 		"GenTypes": genTypes,
+		"GenState": g.GenState,
 	}
 
 	fileStr := util.ExecuteTemplate(fileTemplate, "file", nil, fileData)
@@ -571,6 +615,9 @@ func (g CommonJSGenerator) GenerateUnit(unit *definition.CompilationUnit) error 
 	if err != nil {
 		return err
 	}
+
+	// clear state for next unit
+	g.GenState = NewCommonJSGeneratorState()
 
 	return nil
 }
@@ -606,6 +653,13 @@ var typeMap = map[definition.TypeID]string{
 }
 
 func (g CommonJSGenerator) GenerateBasicType(type_ *definition.BasicType) (string, error) {
+	switch type_.TypeTypeID {
+	case definition.TypeID_Float32:
+		g.GenState.UseFloat32 = true
+	case definition.TypeID_Float64:
+		g.GenState.UseFloat64 = true
+	}
+
 	if str, ok := typeMap[type_.TypeTypeID]; ok {
 		return str, nil
 	}
@@ -638,6 +692,7 @@ func (g CommonJSGenerator) GenerateBasicTypeDefaultValue(type_ *definition.Basic
 // ==================== GenerateString ====================
 
 func (g CommonJSGenerator) GenerateString(string_ *definition.String) (string, error) {
+	g.GenState.UseString = true
 	return "String", nil
 }
 
@@ -674,6 +729,7 @@ func (g CommonJSGenerator) GenerateArray(array *definition.Array) (string, error
 func (g CommonJSGenerator) GenerateArrayDefaultValue(array *definition.Array) (string, error) {
 	// special case for struct array
 	if array.ElementType.GetTypeID().IsStruct() {
+		g.GenState.UseStructArray = true
 		elemDefValue, err := g.GenerateTypeDefaultValue(array.ElementType)
 		if err != nil {
 			return "", err
