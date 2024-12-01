@@ -161,8 +161,10 @@ struct bytes {
 {{ end -}}
 
 {{ $curUnit := .Unit -}}
-{{ range $unit := .Unit.LocalImports.Values -}}
+{{ if gt $curUnit.LocalImports.Len 0 -}}
+{{ range $unit := $curUnit.LocalImports.Values -}}
 #include "{{ $unit.Package.ToFilePath ".bb.h" }}"
+{{ end }}
 {{ end -}}
 
 {{ range $entry := .GenTypes.Entries -}}
@@ -181,7 +183,7 @@ struct bytes {
 {{ end }}
 /* ==================== End {{ $entry.Key }} ==================== */
 
-{{ end }}
+{{ end -}}
 #endif // __{{ $allCapName }}_BB_H
 {{ end }}
 
@@ -213,6 +215,9 @@ struct bytes {
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+{{- if .UseStdLibH }}
+#include <stdlib.h>
+{{- end }}
 {{- if .UseStringH }}
 #include <string.h>
 {{- end }}
@@ -220,10 +225,7 @@ struct bytes {
 #include <math.h>
 {{- end }}
 
-{{ if .UseStdLibH }}
-#include <stdlib.h>
-{{- end }}
-{{- if .UseBytesType -}}
+{{ if .UseBytesType -}}
 #ifndef __BYTES_TYPE
 #define __BYTES_TYPE
 struct bytes {
