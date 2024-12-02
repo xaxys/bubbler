@@ -50,6 +50,7 @@ bubbler -t py -decnum -signext=arith -o output example.bb
 ```text
 Targets:
   c
+  cpp
   csharp [cs]
   commonjs [cjs]
   java
@@ -66,6 +67,12 @@ Targets:
   - 使用 `-minimal`：不为字段生成默认的getter/setter方法函数。
   - 使用 `-memcpy`：将使用 `malloc` 为 `string` 和 `bytes` 字段在堆上分配内存，并从原始缓冲区复制内容。
   - 不使用 `-memcpy`：`string` 和 `bytes` 字段的指针将直接引用原始解码缓冲区。提供零拷贝和零堆分配。
+
+- `cpp`：C++ 语言，为每个 `.bb` 文件输出一个 `.bb.hpp` 文件和一个 `.bb.cpp` 文件。
+  - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
+  - 使用 `-minimal`：不为字段生成默认的getter/setter方法函数。
+  - 使用 `-memcpy`：使用 `std::shared_ptr<uint8_t[]>` 为 `bytes` 字段在堆上分配内存，并从原始缓冲区复制内容。`string` 字段将始终使用 `std::string` 并在每次复制时复制。
+  - 不使用 `-memcpy`：使用 `std::shared_ptr<uint8_t[]>` 和空删除器引用 `bytes` 字段的原始缓冲区。`string` 字段将始终使用 `std::string` 并在每次复制时复制。
 
 - `csharp`：C# 语言，为每个 `.bb` 文件输出一个 `.bb.cs` 文件。
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
