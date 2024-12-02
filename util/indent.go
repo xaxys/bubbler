@@ -10,6 +10,7 @@ func IndentTab(v any, n int) string {
 	s := fmt.Sprintf("%s%s", tab, v)
 	s = strings.ReplaceAll(s, "\n", "\n"+tab)
 	s = strings.TrimRight(s, "\t")
+	s = strings.ReplaceAll(s, "\n"+tab+"\n", "\n\n")
 	return s
 }
 
@@ -22,6 +23,7 @@ func IndentSpace(v any, n int) string {
 	s := fmt.Sprintf("%s%s", space, v)
 	s = strings.ReplaceAll(s, "\n", "\n"+space)
 	s = strings.TrimRight(s, " ")
+	s = strings.ReplaceAll(s, "\n"+space+"\n", "\n\n")
 	return s
 }
 
@@ -38,6 +40,7 @@ func IndentSpaceNoFirst(v any, n int) string {
 	s := fmt.Sprintf("%s", v)
 	s = strings.ReplaceAll(s, "\n", "\n"+space)
 	s = strings.TrimRight(s, " ")
+	s = strings.ReplaceAll(s, "\n"+space+"\n", "\n\n")
 	return s
 }
 
