@@ -830,8 +830,8 @@ var rawGetterDeclTemplate = `
 // RawGetterArrayDecl: {{ $structName }}_get_{{ $fieldName }}
 {{ $elemTyStr }}* {{ $structName }}_get_{{ $fieldName }}(struct {{ $structName }}* ptr);
 
-// RawGetterArrayItemDecl: {{ $structName }}_getraw_{{ $fieldName }}_item
-{{ $elemTyStr }} {{ $structName }}_get_{{ $fieldName }}_item(struct {{ $structName }}* ptr, int index);
+// RawGetterArrayItemDecl: {{ $structName }}_get_{{ $fieldName }}_item
+{{ $elemTyStr }} {{ $structName }}_get_{{ $fieldName }}_item(struct {{ $structName }}* ptr, uint64_t index);
 
 // RawGetterArrayLengthDecl: {{ $structName }}_get_{{ $fieldName }}_length
 uint64_t {{ $structName }}_get_{{ $fieldName }}_length(struct {{ $structName }}* ptr);
@@ -877,7 +877,7 @@ void {{ $structName }}_set_{{ $fieldName }}(struct {{ $structName }}* ptr, {{ $p
 void {{ $structName }}_set_{{ $fieldName }}(struct {{ $structName }}* ptr, {{ $elemTyStr }}* value, uint64_t length);
 
 // RawSetterArrayItemDecl: {{ $structName }}_set_{{ $fieldName }}_item
-void {{ $structName }}_set_{{ $fieldName }}_item(struct {{ $structName }}* ptr, int index, {{ $elemTyStr }} value);
+void {{ $structName }}_set_{{ $fieldName }}_item(struct {{ $structName }}* ptr, uint64_t index, {{ $elemTyStr }} value);
 {{- end -}}
 
 {{- define "rawSetterDeclSelector" -}}
@@ -1061,7 +1061,7 @@ var rawGetterTemplate = `
 
 // RawGetterArrayItem: {{ $structName }}_get_{{ $fieldName }}_item
 {{ if .GenOption.SingleFile }}static {{ end -}}
-{{ $elemTyStr }} {{ $structName }}_get_{{ $fieldName }}_item(struct {{ $structName }}* ptr, int index) {
+{{ $elemTyStr }} {{ $structName }}_get_{{ $fieldName }}_item(struct {{ $structName }}* ptr, uint64_t index) {
     return ptr->{{ $fieldName }}[index];
 }
 
@@ -1123,7 +1123,7 @@ void {{ $structName }}_set_{{ $fieldName }}(struct {{ $structName }}* ptr, {{ $e
 
 // RawSetterArrayItem: {{ $structName }}_set_{{ $fieldName }}_item
 {{ if .GenOption.SingleFile }}static {{ end -}}
-void {{ $structName }}_set_{{ $fieldName }}_item(struct {{ $structName }}* ptr, int index, {{ $elemTyStr }} value) {
+void {{ $structName }}_set_{{ $fieldName }}_item(struct {{ $structName }}* ptr, uint64_t index, {{ $elemTyStr }} value) {
     ptr->{{ $fieldName }}[index] = value;
 }
 {{- end -}}
