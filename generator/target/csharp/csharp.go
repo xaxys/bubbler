@@ -2622,7 +2622,7 @@ func (g CSharpExprGenerator) GenerateBinopExpr(expr *definition.BinopExpr) (stri
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("Math.pow(%s, %s)", expr1, expr2), nil
+		return fmt.Sprintf("Math.Pow(%s, %s)", expr1, expr2), nil
 	default:
 		opStr, ok := exprOpToString[expr.Op]
 		if !ok {
