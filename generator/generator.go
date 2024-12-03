@@ -10,6 +10,7 @@ import (
 	"github.com/xaxys/bubbler/generator/target/commonjs"
 	"github.com/xaxys/bubbler/generator/target/cpp"
 	"github.com/xaxys/bubbler/generator/target/csharp"
+	"github.com/xaxys/bubbler/generator/target/golang"
 	"github.com/xaxys/bubbler/generator/target/java"
 	"github.com/xaxys/bubbler/generator/target/python"
 	"github.com/xaxys/bubbler/util"
@@ -27,6 +28,7 @@ func init() {
 	cppGen := cpp.NewCppGenerator()
 	csharpGen := csharp.NewCSharpGenerator()
 	commonjsGen := commonjs.NewCommonJSGenerator()
+	goGen := golang.NewGoGenerator()
 	javaGen := java.NewJavaGenerator()
 	pythonGen := python.NewPythonGenerator()
 
@@ -38,6 +40,7 @@ func init() {
 	TargetMap.Put("cs", csharpGen)
 	TargetMap.Put("commonjs", commonjsGen)
 	TargetMap.Put("cjs", commonjsGen)
+	TargetMap.Put("go", goGen)
 	TargetMap.Put("java", javaGen)
 	TargetMap.Put("python", pythonGen)
 	TargetMap.Put("py", pythonGen)

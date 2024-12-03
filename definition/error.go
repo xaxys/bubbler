@@ -698,6 +698,27 @@ func (e InvalidFieldError) Error() string {
 
 // --------------------
 
+type InvalidExprError struct {
+	Expr string
+	Msg  string
+}
+
+func (e InvalidExprError) String() string {
+	if e.Expr == "" {
+		return fmt.Sprintf("invalid expression: %s", e.Msg)
+	}
+	return fmt.Sprintf("invalid expression '%s': %s",
+		color.FgLightWhite.Render(e.Expr),
+		e.Msg,
+	)
+}
+
+func (e InvalidExprError) Error() string {
+	return e.String()
+}
+
+// --------------------
+
 type NameStyleError struct {
 	Name string
 	Msg  string
