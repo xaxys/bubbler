@@ -53,6 +53,7 @@ Targets:
   cpp
   csharp [cs]
   commonjs [cjs]
+  go
   java
   python [py]
 
@@ -69,13 +70,13 @@ Targets:
   - 不使用 `-memcpy`：`string` 和 `bytes` 字段的指针将直接引用原始解码缓冲区。提供零拷贝和零堆分配。
 
 - `cpp`：C++ 语言，为每个 `.bb` 文件输出一个 `.bb.hpp` 文件和一个 `.bb.cpp` 文件。
-  - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
+  - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。生成的文件夹结构不会受到 `cpp_namespace` 选项的影响。
   - 使用 `-minimal`：不为字段生成默认的getter/setter方法函数。
   - 使用 `-memcpy`：使用 `std::shared_ptr<uint8_t[]>` 为 `bytes` 字段在堆上分配内存，并从原始缓冲区复制内容。`string` 字段将始终使用 `std::string` 并在每次复制时复制。
   - 不使用 `-memcpy`：使用 `std::shared_ptr<uint8_t[]>` 和空删除器引用 `bytes` 字段的原始缓冲区。`string` 字段将始终使用 `std::string` 并在每次复制时复制。
 
 - `csharp`：C# 语言，为每个 `.bb` 文件输出一个 `.bb.cs` 文件。
-  - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
+  - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。生成的文件夹结构不会受到 `csharp_namespace` 选项的影响。
   - 使用 `-memcpy`：使用 `byte[]` 作为 `bytes` 字段的类型。编码和解码方法将仅兼容 `byte[]` 类型参数。旧版 .NET Framework 应使用此选项。
   - 不使用 `-memcpy`：使用 `Memory<byte>` 作为 `bytes` 字段的类型。编码和解码方法将兼容 `byte[]`、`Memory<byte>` 和 `Span<byte>`（仅编码）类型参数。此情况下需要 `System.Memory` 包。
 
@@ -83,7 +84,12 @@ Targets:
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
   - 强制启用：`-memcpy`。
 
-- `java`：Java 语言，为每个 `.bb` 文件中定义的每个数据结构生成一个 `.java` 文件。
+- `go`：Go 语言，为每个 `.bb` 文件输出一个 `.bb.go` 文件。生成的文件夹结构将受到 `go_package` 选项的影响。例如，`github.com/xaxys/bubbler` 将在 `github.com/xaxys/bubbler` 目录中生成。
+  - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。包名由输入 `.bb` 文件的包名声明确定。
+  - 使用 `-memcpy`：解码时复制 `bytes` 字段。`string` 字段将始终被复制。
+  - 不使用 `-memcpy`：将原始缓冲区的切片分配给 `bytes` 字段。`string` 字段将始终被复制。
+
+- `java`：Java 语言，为每个 `.bb` 文件中定义的每个数据结构生成一个 `.java` 文件。生成的文件夹结构将受到 `java_package` 选项的影响。例如，`com.example.rovlink` 将在 `com/example/rovlink` 目录中生成。
   - 强制启用：`-memcpy`。
 
 - `python`：Python 语言，为每个 `.bb` 文件输出一个 `_bb.py` 文件。
@@ -119,6 +125,7 @@ option omit_empty = true;
 option go_package = "example.com/rovlink";
 option cpp_namespace = "com::example::rovlink";
 option csharp_namespace = "Example.Rovlink";
+option java_package = "com.example.rovlink";
 ```
 
 在 `.bb` 文件中，选项语句不能重复。

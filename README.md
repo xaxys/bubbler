@@ -53,6 +53,7 @@ Targets:
   cpp
   csharp [cs]
   commonjs [cjs]
+  go
   java
   python [py]
 
@@ -68,13 +69,13 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
   - With `-memcpy`: Use `malloc` to heap-allocate memory for `string` and `bytes` fields, and copy the content from the original buffer.
   - Without `-memcpy`: Pointer reference to the original buffer for `string` and `bytes` fields. Zero-copy and zero-heap-allocate.
 
-- `cpp`: C++ language, output one `.bb.hpp` file and one `.bb.cpp` file for each `.bb` file.
+- `cpp`: C++ language, output one `.bb.hpp` file and one `.bb.cpp` file for each `.bb` file. The folder structure will not be affected by the `cpp_namespace` option.
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
   - With `-minimal`: No generation of getter/setter methods for fields.
   - With `-memcpy`: Use `std::shared_ptr<uint8_t[]>` to heap-allocate memory for `bytes` fields, and copy the content from the original buffer. `string` fields will always use `std::string` and copied every time.
   - Without `-memcpy`: Use `std::shared_ptr<uint8_t[]>` with null deleter to reference the original buffer for `bytes` fields. `string` fields will always use `std::string` and copied every time.
 
-- `csharp`: C# language, output one `.cs` file for each structure defined in each `.bb` file.
+- `csharp`: C# language, output one `.cs` file for each structure defined in each `.bb` file. The folder structure will not be affected by the `csharp_namespace` option.
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
   - With `-memcpy`: Use `byte[]` as the type for `bytes` fields. Encode and decode methods will only be compatible with `byte[]` parameters. Old .NET Framework versions should use this option.
   - Without `-memcpy`: Use `Memory<byte>` as the type for `bytes` fields. Encode and decode methods will be compatible with `byte[]`, `Memory<byte>` and `Span<byte>`(encode only) parameters. `System.Memory` package is required for this case.
@@ -83,7 +84,12 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
   - Force enabled: `-memcpy`.
 
-- `java`: Java language, output one `.java` file for each structure defined in each `.bb` file.
+- `go`: Go language, output one `.bb.go` file for each `.bb` file. The folder structure will be affected by the `go_package` option. (i.e., `github.com/xaxys/bubbler` will generate in the `github.com/xaxys/bubbler` directory)
+  - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option. The package name is determined by the package statement of the input `.bb` file.
+  - With `-memcpy`: make a copy of the `bytes` field when decoding. The `string` field will always be copied.
+  - Without `-memcpy`: a slice of the original buffer will be assigned to the `bytes` field. The `string` field will always be copied.
+
+- `java`: Java language, output one `.java` file for each structure defined in each `.bb` file. The folder structure will be affected by the `java_package` option. (i.e., `com.example.rovlink` will generate in the `com/example/rovlink` directory)
   - Force enabled: `-memcpy`.
 
 - `python`: Python language, output one `_bb.py` file for each `.bb` file.
@@ -117,6 +123,7 @@ option omit_empty = true;
 option go_package = "example.com/rovlink";
 option cpp_namespace = "com::example::rovlink";
 option csharp_namespace = "Example.Rovlink";
+option java_package = "com.example.rovlink";
 ```
 
 The option statement cannot be duplicated in a `.bb` file.
