@@ -972,7 +972,7 @@ var encoderTemplate = `
             int size = {{ calc .StructDef.StructBitSize "/" 8 }};
             {{- range $field := .StructDef.StructFields.Values }}
                 {{- if $field.GetFieldKind.IsNormal }}
-                {{- $fieldName := Tosnake_case $field.FieldName }}
+                {{- $fieldName := TocamelCase $field.FieldName }}
                     {{- if $field.FieldType.GetTypeID.IsArray }}
                         {{- if $field.FieldType.ElementType.GetTypeID.IsStruct }}
                             {{- if $field.FieldType.ElementType.GetTypeDynamic }}
