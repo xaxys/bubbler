@@ -1287,7 +1287,22 @@ func NewExprVisitor(v *MethodVisitor, valueType *definition.BasicType) *ExprVisi
 }
 
 func (v *ExprVisitor) VisitExprValue(ctx *parser.ExprValueContext) any {
-	return ctx.Value().Accept(v)
+	valueRet := ctx.Value().Accept(v)
+	switch val := valueRet.(type) {
+	case error:
+		return val
+	case *definition.ValueExpr:
+		val.BasePosition = definition.BasePosition{
+			File:   v.Unit.UnitName.Path,
+			Line:   ctx.GetStart().GetLine(),
+			Column: ctx.GetStart().GetColumn(),
+		}
+		val.ValueType = v.ValueType
+	default:
+		panic("unreachable")
+	}
+
+	return valueRet
 }
 
 func (v *ExprVisitor) VisitExprConstant(ctx *parser.ExprConstantContext) any {
@@ -1302,6 +1317,13 @@ func (v *ExprVisitor) VisitExprConstant(ctx *parser.ExprConstantContext) any {
 		panic("unreachable")
 	}
 
+	var constantType *definition.BasicType
+	switch constant.GetLiteralKind() {
+	case definition.LiteralKindID_Bool:
+		constantType = &definition.Bool
+	default:
+	}
+
 	expr := &definition.ConstantExpr{
 		BasePosition: definition.BasePosition{
 			File:   v.Unit.UnitName.Path,
@@ -1309,7 +1331,7 @@ func (v *ExprVisitor) VisitExprConstant(ctx *parser.ExprConstantContext) any {
 			Column: ctx.GetStart().GetColumn(),
 		},
 		ConstantValue: constant,
-		ConstantType:  nil, // TODO: set type
+		ConstantType:  constantType, // TODO: set type
 	}
 
 	return expr
