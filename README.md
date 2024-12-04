@@ -199,6 +199,10 @@ Enumeration values cannot be negative (tentatively), and if the value is not fil
 
 The number in the square brackets after the enumeration type name indicates the width of the enumeration type, for example, `[1]` indicates 1 byte. You can also use the `#` symbol to represent bytes and bits, for example, `#1` represents 1 bit, `#2` represents 2 bits. You can also use them in combination, for example, `1#4` represents 1 byte 4 bits, that is, 12 bits.
 
+Recommended to use **PascalCase** for enumeration type names. But only capitialization of the first letter is mandatory.
+
+Recommended to use **ALLCAP_CASE** for enumeration values. But only capitialization of the first letter is mandatory.
+
 ### Data Structures
 
 Use the `struct` keyword to define data structures. The definition of a data structure includes the structure name and a series of fields. For example:
@@ -206,7 +210,7 @@ Use the `struct` keyword to define data structures. The definition of a data str
 ```c
 struct Frame[20] {
     FrameType opcode;
-    struct some_embed[1] {
+    struct SomeEmbed[1] {
         bool valid[#1];
         bool error[#1];
         uint8 source[#3];
@@ -216,9 +220,13 @@ struct Frame[20] {
 };
 ```
 
-In this example, `Frame` is a data structure with three fields: `opcode`, `some_embed`, and `payload`. `opcode` is of type `FrameType`, `some_embed` is an anonymous embedded data structure, and `payload` is of type `uint8`.
+In this example, `Frame` is a data structure with three fields: `opcode`, `SomeEmbed`, and `payload`. `opcode` is of type `FrameType`, `SomeEmbed` is an anonymous embedded data structure, and `payload` is of type `uint8`.
 
-Please note that Bubbler does not have the concept of scope (to accommodate the C language), so the names `Frame` and `some_embed` as data structure names are not allowed to be duplicated globally, even if `some_embed` is an anonymous embedded data structure.
+Please note that Bubbler does not have the concept of scope (to accommodate the C language), so the names `Frame` and `SomeEmbed` as data structure names are not allowed to be duplicated globally, even if `SomeEmbed` is an anonymous embedded data structure.
+
+Recommended to use **PascalCase** for data structure names. But only capitialization of the first letter is mandatory.
+
+Recommended to use **snake_case** for field names. But only uncaptialization of the first letter is mandatory.
 
 ### Field Types
 
@@ -247,13 +255,13 @@ The field width can be less than the width of the type, for example:
 
 ```c
 struct Frame[20] {
-    int64 myInt48[6];
+    int64 my_int48[6];
 };
 ```
 
-In this example, `myInt48` is a 6-byte field, its type is `int64`, but its width is 6 bytes, so it will only occupy 6 bytes of space when encoding.
+In this example, `my_int48` is a 6-byte field, its type is `int64`, but its width is 6 bytes, so it will only occupy 6 bytes of space when encoding.
 
-However, for fields of `struct` type, the field width must be equal to the width of the type (tentatively)
+However, for fields of `struct` type, the field width must be equal to the width of the type
 
 ### Anonymous Embedded Fields
 
@@ -261,8 +269,8 @@ Anonymous embedded fields are nameless data structures that can contain multiple
 
 ```c
 struct Frame {
-    int64 myInt48[6];
-    struct some_embed[1] {
+    int64 my_int48[6];
+    struct SomeEmbed[1] {
         bool valid[#1];
         bool error[#1];
         uint8 source[#3];
@@ -271,13 +279,13 @@ struct Frame {
 };
 ```
 
-In this example, `some_embed` is an anonymous embedded field, it contains four subfields: `valid`, `error`, `source`, and `target`.
+In this example, `SomeEmbed` is an anonymous embedded field, it contains four subfields: `valid`, `error`, `source`, and `target`.
 
 The subfields of the anonymous embedded field will be promoted and expanded into the parent structure. The generated structure is as follows:
 
 ```c
 struct Frame {
-    int64_t myInt48;
+    int64_t my_int48;
     bool valid;
     bool error;
     uint8_t source;
@@ -293,7 +301,7 @@ struct AnotherTest {
 }
 
 struct Frame {
-    int64 myInt48[6];
+    int64 my_int48[6];
     AnotherTest;
     uint8<18> payload;
 };
@@ -303,7 +311,7 @@ In this way, the generated structure is as follows:
 
 ```c
 struct Frame {
-    int64_t myInt48;
+    int64_t my_int48;
     int8_t arr[2];
     uint8_t payload;
 };
@@ -386,6 +394,8 @@ The custom setter named `temperature_display` accepts a `float64` type parameter
 The custom setter named `another_custom_setter` accepts a `uint8` type parameter and calculates the result based on `value == 0 ? 0 : (value + 40) * 10` to set the field value. Here, `value` is filled with the parameter value and is of type `uint8`.
 
 Please note that the custom getter and setter method names cannot be the same as any field names, and getter and setter methods with the same name must return and accept the same type.
+
+Recommended to use **snake_case** for getter/setter names. But only uncaptialization of the first letter is mandatory.
 
 ## Contributing
 

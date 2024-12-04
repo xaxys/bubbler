@@ -201,6 +201,10 @@ enum FrameType[1] {
 
 枚举类型名后面的方括号中的数字表示枚举类型的宽度，例如 `[1]` 表示 1 字节。也可以使用 `#` 符号表示字节和比特，例如 `#1` 表示 1 比特，`#2` 表示 2 比特。也可以混合使用，例如 `1#4` 表示 1 字节 4 比特，即 12 比特。
 
+推荐使用 **PascalCase** 作为枚举类型名称。但是只有首字母大写是强制要求。
+
+推荐使用 **ALLCAP_CASE** 作为枚举值。但是只有首字母大写是强制要求。
+
 ### 数据结构
 
 使用 `struct` 关键字定义数据结构。数据结构的定义包括结构名称和一系列的字段。例如：
@@ -208,7 +212,7 @@ enum FrameType[1] {
 ```c
 struct Frame[20] {
     FrameType opcode;
-    struct some_embed[1] {
+    struct SomeEmbed[1] {
         bool valid[#1];
         bool error[#1];
         uint8 source[#3];
@@ -218,9 +222,13 @@ struct Frame[20] {
 };
 ```
 
-在这个例子中，`Frame` 是一个数据结构，它有三个字段：`opcode`、`some_embed` 和 `payload`。`opcode` 的类型是 `FrameType`，`some_embed` 是一个匿名内嵌的数据结构，`payload` 的类型是 `uint8`。
+在这个例子中，`Frame` 是一个数据结构，它有三个字段：`opcode`、`SomeEmbed` 和 `payload`。`opcode` 的类型是 `FrameType`，`SomeEmbed` 是一个匿名内嵌的数据结构，`payload` 的类型是 `uint8`。
 
-请注意，Bubbler中并无作用域的概念（为了适应 C 语言），所以 `Frame` 和 `some_embed` 作为数据结构名称，在全局都不允许重名，哪怕 `some_embed` 是一个匿名内嵌的数据结构。
+请注意，Bubbler中并无作用域的概念（为了适应 C 语言），所以 `Frame` 和 `SomeEmbed` 作为数据结构名称，在全局都不允许重名，哪怕 `SomeEmbed` 是一个匿名内嵌的数据结构。
+
+推荐使用 **PascalCase** 作为数据结构名称。但是只有首字母大写是强制要求。
+
+推荐使用 **snake_case** 作为字段名称。但是只有首字母小写是强制要求。
 
 ### 字段类型
 
@@ -249,13 +257,13 @@ struct Frame {
 
 ```c
 struct Frame[20] {
-    int64 myInt48[6];
+    int64 my_int48[6];
 };
 ```
 
-在这个例子中，`myInt48` 是一个 6 字节的字段，其类型为 `int64`，但是它的宽度为 6 字节，因此它编码时只会占用 6 字节的空间。
+在这个例子中，`my_int48` 是一个 6 字节的字段，其类型为 `int64`，但是它的宽度为 6 字节，因此它编码时只会占用 6 字节的空间。
 
-但是，对于`struct`类型的字段，字段宽度必须等于类型的宽度（暂定）
+但是，对于`struct`类型的字段，字段宽度必须等于类型的宽度
 
 ### 匿名内嵌字段
 
@@ -263,8 +271,8 @@ struct Frame[20] {
 
 ```c
 struct Frame {
-    int64 myInt48[6];
-    struct some_embed[1] {
+    int64 my_int48[6];
+    struct SomeEmbed[1] {
         bool valid[#1];
         bool error[#1];
         uint8 source[#3];
@@ -273,13 +281,13 @@ struct Frame {
 };
 ```
 
-在这个例子中，`some_embed` 是一个匿名内嵌字段，它包含了四个子字段：`valid`、`error`、`source` 和 `target`。
+在这个例子中，`SomeEmbed` 是一个匿名内嵌字段，它包含了四个子字段：`valid`、`error`、`source` 和 `target`。
 
 匿名内嵌字段的子字段会被提升并展开到父结构体中。生成的结构如下：
 
 ```c
 struct Frame {
-    int64_t myInt48;
+    int64_t my_int48;
     bool valid;
     bool error;
     uint8_t source;
@@ -295,7 +303,7 @@ struct AnotherTest {
 }
 
 struct Frame {
-    int64 myInt48[6];
+    int64 my_int48[6];
     AnotherTest;
     uint8<18> payload;
 };
@@ -305,7 +313,7 @@ struct Frame {
 
 ```c
 struct Frame {
-    int64_t myInt48;
+    int64_t my_int48;
     int8_t arr[2];
     uint8_t payload;
 };
@@ -388,6 +396,8 @@ struct SensorTemperatureData {
 自定义setter名为 `another_custom_setter`，`uint8`是参数类型。并根据 `value == 0 ? 0 : (value + 40) * 10` 计算结果并以此设置字段的值。其中 `value` 被填充为参数的值，是 `uint8` 类型。
 
 请注意，自定义的 getter 和 setter 方法的名不可以与任何字段名相同，并且同名的 getter 和 setter 方法必须返回和接收相同的类型。
+
+推荐使用 **snake_case** 作为自定义 getter/setter 方法名称。但是只有首字母小写是强制要求。
 
 ## 贡献
 
