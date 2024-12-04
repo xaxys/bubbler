@@ -1,3 +1,5 @@
+![Bubbler-BANNER](.assets/Bubbler-BANNER.png)
+
 # Bubbler
 
 [English](README.md) | 简体中文
