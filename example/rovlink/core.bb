@@ -1,7 +1,7 @@
-package api.rovlink.exdata;
+package api.core;
 
 struct RovExdataLeakageData[6] {
-    bool<48> leakage[6];
+    uint64 leakage[6] [order = "big"];
 }
 
 enum RovExdataKeepAliveStatus[2] {
@@ -10,6 +10,6 @@ enum RovExdataKeepAliveStatus[2] {
 }
 
 struct RovExdataKeepAliveData[6] {
-    uint32 timestamp[4];
-    RovExdataKeepAliveStatus status[2];
+    uint32 timestamp[4] [order = "big"];
+    RovExdataKeepAliveStatus status[2] [order = "big"];
 }

@@ -1,29 +1,17 @@
-package api.rovlink.excontrol;
+package api.excontrol;
 
 struct RovExcontrolClampData[6] {
-    int16 clamp[2];
-    int16 wrist[2] {
-        get wrist_percent(float64): value / 3000.0 * 100.0;
-        get wrist_percent_int(int32): (int32)(value / 3000.0 * 100.0);
-        set wrist_percent(float64): value > -0.5 && value < 0.5 ? 0 : value;
+    int16 clamp[2] [order = "big"];
+    int16 wrist[2] [order = "big"] {
+        get percent(float64): value / 3000.0 * 100.0;
+        get percent_int(int32): (int32)(value / 3000.0 * 100.0);
+        set percent(float64): value > -0.5 && value < 0.5 ? (float64)0 : value;
     };
     void [2];
 }
 
-struct RovExcontrolArmAData[6] {
-    uint16 a1[2];
-    uint16 a2[2];
-    uint16 a3[2];
-}
-
-struct RovExcontrolArmBData[6] {
-    uint16 b1[2];
-    uint16 b2[2];
-    uint16 b3[2];
-}
-
-struct RovExcontrolArmCData[6] {
-    uint16 c1[2];
-    uint16 c2[2];
-    uint16 c3[2];
+struct RovExcontrolManipulatorAData[6] {
+    uint16 m1[2] [order = "big"];
+    uint16 m2[2] [order = "big"];
+    uint16 m3[2] [order = "big"];
 }
