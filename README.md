@@ -6,9 +6,9 @@ English | [简体中文](README_cn.md)
 
 Bubbler is a proto generator optimized for IoT devices. It compiles the `.bb` proto file and generates the output in the specified target language.
 
-Bubbler's proto powerful, and can be non-byte-aligned, which is useful for IoT devices with limited resources. Explained below.
+Bubbler's proto is powerful and can be non-byte-aligned, which is useful for IoT devices with limited resources. Explained below.
 
-Also, You may need syntax highlighting for `.bb` files, see [bubbler-vscode](https://github.com/xaxys/bubbler-vscode), or install it from [VSCode Marketplace](https://marketplace.visualstudio.com/items?itemName=xaxys.Bubbler).
+Also, you may need syntax highlighting for `.bb` files, see [bubbler-vscode](https://github.com/xaxys/bubbler-vscode), or install it from [VSCode Marketplace](https://marketplace.visualstudio.com/items?itemName=xaxys.Bubbler).
 
 Warning: Bubbler is still in development and is not ready for production use.
 
@@ -74,13 +74,13 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
 - `cpp`: C++ language, output one `.bb.hpp` file and one `.bb.cpp` file for each `.bb` file. The folder structure will not be affected by the `cpp_namespace` option.
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
   - With `-minimal`: No generation of getter/setter methods for fields.
-  - With `-memcpy`: Use `std::shared_ptr<uint8_t[]>` to heap-allocate memory for `bytes` fields, and copy the content from the original buffer. `string` fields will always use `std::string` and copied every time.
-  - Without `-memcpy`: Use `std::shared_ptr<uint8_t[]>` with null deleter to reference the original buffer for `bytes` fields. `string` fields will always use `std::string` and copied every time.
+  - With `-memcpy`: Use `std::shared_ptr<uint8_t[]>` to heap-allocate memory for `bytes` fields, and copy the content from the original buffer. `string` fields will always use `std::string` and be copied every time.
+  - Without `-memcpy`: Use `std::shared_ptr<uint8_t[]>` with null deleter to reference the original buffer for `bytes` fields. `string` fields will always use `std::string` and be copied every time.
 
 - `csharp`: C# language, output one `.cs` file for each structure defined in each `.bb` file. The folder structure will not be affected by the `csharp_namespace` option.
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
-  - With `-memcpy`: Use `byte[]` as the type for `bytes` fields. Encode and decode methods will only be compatible with `byte[]` parameters. Old .NET Framework versions should use this option.
-  - Without `-memcpy`: Use `Memory<byte>` as the type for `bytes` fields. Encode and decode methods will be compatible with `byte[]`, `Memory<byte>` and `Span<byte>`(encode only) parameters. `System.Memory` package is required for this case.
+  - With `-memcpy`: Use `byte[]` as the type for `bytes` fields. Encode and decode methods will only be compatible with `byte[]` parameters. Older .NET Framework versions should use this option.
+  - Without `-memcpy`: Use `Memory<byte>` as the type for `bytes` fields. Encode and decode methods will be compatible with `byte[]`, `Memory<byte>` and `Span<byte>` (encode only) parameters. The `System.Memory` package is required for this case.
 
 - `commonjs`: CommonJS module, output one `.bb.js` file for each `.bb` file. (Please note that `BigInt` is used for `int64` and `uint64` fields, which is not supported in some environments.)
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
@@ -88,8 +88,8 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
 
 - `go`: Go language, output one `.bb.go` file for each `.bb` file. The folder structure will be affected by the `go_package` option. (i.e., `github.com/xaxys/bubbler` will generate in the `github.com/xaxys/bubbler` directory)
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option. The package name is determined by the package statement of the input `.bb` file.
-  - With `-memcpy`: make a copy of the `bytes` field when decoding. The `string` field will always be copied.
-  - Without `-memcpy`: a slice of the original buffer will be assigned to the `bytes` field. The `string` field will always be copied.
+  - With `-memcpy`: Make a copy of the `bytes` field when decoding. The `string` field will always be copied.
+  - Without `-memcpy`: A slice of the original buffer will be assigned to the `bytes` field. The `string` field will always be copied.
 
 - `java`: Java language, output one `.java` file for each structure defined in each `.bb` file. The folder structure will be affected by the `java_package` option. (i.e., `com.example.rovlink` will generate in the `com/example/rovlink` directory)
   - Force enabled: `-memcpy`.
@@ -130,7 +130,7 @@ option java_package = "com.example.rovlink";
 
 The option statement cannot be duplicated in a `.bb` file.
 
-Warning will be reported if a option is unknown.
+Warning will be reported if an option is unknown.
 
 #### Supported Options
 
@@ -153,9 +153,9 @@ import "mode.bb";
 import "sensor.bb";
 ```
 
-In this example, the `omit_empty` option is set to `true`, and this `.bb` file will not generate as `all.xxx` file.
+In this example, the `omit_empty` option is set to `true`, and this `.bb` file will not generate an `all.xxx` file.
 
-You can use this option to generate multiple `.bb` files at once, without writing a external script to do multiple `bubbler` calls.
+You can use this option to generate multiple `.bb` files at once, without writing an external script to do multiple `bubbler` calls.
 
 ##### `go_package`
 
@@ -331,7 +331,7 @@ struct Frame {
 
 In this example, `FRAME_HEADER` is a constant field with a value of `0xAA`.
 
-Or you can use enum value defined in previous enum type as constant value:
+Or you can use an enum value defined in a previous enum type as a constant value:
 
 ```c
 enum FrameType[1] {
