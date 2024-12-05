@@ -406,3 +406,8 @@ Contributions to Bubbler are welcome.
 ## License
 
 MIT License
+
+## Related Repositories
+
+- [CoralReefPlayer](https://github.com/DawningW/CoralReefPlayer) - CoralReefPlayer, a low-latency streaming media player.
+- [OpenFinNAV](https://github.com/redlightASl/OpenFinNAV) - FinNAV, a flight control firmware library for underwater robots (ROV/AUV).

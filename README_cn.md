@@ -408,3 +408,8 @@ struct SensorTemperatureData {
 ## 许可证
 
 MIT 许可证
+
+## 相关仓库
+
+- [CoralReefPlayer](https://github.com/DawningW/CoralReefPlayer) - 珊瑚礁播放器，一款现代化跨平台低延迟流媒体播放器库。
+- [OpenFinNAV](https://github.com/redlightASl/OpenFinNAV) - 鳍航，针对水下机器人（ROV/AUV）设计的飞控固件库。
