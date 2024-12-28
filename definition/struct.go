@@ -80,9 +80,14 @@ func (s *Struct) SumFieldBitSize() (fixedSize int64, hasDynamic bool) {
 	sum := int64(0)
 	dynamic := false
 	for _, field := range s.StructFields.Values() {
-		if field.GetFieldBitSize() == -1 {
-			dynamic = true
-		} else {
+		switch ty := field.(type) {
+		case *ConstantField:
+		case *NormalField:
+			if ty.FieldType.GetTypeDynamic() {
+				dynamic = true
+			}
+		}
+		if field.GetFieldBitSize() > 0 {
 			sum += field.GetFieldBitSize()
 		}
 	}
