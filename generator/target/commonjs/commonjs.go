@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"text/template"
 
 	"github.com/xaxys/bubbler/definition"
@@ -64,8 +65,16 @@ func NewCommonJSGenerator() *CommonJSGenerator {
 
 // ==================== Util ====================
 
-func (g *CommonJSGenerator) generateDec(value any) string {
+func generateDec(value any) string {
 	return fmt.Sprintf("%d", value)
+}
+
+func generateDecBigInt(value any) string {
+	return fmt.Sprintf("%sn", generateDec(value))
+}
+
+func (g *CommonJSGenerator) generateDec(value any) string {
+	return generateDec(value)
 }
 
 func (g *CommonJSGenerator) generateHex(value any) string {
@@ -83,7 +92,7 @@ func (g *CommonJSGenerator) generateBin(value any) string {
 }
 
 func (g *CommonJSGenerator) generateDecBigInt(value any) string {
-	return fmt.Sprintf("%sn", g.generateDec(value))
+	return generateDecBigInt(value)
 }
 
 func (g *CommonJSGenerator) generateHexBigInt(value any) string {
@@ -2812,7 +2821,10 @@ func (g CommonJSLiteralGenerator) GenerateBoolLiteral(literal *definition.BoolLi
 }
 
 func (g CommonJSLiteralGenerator) GenerateIntLiteral(literal *definition.IntLiteral) (string, error) {
-	return fmt.Sprintf("%d", literal.IntValue), nil
+	if literal.IntValue > math.MaxInt32 || literal.IntValue < math.MinInt32 {
+		return generateDecBigInt(literal.IntValue), nil
+	}
+	return generateDec(literal.IntValue), nil
 }
 
 func (g CommonJSLiteralGenerator) GenerateFloatLiteral(literal *definition.FloatLiteral) (string, error) {
