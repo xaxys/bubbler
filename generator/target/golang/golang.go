@@ -145,7 +145,7 @@ func (g *GoGenerator) Generate(ctx *gen.GenCtx) (retErr error, retWarnings error
 
 	// generate single file
 	if g.GenCtx.GenOptions.SingleFile && g.GenUnits.Len() > 0 {
-		unit := g.GenCtx.Units[0]
+		unit := g.GenCtx.Units[len(g.GenCtx.Units)-1]
 		pkg := unit.Package
 		if unit.Options.Has("go_package") {
 			pkgStr := fmt.Sprint(unit.Options.MustGet("go_package").OptionValue)
