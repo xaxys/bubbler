@@ -162,8 +162,8 @@ func NewGenDispatcher(generatorImpl GeneratorImpl) *GenDispatcher {
 }
 
 func (d *GenDispatcher) AcceptGenCtx(ctx *GenCtx) error {
-	for i := len(ctx.Units) - 1; i >= 0; i-- {
-		err := d.GeneratorImpl.GenerateUnit(ctx.Units[i])
+	for _, unit := range ctx.Units {
+		err := d.GeneratorImpl.GenerateUnit(unit)
 		if err != nil {
 			return err
 		}

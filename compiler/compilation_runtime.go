@@ -9,8 +9,8 @@ import (
 )
 
 type CompilationRuntime struct {
-	Units      *util.OrderedMap[string, *definition.CompilationUnit] // Units contains all the units compiled, full path as key
-	Packages   *util.OrderedMap[string, *definition.CompilationUnit] // another view of Units, for faster package lookup, package name as key
+	Units      *util.OrderedMap[string, *definition.CompilationUnit] // Units contains all the units compiled, full path as key, ordered by topological order
+	Packages   *util.OrderedMap[string, *definition.CompilationUnit] // another view of Units, for faster package lookup, package name as key, ordered by dfn order
 	ParseStack *util.OrderedMap[string, *definition.CompilationUnit] // ParseStack contains all the units being parsed, full path as key
 }
 
@@ -110,7 +110,6 @@ func (r *CompilationRuntime) compile(ident *definition.FileIdentifer, content st
 		return nil, err, warnings
 	}
 
-	r.Units.Put(ident.Path, unit)
 	r.Packages.Put(unit.Package.String(), unit)
 	r.ParseStack.Put(ident.Path, unit)
 
@@ -177,6 +176,7 @@ func (r *CompilationRuntime) compile(ident *definition.FileIdentifer, content st
 	}
 
 	r.ParseStack.Remove(ident.Path)
+	r.Units.Put(ident.Path, unit)
 
 	protoVisitor := NewParseVisitor(unit)
 	protoErr := ast.Accept(protoVisitor)
