@@ -17,6 +17,7 @@ const (
 )
 
 type GenOptions struct {
+	RemovePath    []string
 	InnerClass    bool
 	SingleFile    bool
 	MinimalCode   bool
@@ -27,6 +28,7 @@ type GenOptions struct {
 
 func NewGenOptions(setter ...GenOptionSetter) *GenOptions {
 	options := &GenOptions{
+		RemovePath:    nil,
 		SingleFile:    false,
 		InnerClass:    false,
 		MinimalCode:   false,
@@ -38,6 +40,18 @@ func NewGenOptions(setter ...GenOptionSetter) *GenOptions {
 		s(options)
 	}
 	return options
+}
+
+func RemovePath(path string) GenOptionSetter {
+	paths := strings.Split(path, ",")
+	for _, p := range paths {
+		for strings.HasSuffix(p, "/") {
+			p = p[:len(p)-1]
+		}
+	}
+	return func(options *GenOptions) {
+		options.RemovePath = paths
+	}
 }
 
 func SingleFile(single bool) GenOptionSetter {

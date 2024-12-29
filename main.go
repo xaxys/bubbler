@@ -39,14 +39,15 @@ Usage:
   bubbler [options] <input file>
 
 Options:
-  -t <target>        Target Language
-  -o <output>        Output Path
-  -inner             Generate Inner Class
-  -single            Generate Single File
-  -minimal           Generate Minimal Code
-  -decnum            Force Generate Decimal Format for Constant Value
-  -memcpy            Allocate Memory and Copy Data for Variable-Size Type
-  -signext <method>  Sign Extension Method (shift, arith)
+  -t <target>              Target Language
+  -o <output>              Output Path
+  -rmpath <path[,path...]> Remove Path Prefix for Output
+  -inner                   Generate Inner Class
+  -single                  Generate Single File
+  -minimal                 Generate Minimal Code
+  -decnum                  Force Generate Decimal Format for Constant Value
+  -memcpy                  Allocate Memory and Copy Data for Variable-Size Type
+  -signext <method>        Sign Extension Method (shift, arith)
 
 Targets:
 {{ range .Generators }}  {{ . }}
@@ -55,6 +56,7 @@ Examples:
   bubbler -t c -minimal -o output/ example.bb
   bubbler -t c -single -o gen.hpp example.bb
   bubbler -t py -decnum -signext arith -o output example.bb
+  bubbler -t go -o output/ -rmpath github.com/xaxys/bubbler/proto example.bb
 
 For more information, please visit: https://github.com/xaxys/bubbler
 {{ end }}
@@ -80,6 +82,7 @@ func main() {
 
 	target := ""
 	output := ""
+	rmpath := ""
 	inner := false
 	single := false
 	minimal := false
@@ -88,6 +91,7 @@ func main() {
 	signext := ""
 	flag.StringVar(&target, "t", "", "Target Language")
 	flag.StringVar(&output, "o", "", "Output Path")
+	flag.StringVar(&rmpath, "rmpath", "", "Remove Path Prefix for Output")
 	flag.BoolVar(&inner, "inner", false, "Generate Inner Class")
 	flag.BoolVar(&single, "single", false, "Generate Single File")
 	flag.BoolVar(&minimal, "minimal", false, "Generate Minimal Code")
@@ -140,6 +144,7 @@ func main() {
 
 	// generate
 	options := gen.NewGenOptions(
+		gen.RemovePath(rmpath),
 		gen.SingleFile(single),
 		gen.InnerClass(inner),
 		gen.MinimalCode(minimal),

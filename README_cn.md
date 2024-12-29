@@ -30,6 +30,8 @@ bubbler [options] <input file>
 
 - `-t <target>`: 目标语言
 - `-o <output>`: 输出路径
+- `-rmpath`: 移除路径前缀（生成文件时移除输出文件路径的路径前缀）
+  通常用于生成 Go 目标。例如，如果 `.bb` 文件的 `go_package` 选项设置为 `github.com/xaxys/bubbler/proto/rpc`，则文件将在 `output/github.com/xaxys/bubbler/proto/rpc` 目录中生成。如果要移除路径前缀 `github.com/xaxys/bubbler/proto/rpc`，可以将此选项设置为 `github.com/xaxys/bubbler/proto`。然后生成的文件将在 `output/rpc` 目录中生成。
 - `-inner`: 生成内部类（嵌套结构体）
 - `-single`: 生成单个文件（将所有定义合并到一个文件中，而不是每个源文件生成一个文件）
 - `-minimal`: 生成最小代码（通常不包含默认的getter/setter方法）
@@ -43,6 +45,7 @@ bubbler [options] <input file>
 bubbler -t c -minimal -o output/ example.bb
 bubbler -t c -single -o gen.hpp example.bb
 bubbler -t py -decnum -signext=arith -o output example.bb
+bubbler -t go -rmpath github.com/xaxys/bubbler/proto -o output example.bb
 ```
 
 ### 目标语言

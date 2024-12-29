@@ -30,6 +30,8 @@ bubbler [options] <input file>
 
 - `-t <target>`: Target language
 - `-o <output>`: Output Path
+- `-rmpath <path[,path...]>`: Remove Path Prefix (Remove the path prefix of the output file path when generating files)
+  This option is usually used when generating Go target. For example, if a `.bb` file has `go_package` option set to `github.com/xaxys/bubbler/proto/rpc`, the generated file will be generated in the `output/github.com/xaxys/bubbler/proto/rpc` directory. If you want to remove the path prefix `github.com/xaxys/bubbler/proto/rpc`, you can set this option to `github.com/xaxys/bubbler/proto`. Then the generated file will be generated in the `output/rpc` directory.
 - `-inner`: Generate Inner Class (Nested Struct)
 - `-single`: Generate Single File (Combine all definitions into one file, instead of one generated file per source file)
 - `-minimal`: Generate Minimal Code (Usually without default getter/setter methods)
@@ -43,6 +45,7 @@ bubbler [options] <input file>
 bubbler -t c -minimal -o output/ example.bb
 bubbler -t c -single -o gen.hpp example.bb
 bubbler -t py -decnum -signext=arith -o output example.bb
+bubbler -t go -rmpath github.com/xaxys/bubbler/proto -o output example.bb
 ```
 
 ### Target Languages

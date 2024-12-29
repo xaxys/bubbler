@@ -3,6 +3,7 @@ package gen
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/xaxys/bubbler/definition"
 	"github.com/xaxys/bubbler/fileio"
@@ -25,6 +26,15 @@ func (ctx *GenCtx) WritePackage(pkg *definition.Package, ext string, text string
 }
 
 func (ctx *GenCtx) WriteFile(file string, text string) error {
+	for _, rmpath := range ctx.GenOptions.RemovePath {
+		if strings.HasPrefix(file, rmpath) {
+			file = file[len(rmpath):]
+			for strings.HasPrefix(file, "/") {
+				file = file[1:]
+			}
+			break
+		}
+	}
 	if ctx.OutputPath == "" {
 		fmt.Println(text)
 		return nil
