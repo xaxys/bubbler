@@ -1237,13 +1237,9 @@ func (g CGenerator) GenerateEncoderDecl(structDef *definition.Struct) (string, e
 var decoderDeclTemplate = `
 {{- define "decoderDecl" -}}
 {{- $structName := .StructDef.StructName -}}
-// DecoderDecl: {{ $structName }}_decode_ex
-{{ if .GenOption.SingleFile }}static {{ end -}}
-bool {{ $structName }}_decode_ex(void* data, struct {{ $structName }}* ptr, uint64_t* decoded_bytes);
-
 // DecoderDecl: {{ $structName }}_decode
 {{ if .GenOption.SingleFile }}static {{ end -}}
-bool {{ $structName }}_decode(void* data, struct {{ $structName }}* ptr);
+int64_t {{ $structName }}_decode(void* data, struct {{ $structName }}* ptr);
 {{- end -}}
 `
 
@@ -1883,30 +1879,24 @@ func (g CGenerator) generateEncodeImpl(from, to int64, fieldData func(int64) str
 var decoderTemplate = `
 {{- define "decodeField" -}}
     // {{ .Pos }} {{ .Field.GetFieldKind }}: {{ .Field }}
-    {{ range $decodeStmt := .DecodeStmts }}
-        {{- $decodeStmt }}
-    {{ end -}}
+    {{- range $decodeStmt := .DecodeStmts }}
+    {{ $decodeStmt }}
+    {{- end -}}
 {{- end -}}
 
 {{- define "decoder" -}}
 {{- $structName := .StructDef.StructName -}}
-// Decoder: {{ $structName }}_decode_ex
-{{ if .GenOption.SingleFile }}static {{ end -}}
-bool {{ $structName }}_decode_ex(void* data, struct {{ $structName }}* ptr, uint64_t* decoded_size) {
-    {{ if .Dynamic -}}
-    uint64_t offset = 0;
-    {{ end -}}
-    {{ range $decodeStr := .DecodeStrs }}
-        {{- $decodeStr }}
-    {{- end -}}
-    if (decoded_size) *decoded_size = {{ if .Dynamic }}offset + {{ end }}{{ calc .StructDef.StructBitSize "/" 8 }};
-    return true;
-}
-
+{{- $structBytes := calc .StructDef.StructBitSize "/" 8 -}}
 // Decoder: {{ $structName }}_decode
 {{ if .GenOption.SingleFile }}static {{ end -}}
-bool {{ $structName }}_decode(void* data, struct {{ $structName }}* ptr) {
-    return {{ $structName }}_decode_ex(data, ptr, NULL);
+int64_t {{ $structName }}_decode(void* data, struct {{ $structName }}* ptr) {
+    {{- if .Dynamic }}
+    uint64_t offset = 0;
+    {{- end }}
+    {{- range $decodeStr := .DecodeStrs }}
+        {{- $decodeStr }}
+    {{- end }}
+    return {{ if .Dynamic }}(int64_t)offset + {{ end }}{{ $structBytes }};
 }
 {{- end -}}
 `
@@ -1981,18 +1971,18 @@ var fieldDecoderTemplate = `
 {{- end -}}
 
 {{- define "decodeConstantField" -}}
-    if ({{ .TempName }} != {{ .ConstantValue }}) return false;
+    if ({{ .TempName }} != {{ .ConstantValue }}) return -1;
 {{- end -}}
 
 {{- define "decodeNormalFieldStruct" -}}
 {{- if .FieldStruct.GetTypeDynamic -}}
     {
-        {{ .TyUint64 }} {{ .TempName }} = 0;
-        if (!{{ .FieldStruct.GetTypeName }}_decode_ex((void*)((({{ .TyUint8 }}*)data) + offset + {{ .FromByte }}), &{{ .FieldName }}, &{{ .TempName }})) return false;
-        offset += {{ .TempName }};
+        {{ .TyInt64 }} {{ .TempName }} = {{ .FieldStruct.GetTypeName }}_decode((void*)((({{ .TyUint8 }}*)data) + offset + {{ .FromByte }}), &{{ .FieldName }});
+        if ({{ .TempName }} < 0) return -1;
+        offset += (uint64_t){{ .TempName }};
     }
 {{- else -}}
-    if (!{{ .FieldStruct.GetTypeName }}_decode((void*)((({{ .TyUint8 }}*)data) + {{ if .Dynamic }}offset + {{ end }}{{ .FromByte }}), &{{ .FieldName }})) return false;
+    if ({{ .FieldStruct.GetTypeName }}_decode((void*)((({{ .TyUint8 }}*)data) + {{ if .Dynamic }}offset + {{ end }}{{ .FromByte }}), &{{ .FieldName }}) < 0) return -1;
 {{- end -}}
 {{- end -}}
 
@@ -2265,6 +2255,7 @@ func (g CGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fieldType
 			"Dynamic":     structDynamic,
 			"TyUint8":     typeMap[definition.TypeID_Uint8],
 			"TyUint64":    typeMap[definition.TypeID_Uint64],
+			"TyInt64":     typeMap[definition.TypeID_Int64],
 			"TempName":    g.generateDecodeTempVarName(from),
 		}
 

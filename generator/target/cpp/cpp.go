@@ -1303,7 +1303,7 @@ var decoderDeclTemplate = `
 {{- define "decoderDecl" -}}
 {{- $structName := .StructDef.StructName -}}
         // DecoderDecl: decode
-        uint64_t decode(void* data);
+        int64_t decode(void* data);
 {{- end -}}
 `
 
@@ -1949,15 +1949,16 @@ var decoderTemplate = `
 
 {{- define "decoder" -}}
 {{- $structName := .StructDef.StructName -}}
+{{- $structBytes := calc .StructDef.StructBitSize "/" 8 -}}
     // Decoder: {{ $structName }}::decode
-    uint64_t {{ if not .GenOption.SingleFile }}{{ $structName }}::{{ end }}decode(void* data) {
+    int64_t {{ if not .GenOption.SingleFile }}{{ $structName }}::{{ end }}decode(void* data) {
         {{- if .Dynamic }}
         uint64_t offset = 0;
         {{- end }}
         {{- range $decodeStr := .DecodeStrs }}
         {{ $decodeStr }}
         {{- end }}
-        return {{ if .Dynamic }}offset + {{ end }}{{ calc .StructDef.StructBitSize "/" 8 }};
+        return {{ if .Dynamic }}static_cast<int64_t>(offset) + {{ end }}{{ $structBytes }};
     }
 {{- end -}}
 `
@@ -2038,9 +2039,9 @@ var fieldDecoderTemplate = `
 {{- define "decodeNormalFieldStruct" -}}
 {{- if .FieldStruct.GetTypeDynamic -}}
         {
-            {{ .TyUint64 }} {{ .TempName }} = {{ .FieldName }}.decode(static_cast<{{ .TyUint8 }}*>(data) + offset + {{ .FromByte }});
+            {{ .TyInt64 }} {{ .TempName }} = {{ .FieldName }}.decode(static_cast<{{ .TyUint8 }}*>(data) + offset + {{ .FromByte }});
             if ({{ .TempName }} < 0) return -1;
-            offset += {{ .TempName }};
+            offset += static_cast<uint64_t>({{ .TempName }});
         }
 {{- else -}}
         if ({{ .FieldName }}.decode(static_cast<{{ .TyUint8 }}*>(data) + {{ if .Dynamic }}offset + {{ end }}{{ .FromByte }}) < 0) return -1;
@@ -2310,6 +2311,7 @@ func (g CppGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fieldTy
 			"Dynamic":     structDynamic,
 			"TyUint8":     typeMap[definition.TypeID_Uint8],
 			"TyUint64":    typeMap[definition.TypeID_Uint64],
+			"TyInt64":     typeMap[definition.TypeID_Int64],
 			"TempName":    g.generateDecodeTempVarName(from),
 		}
 
