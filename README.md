@@ -196,6 +196,52 @@ enum FrameType[1] {
     CURRENT_SERVO_A = 0xA0,
     CURRENT_SERVO_B = 0xA1,
 };
+
+### Variable-sized Types
+
+Bubbler supports `string` and `bytes` types for variable-sized data.
+
+#### String
+
+`string` type is used for text strings. In binary form, the text encoding of a string field is UTF-8. Since a string shouldn't contain any EOF character, the end of a string is defined by `\0` in data stream. So the size of a string field is `str.utf8_length + 1`.
+
+#### Bytes
+
+`bytes` type is used for store binary data in any form. In binary form, bytes data is store in `length` + `data` two part.
+
+`length` part denotes the num of bytes contained in the bytes field. It is composed by several size unit, each unit occupied 1 byte as below:
+
+```text
+  0   1   2   3   4   5   6   7
++---+---+---+---+---+---+---+---+
+| C |       7-bit Size          |
++---+---+---+---+---+---+---+---+
+  C = Continue Flag
+```
+
+Continue Flag indicates if there is another size unit after this unit. If Continue Flag is 0, it is the last size unit.
+
+7-bit spaces stores the length in little-endian.
+
+Therefore, 1 size unit can represent 0-127 bytes data; 2 size units can represent 128-16383 bytes data; ...
+
+`data` part contains the raw binary data in continues form.
+
+**Note**: Variable-sized types make the structure size dynamic.
+
+### Enum Value as Constant
+
+You can use enum values defined in previous enum types as constant values for fields or other enum values.
+
+```protobuf
+enum FrameType[1] {
+    FRAME_DATA = 0x01,
+};
+
+struct DataFrame {
+    FrameType opcode = FRAME_DATA;
+    bytes data;
+};
 ```
 
 In this example, `FrameType` is an enumeration type with four enumeration values: `SENSOR_PRESS`, `SENSOR_HUMID`, `CURRENT_SERVO_A`, and `CURRENT_SERVO_B`.
@@ -401,6 +447,109 @@ The custom setter named `another_custom_setter` accepts a `uint8` type parameter
 Please note that the custom getter and setter method names cannot be the same as any field names, and getter and setter methods with the same name must return and accept the same type.
 
 Recommended to use **snake_case** for getter/setter names. But only uncaptialization of the first letter is mandatory.
+
+## Generated Code API
+
+The generated code for each language provides a consistent API for encoding and decoding.
+
+### C
+
+```c
+// Encode struct to buffer. Returns number of bytes written.
+int64_t <StructName>_encode(<StructName>*ptr, void* data);
+
+// Decode struct from buffer. Returns number of bytes read, or -1 on error.
+int64_t <StructName>_decode(<StructName>*ptr, void* data);
+
+// Calculate the size of the encoded data.
+int64_t <StructName>_encode_size(<StructName>* ptr);
+```
+
+### C++
+
+```cpp
+// Encode to buffer. Returns number of bytes written.
+int64_t encode(void* data);
+
+// Decode from buffer. Returns number of bytes read, or -1 on error.
+int64_t decode(void* data);
+
+// Calculate the size of the encoded data.
+int64_t encode_size();
+```
+
+### Go
+
+```go
+// Encode to buffer. Returns number of bytes written.
+func (s *StructName) Encode(data []byte) int64
+
+// Decode from buffer. Returns number of bytes read, or -1 on error.
+func (s *StructName) Decode(data []byte) int64
+
+// Calculate the size of the encoded data.
+func (s *StructName) EncodeSize() int64
+```
+
+### Java
+
+```java
+// Encode to buffer. Returns number of bytes written.
+public long encode(byte[] data);
+
+// Decode from buffer. Returns number of bytes read, or -1 on error.
+public long decode(byte[] data);
+
+// Calculate the size of the encoded data.
+public long encodeSize();
+```
+
+### Python
+
+```python
+
+# Encode to buffer. Returns number of bytes written
+
+def encode(self, data) -> int:
+
+# Decode from buffer. Returns number of bytes read, or -1 on error
+
+def decode(self, data) -> int:
+
+# Calculate the size of the encoded data
+
+def encode_size(self) -> int:
+```
+
+### C\#
+
+```csharp
+// Encode to buffer. Returns number of bytes written.
+public long Encode(byte[] data);
+// or with -memcpy=false
+public long Encode(Span<byte> data);
+
+// Decode from buffer. Returns number of bytes read, or -1 on error.
+public long Decode(byte[] data);
+// or with -memcpy=false
+public long Decode(ReadOnlySpan<byte> data);
+
+// Calculate the size of the encoded data.
+public long EncodeSize();
+```
+
+### CommonJS
+
+```javascript
+// Encode to buffer. Returns number of bytes written.
+encode(data);
+
+// Decode from buffer. Returns number of bytes read, or -1 on error.
+decode(data);
+
+// Calculate the size of the encoded data.
+encode_size();
+```
 
 ## Contributing
 

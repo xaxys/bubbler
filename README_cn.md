@@ -200,6 +200,53 @@ enum FrameType[1] {
 };
 ```
 
+### 变长类型
+
+Bubbler 支持 `string` 和 `bytes` 类型用于变长数据。
+
+#### String
+
+`string` 类型用于文本字符串。在二进制形式中，字符串字段的文本编码为 UTF-8。由于字符串不应包含任何 EOF 字符，因此数据流中字符串的结尾由 `\0` 定义。所以字符串字段的大小是 `str.utf8_length + 1`。
+
+#### Bytes
+
+`bytes` 类型用于以任何形式存储二进制数据。在二进制形式中，bytes 数据存储为 `长度` + `数据` 两部分。
+
+`长度` 部分表示 bytes 字段中包含的字节数。它由几个大小单元组成，每个单元占用 1 个字节，如下所示：
+
+```text
+  0   1   2   3   4   5   6   7
++---+---+---+---+---+---+---+---+
+| C |       7-bit Size          |
++---+---+---+---+---+---+---+---+
+  C = Continue Flag (继续标志)
+```
+
+Continue Flag 指示此单元之后是否还有另一个大小单元。如果 Continue Flag 为 0，则它是最后一个大小单元。
+
+7-bit Size 存储小端序的长度。
+
+因此，1 个大小单元可以表示 0-127 字节的数据；2 个大小单元可以表示 128-16383 字节的数据；...
+
+`数据` 部分包含连续形式的原始二进制数据。
+
+**注意**: 变长类型会使结构体大小变为动态的。
+
+### 枚举值作为常量
+
+您可以使用在先前枚举类型中定义的枚举值作为字段或其他枚举值的常量值。
+
+```protobuf
+enum FrameType[1] {
+    FRAME_DATA = 0x01,
+};
+
+struct DataFrame {
+    FrameType opcode = FRAME_DATA;
+    bytes data;
+};
+```
+
 在这个例子中，`FrameType` 是一个枚举类型，它有四个枚举值：`SENSOR_PRESS`、`SENSOR_HUMID`、`CURRENT_SERVO_A` 和 `CURRENT_SERVO_B`。
 
 枚举值不能为负数（暂定），不填写值时，枚举值的默认值为前一个枚举值加 1。
@@ -403,6 +450,108 @@ struct SensorTemperatureData {
 请注意，自定义的 getter 和 setter 方法的名不可以与任何字段名相同，并且同名的 getter 和 setter 方法必须返回和接收相同的类型。
 
 推荐使用 **snake_case** 作为自定义 getter/setter 方法名称。但是只有首字母小写是强制要求。
+
+## 生成代码 API
+
+每种语言的生成代码都提供了一致的编码和解码 API。
+
+### C
+
+```c
+// 编码结构体到缓冲区。返回写入的字节数。
+int64_t <StructName>_encode(<StructName>*ptr, void* data);
+
+// 从缓冲区解码结构体。返回读取的字节数，错误时返回 -1。
+int64_t <StructName>_decode(<StructName>*ptr, void* data);
+
+// 计算编码数据的大小。
+int64_t <StructName>_encode_size(<StructName>* ptr);
+```
+
+### C++
+
+```cpp
+// 编码到缓冲区。返回写入的字节数。
+int64_t encode(void* data);
+
+// 从缓冲区解码。返回读取的字节数，错误时返回 -1。
+int64_t decode(void* data);
+
+// 计算编码数据的大小。
+int64_t encode_size();
+```
+
+### Go
+
+```go
+// 编码到缓冲区。返回写入的字节数。
+func (s *StructName) Encode(data []byte) int64
+
+// 从缓冲区解码。返回读取的字节数，错误时返回 -1。
+func (s *StructName) Decode(data []byte) int64
+
+// 计算编码数据的大小。
+func (s *StructName) EncodeSize() int64
+```
+
+### Java
+
+```java
+// 编码到缓冲区。返回写入的字节数。
+public long encode(byte[] data);
+
+// 从缓冲区解码。返回读取的字节数，错误时返回 -1。
+public long decode(byte[] data);
+
+// 计算编码数据的大小。
+public long encodeSize();
+```
+
+### Python
+
+```python
+# 编码到缓冲区。返回写入的字节数
+
+def encode(self, data) -> int:
+
+# 从缓冲区解码。返回读取的字节数，错误时返回 -1
+
+def decode(self, data) -> int:
+
+# 计算编码数据的大小
+
+def encode_size(self) -> int:
+```
+
+### C\#
+
+```csharp
+// 编码到缓冲区。返回写入的字节数。
+public long Encode(byte[] data);
+// 或者使用 -memcpy=false
+public long Encode(Span<byte> data);
+
+// 从缓冲区解码。返回读取的字节数，错误时返回 -1。
+public long Decode(byte[] data);
+// 或者使用 -memcpy=false
+public long Decode(ReadOnlySpan<byte> data);
+
+// 计算编码数据的大小。
+public long EncodeSize();
+```
+
+### CommonJS
+
+```javascript
+// 编码到缓冲区。返回写入的字节数。
+encode(data);
+
+// 从缓冲区解码。返回读取的字节数，错误时返回 -1。
+decode(data);
+
+// 计算编码数据的大小。
+encode_size();
+```
 
 ## 贡献
 
