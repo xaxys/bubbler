@@ -35,6 +35,10 @@ func NewGoGeneratorState() *GoGeneratorState {
 	}
 }
 
+func (g *GoGeneratorState) HasUsed() bool {
+	return g.UseUnsafe || g.UseMath
+}
+
 type GoGenerator struct {
 	*gen.GenDispatcher
 	GenCtx   *gen.GenCtx
@@ -184,7 +188,7 @@ package {{ .Package.PackageName }}
 
 {{ $curUnit := .Unit -}}
 {{ $imports := .Imports -}}
-{{ if or ( gt $imports.Len 0 ) .GenState.UseMath -}}
+{{ if or ( gt $imports.Len 0 ) .GenState.HasUsed -}}
 import (
 {{- range $unit := $imports.Values -}}
 {{- if $unit.Options.Has "go_package" }}
@@ -194,8 +198,8 @@ import (
     . "{{ $unit.Package.ToPath "/" "" }}"
 {{- end }}
 {{- end }}
-{{- if or .GenState.UseMath .GenState.UseUnsafe }}
-{{ if .GenState.UseMath }}
+{{- if .GenState.HasUsed }}
+{{- if .GenState.UseMath }}
     "math"
 {{- end }}
 {{- if .GenState.UseUnsafe }}
@@ -224,7 +228,7 @@ import (
 package {{ .Package.PackageName }}
 
 {{ $curUnit := .Unit -}}
-{{- if or .GenState.UseMath .GenState.UseUnsafe -}}
+{{- if .GenState.HasUsed -}}
 import (
 {{- if .GenState.UseMath }}
     "math"
@@ -1402,6 +1406,7 @@ func (g GoGenerator) generateEncodeNormalFieldImpl(fieldNameStr string, fieldTyp
 		panic("unreachable, enum field should be handled in generateEncodeNormalField")
 
 	case *definition.String:
+		g.GenState.UseUnsafe = true
 		encodeNormalFieldStringData := map[string]any{
 			"TyUint8":   typeMap[definition.TypeID_Uint8],
 			"FieldName": fieldNameStr,
