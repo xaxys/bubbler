@@ -32,12 +32,16 @@ type CommonJSGeneratorState struct {
 }
 
 func NewCommonJSGeneratorState() *CommonJSGeneratorState {
-	return &CommonJSGeneratorState{
-		UseFloat32:     false,
-		UseFloat64:     false,
-		UseString:      false,
-		UseStructArray: false,
-	}
+	g := &CommonJSGeneratorState{}
+	g.Reset()
+	return g
+}
+
+func (g *CommonJSGeneratorState) Reset() {
+	g.UseFloat32 = false
+	g.UseFloat64 = false
+	g.UseString = false
+	g.UseStructArray = false
 }
 
 type CommonJSGenerator struct {
@@ -582,7 +586,7 @@ var fileTemplate = `
 {{- end -}}
 `
 
-func (g *CommonJSGenerator) GenerateUnit(unit *definition.CompilationUnit) error {
+func (g CommonJSGenerator) GenerateUnit(unit *definition.CompilationUnit) error {
 	if unit.LocalTypes.Len() == 0 && gen.MatchOption(unit.Options, "omit_empty", true) {
 		return nil
 	}
@@ -626,7 +630,7 @@ func (g *CommonJSGenerator) GenerateUnit(unit *definition.CompilationUnit) error
 	}
 
 	// clear state for next unit
-	g.GenState = NewCommonJSGeneratorState()
+	g.GenState.Reset()
 
 	return nil
 }

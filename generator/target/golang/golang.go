@@ -29,10 +29,14 @@ type GoGeneratorState struct {
 }
 
 func NewGoGeneratorState() *GoGeneratorState {
-	return &GoGeneratorState{
-		UseUnsafe: false,
-		UseMath:   false,
-	}
+	g := &GoGeneratorState{}
+	g.Reset()
+	return g
+}
+
+func (g *GoGeneratorState) Reset() {
+	g.UseUnsafe = false
+	g.UseMath = false
 }
 
 func (g *GoGeneratorState) HasUsed() bool {
@@ -312,7 +316,7 @@ func (g GoGenerator) GenerateUnit(unit *definition.CompilationUnit) error {
 	}
 
 	// clear state for next unit
-	g.GenState = NewGoGeneratorState()
+	g.GenState.Reset()
 
 	return nil
 }
@@ -2274,13 +2278,13 @@ func (g GoGenerator) generateDecodeImpl(from, to int64, fieldProcessor func(stri
 // ==================== GenerateExpr ====================
 
 func (g GoGenerator) GenerateExpr(expr definition.Expr, valueStr string) (string, error) {
-	generator := NewCExprGenerator(g.GenerateType, valueStr, g.GenState)
+	generator := NewGoExprGenerator(g.GenerateType, valueStr, g.GenState)
 	return g.AcceptExpr(expr, generator)
 }
 
 // ==================== Expr Generator ====================
 
-type CExprGenerator struct {
+type GoExprGenerator struct {
 	*gen.GenExprDispatcher
 	GenType          func(definition.Type) (string, error)
 	ValueStr         string
@@ -2288,8 +2292,8 @@ type CExprGenerator struct {
 	LiteralGenerator gen.LiteralGeneratorImpl // optional
 }
 
-func NewCExprGenerator(genType func(definition.Type) (string, error), valueStr string, genState *GoGeneratorState) *CExprGenerator {
-	generator := &CExprGenerator{
+func NewGoExprGenerator(genType func(definition.Type) (string, error), valueStr string, genState *GoGeneratorState) *GoExprGenerator {
+	generator := &GoExprGenerator{
 		GenExprDispatcher: nil,
 		GenType:           genType,
 		ValueStr:          valueStr,
@@ -2299,7 +2303,7 @@ func NewCExprGenerator(genType func(definition.Type) (string, error), valueStr s
 	return generator
 }
 
-func (g CExprGenerator) GenerateExpr(expr definition.Expr) (string, error) {
+func (g GoExprGenerator) GenerateExpr(expr definition.Expr) (string, error) {
 	return g.AcceptExpr(expr)
 }
 
@@ -2328,7 +2332,7 @@ var exprOpToString = map[definition.ExprOp]string{
 	definition.ExprOp_ASSIGN: "=",
 }
 
-func (g CExprGenerator) GenerateUnopExpr(expr *definition.UnopExpr) (string, error) {
+func (g GoExprGenerator) GenerateUnopExpr(expr *definition.UnopExpr) (string, error) {
 	opStr, ok := exprOpToString[expr.Op]
 	if !ok {
 		return "", fmt.Errorf("unknown unop expr op: %s", expr.Op.String())
@@ -2340,7 +2344,7 @@ func (g CExprGenerator) GenerateUnopExpr(expr *definition.UnopExpr) (string, err
 	return fmt.Sprintf("(%s%s)", opStr, expr1), nil
 }
 
-func (g CExprGenerator) GenerateBinopExpr(expr *definition.BinopExpr) (string, error) {
+func (g GoExprGenerator) GenerateBinopExpr(expr *definition.BinopExpr) (string, error) {
 	switch expr.Op {
 	case definition.ExprOp_POW:
 		g.GenState.UseMath = true
@@ -2370,7 +2374,7 @@ func (g CExprGenerator) GenerateBinopExpr(expr *definition.BinopExpr) (string, e
 	}
 }
 
-func (g CExprGenerator) GenerateCastExpr(expr *definition.CastExpr) (string, error) {
+func (g GoExprGenerator) GenerateCastExpr(expr *definition.CastExpr) (string, error) {
 	expr1, err := g.GenerateExpr(expr.Expr1)
 	if err != nil {
 		return "", err
@@ -2382,7 +2386,7 @@ func (g CExprGenerator) GenerateCastExpr(expr *definition.CastExpr) (string, err
 	return fmt.Sprintf("%s(%s)", ty, expr1), nil
 }
 
-func (g CExprGenerator) GenerateConstantExpr(expr *definition.ConstantExpr) (string, error) {
+func (g GoExprGenerator) GenerateConstantExpr(expr *definition.ConstantExpr) (string, error) {
 	generator := g.LiteralGenerator
 	if generator == nil {
 		generator = NewCLiteralGenerator()
@@ -2390,7 +2394,7 @@ func (g CExprGenerator) GenerateConstantExpr(expr *definition.ConstantExpr) (str
 	return g.AcceptLiteral(expr.ConstantValue, generator)
 }
 
-func (g CExprGenerator) GenerateTenaryExpr(expr *definition.TenaryExpr) (string, error) {
+func (g GoExprGenerator) GenerateTenaryExpr(expr *definition.TenaryExpr) (string, error) {
 	cond, err := g.GenerateExpr(expr.Cond)
 	if err != nil {
 		return "", err
@@ -2433,11 +2437,11 @@ func (g CExprGenerator) GenerateTenaryExpr(expr *definition.TenaryExpr) (string,
 	return fmt.Sprintf("func() %s { if %s { return %s } else { return %s } }()", expr.Expr1.GetExprType().GetTypeName(), cond, expr1, expr2), nil
 }
 
-func (g CExprGenerator) GenerateValueExpr(expr *definition.ValueExpr) (string, error) {
+func (g GoExprGenerator) GenerateValueExpr(expr *definition.ValueExpr) (string, error) {
 	return g.ValueStr, nil
 }
 
-func (g CExprGenerator) GenerateRawExpr(expr *definition.RawExpr) (string, error) {
+func (g GoExprGenerator) GenerateRawExpr(expr *definition.RawExpr) (string, error) {
 	return expr.Expr, nil
 }
 

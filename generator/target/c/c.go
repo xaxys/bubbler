@@ -28,12 +28,16 @@ type CGeneratorState struct {
 }
 
 func NewCGeneratorState() *CGeneratorState {
-	return &CGeneratorState{
-		UseMathH:     false,
-		UseStringH:   false,
-		UseStdLibH:   false,
-		UseBytesType: false,
-	}
+	g := &CGeneratorState{}
+	g.Reset()
+	return g
+}
+
+func (g *CGeneratorState) Reset() {
+	g.UseMathH = false
+	g.UseStringH = false
+	g.UseStdLibH = false
+	g.UseBytesType = false
 }
 
 type CGenerator struct {
@@ -304,7 +308,7 @@ func (g CGenerator) GenerateUnit(unit *definition.CompilationUnit) error {
 	}
 
 	// clear state for next unit
-	g.GenState = NewCGeneratorState()
+	g.GenState.Reset()
 
 	return nil
 }
