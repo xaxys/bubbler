@@ -32,6 +32,7 @@ bubbler [options] <input file>
 - `-o <output>`: Output Path
 - `-rmpath <path[,path...]>`: Remove Path Prefix (Remove the path prefix of the output file path when generating files)
   This option is usually used when generating Go target. For example, if a `.bb` file has `go_package` option set to `github.com/xaxys/bubbler/proto/rpc`, the generated file will be generated in the `output/github.com/xaxys/bubbler/proto/rpc` directory. If you want to remove the path prefix `github.com/xaxys/bubbler/proto/rpc`, you can set this option to `github.com/xaxys/bubbler/proto`. Then the generated file will be generated in the `output/rpc` directory.
+- `-relpath`: Generate Relative Path Imports (Use relative paths like `../` and `./` when a generated file imports another generated file, instead of relying on the configured main package structure or absolute path logic).
 - `-inner`: Generate Inner Class (Nested Struct)
 - `-single`: Generate Single File (Combine all definitions into one file, instead of one generated file per source file)
 - `-minimal`: Generate Minimal Code (Usually without default getter/setter methods)
@@ -66,19 +67,19 @@ Targets:
 
 When selecting the target language, you can use the aliases inside `[]`. For example, `python` can be abbreviated as `py`.
 
-- `dump`: Output the parse tree (intermediate representation) of the `.bb` file.
-
 - `c`: C language, output one `.bb.h` file and one `.bb.c` file for each `.bb` file.
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
   - With `-minimal`: No generation of getter/setter methods for fields.
   - With `-memcpy`: Use `malloc` to heap-allocate memory for `string` and `bytes` fields, and copy the content from the original buffer.
   - Without `-memcpy`: Pointer reference to the original buffer for `string` and `bytes` fields. Zero-copy and zero-heap-allocate.
+  - With `-relpath`: Generate relative path imports (e.g. `#include "./foo_bb.h"` or `#include "../foo_bb.h"`).
 
 - `cpp`: C++ language, output one `.bb.hpp` file and one `.bb.cpp` file for each `.bb` file. The folder structure will not be affected by the `cpp_namespace` option.
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
   - With `-minimal`: No generation of getter/setter methods for fields.
   - With `-memcpy`: Use `std::shared_ptr<uint8_t[]>` to heap-allocate memory for `bytes` fields, and copy the content from the original buffer. `string` fields will always use `std::string` and be copied every time.
   - Without `-memcpy`: Use `std::shared_ptr<uint8_t[]>` with null deleter to reference the original buffer for `bytes` fields. `string` fields will always use `std::string` and be copied every time.
+  - With `-relpath`: Generate relative path imports (e.g. `#include "./foo_bb.hpp"` or `#include "../foo_bb.hpp"`).
 
 - `csharp`: C# language, output one `.cs` file for each structure defined in each `.bb` file. The folder structure will not be affected by the `csharp_namespace` option.
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
@@ -88,11 +89,14 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
 - `commonjs`: CommonJS module, output one `.bb.js` file for each `.bb` file. (Please note that `BigInt` is used for `int64` and `uint64` fields, which is not supported in some environments.)
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
   - Force enabled: `-memcpy`.
+  - Force enabled: Relative paths are always used via `require()`. `-relpath` is implicitly enabled.
 
 - `go`: Go language, output one `.bb.go` file for each `.bb` file. The folder structure will be affected by the `go_package` option. (i.e., `github.com/xaxys/bubbler` will generate in the `github.com/xaxys/bubbler` directory)
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option. The package name is determined by the package statement of the input `.bb` file.
   - With `-memcpy`: Make a copy of the `bytes` field when decoding. The `string` field will always be copied.
   - Without `-memcpy`: A slice of the original buffer will be assigned to the `bytes` field. The `string` field will always be copied.
+  - With `-relpath`: Generate relative path imports (e.g. `import "./foo_bb"` or `import "../subpkg/foo_bb"`). If `go_package` is set, the generated relative path will be calculated based on the package path defined by `go_package`.
+  **Notice!** The `-rmpath` option is NOT considered when calculating relative paths between modules for Go. That is, if the package path of A is `github.com/xaxys/a`, the package path of B is `gitlab.com/user/b`, and `-rmpath=github.com/xaxys` is set, then the output path of A will be `a`, the output path of B will be `gitlab.com/user/b`, but the imported path of A inside B will still be calculated as `../../github.com/xaxys/a`, instead of `../../a`.
 
 - `java`: Java language, output one `.java` file for each structure defined in each `.bb` file. The folder structure will be affected by the `java_package` option. (i.e., `com.example.rovlink` will generate in the `com/example/rovlink` directory)
   - Force enabled: `-memcpy`.
@@ -100,6 +104,7 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
 - `python`: Python language, output one `_bb.py` file for each `.bb` file.
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
   - Force enabled: `-memcpy`.
+  - With `-relpath`: Generate relative path imports (e.g. `from .foo_bb import *` or `from ..foo_bb import *`).
 
 ## Protocol Syntax
 

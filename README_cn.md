@@ -32,6 +32,7 @@ bubbler [options] <input file>
 - `-o <output>`: 输出路径
 - `-rmpath`: 移除路径前缀（生成文件时移除输出文件路径的路径前缀）
   通常用于生成 Go 目标。例如，如果 `.bb` 文件的 `go_package` 选项设置为 `github.com/xaxys/bubbler/proto/rpc`，则文件将在 `output/github.com/xaxys/bubbler/proto/rpc` 目录中生成。如果要移除路径前缀 `github.com/xaxys/bubbler/proto/rpc`，可以将此选项设置为 `github.com/xaxys/bubbler/proto`。然后生成的文件将在 `output/rpc` 目录中生成。
+- `-relpath`: 生成相对路径导入（在生成文件引用其他生成文件时，强制使用 `./` 或 `../` 之类的相对路径，而不是依赖默认的绝路路径逻辑或包路径规则）。
 - `-inner`: 生成内部类（嵌套结构体）
 - `-single`: 生成单个文件（将所有定义合并到一个文件中，而不是每个源文件生成一个文件）
 - `-minimal`: 生成最小代码（通常不包含默认的getter/setter方法）
@@ -66,19 +67,19 @@ Targets:
 
 当选择目标语言时，可以使用 `[]` 中的别名。例如，`python` 可以缩写为 `py`。
 
-- `dump`：输出 `.bb` 文件的解析树（中间表示）。
-
 - `c`：C 语言，为每个 `.bb` 文件输出一个 `.bb.h` 文件和一个 `.bb.c` 文件。
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由`-o`选项确定。
   - 使用 `-minimal`：不为字段生成默认的getter/setter方法函数。
   - 使用 `-memcpy`：将使用 `malloc` 为 `string` 和 `bytes` 字段在堆上分配内存，并从原始缓冲区复制内容。
   - 不使用 `-memcpy`：`string` 和 `bytes` 字段的指针将直接引用原始解码缓冲区。提供零拷贝和零堆分配。
+  - 使用 `-relpath`：生成相对路径导入（如 `#include "./foo_bb.h"`或`#include "../foo_bb.h"`）。
 
 - `cpp`：C++ 语言，为每个 `.bb` 文件输出一个 `.bb.hpp` 文件和一个 `.bb.cpp` 文件。
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。生成的文件夹结构不会受到 `cpp_namespace` 选项的影响。
   - 使用 `-minimal`：不为字段生成默认的getter/setter方法函数。
   - 使用 `-memcpy`：使用 `std::shared_ptr<uint8_t[]>` 为 `bytes` 字段在堆上分配内存，并从原始缓冲区复制内容。`string` 字段将始终使用 `std::string` 并在每次复制时复制。
   - 不使用 `-memcpy`：使用 `std::shared_ptr<uint8_t[]>` 和空删除器引用 `bytes` 字段的原始缓冲区。`string` 字段将始终使用 `std::string` 并在每次复制时复制。
+  - 使用 `-relpath`：生成相对路径导入（如 `#include "./foo_bb.hpp"`或`#include "../foo_bb.hpp"`）。
 
 - `csharp`：C# 语言，为每个 `.bb` 文件输出一个 `.bb.cs` 文件。
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。生成的文件夹结构不会受到 `csharp_namespace` 选项的影响。
@@ -88,11 +89,14 @@ Targets:
 - `commonjs`：CommonJS模块，为每个 `.bb` 文件输出一个 `.bb.js` 文件。（请注意，`int64` 和 `uint64` 字段使用了 `BigInt`，在某些环境中可能不支持）
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
   - 强制启用：`-memcpy`。
+  - 强制启用：`-relpath`：生成相对路径引用（如 `require("./foo_bb")`或`require("../foo_bb")`）。
 
 - `go`：Go 语言，为每个 `.bb` 文件输出一个 `.bb.go` 文件。生成的文件夹结构将受到 `go_package` 选项的影响。例如，`github.com/xaxys/bubbler` 将在 `github.com/xaxys/bubbler` 目录中生成。
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。包名由输入 `.bb` 文件的包名声明确定。
   - 使用 `-memcpy`：解码时复制 `bytes` 字段。`string` 字段将始终被复制。
   - 不使用 `-memcpy`：将原始缓冲区的切片分配给 `bytes` 字段。`string` 字段将始终被复制。
+  - 使用 `-relpath`：生成相对路径导入（如 `import "./foo_bb"` 或 `import "../subpkg/foo_bb"`）。对于设置了 `go_package` 的情况，生成的相对路径将基于 `go_package` 定义的包路径进行计算。
+  **注意！**生成相对路径时不会考虑 `-rmpath` 选项。即假如 A 的包路径为 `github.com/xaxys/a`，B 的包路径为 `gitlab.com/user/b`，而 `-rmpath=github.com/xaxys`，则 A 的生成路径为 `a`，B 的生成路径为 `gitlab.com/user/b`，但 B 中导入 A 的路径仍然会被计算为 `../../github.com/xaxys/a`，而不是 `../../a`。
 
 - `java`：Java 语言，为每个 `.bb` 文件中定义的每个数据结构生成一个 `.java` 文件。生成的文件夹结构将受到 `java_package` 选项的影响。例如，`com.example.rovlink` 将在 `com/example/rovlink` 目录中生成。
   - 强制启用：`-memcpy`。
@@ -100,6 +104,7 @@ Targets:
 - `python`：Python 语言，为每个 `.bb` 文件输出一个 `_bb.py` 文件。
   - 使用`-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
   - 强制启用：`-memcpy`。
+  - 使用 `-relpath`：生成相对路径引用（如 `from .foo_bb import *`或`from ..foo_bb import *`）。
 
 ## 协议语法
 
