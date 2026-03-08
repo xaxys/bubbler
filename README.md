@@ -162,15 +162,15 @@ You can use this option to generate multiple `.bb` files at once, without writin
 
 ##### `go_package`
 
-If `go_package` is set, the generated code will use the specified package name in the generated Go code.
+If `go_package` is set, the generated code will use the specified package name in the generated Go code. The generated folder structure will be based on the package name.
 
 ##### `cpp_namespace`
 
-If `cpp_namespace` is set, the generated code will use the specified namespace in the generated C++ code.
+If `cpp_namespace` is set, the generated code will use the specified namespace in the generated C++ code. The generated folder structure will not be affected.
 
 ##### `csharp_namespace`
 
-If `csharp_namespace` is set, the generated code will use the specified namespace in the generated C# code. The folder structure will not be affected.
+If `csharp_namespace` is set, the generated code will use the specified namespace in the generated C# code. The generated folder structure will not be affected.
 
 ##### `java_package`
 

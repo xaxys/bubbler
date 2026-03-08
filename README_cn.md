@@ -164,11 +164,11 @@ import "sensor.bb";
 
 ##### `go_package`
 
-如果设置了 `go_package`，生成的代码将在生成的 Go 代码中使用指定的包名。
+如果设置了 `go_package`，生成的代码将在生成的 Go 代码中使用指定的包名，并且生成的文件夹结构将会根据该包名生成。
 
 ##### `cpp_namespace`
 
-如果设置了 `cpp_namespace`，生成的代码将在生成的 C++ 代码中使用指定的命名空间。
+如果设置了 `cpp_namespace`，生成的代码将在生成的 C++ 代码中使用指定的命名空间，但是文件夹结构不会受到影响。
 
 ##### `csharp_namespace`
 
