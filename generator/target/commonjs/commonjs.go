@@ -131,6 +131,16 @@ func (g *CommonJSGenerator) generateStructPackagePrefix(structDef *definition.St
 
 func (g *CommonJSGenerator) Generate(ctx *gen.GenCtx) (retErr error, retWarnings error) {
 	g.GenCtx = ctx
+	if !ctx.GenOptions.RelativePath {
+		warn := &definition.GenerateWarning{
+			Warning: &definition.OptionNotSetWarning{
+				OptionName: "relpath",
+				Reason:     "CommonJS target generates relative path by default, this option will be forced to be enabled",
+			},
+		}
+		g.Warning = definition.TopLevelWarningsJoin(g.Warning, warn)
+		ctx.GenOptions.RelativePath = true
+	}
 	if ctx.GenOptions.SignExtMethod == gen.SignExtMethodShift {
 		warn := &definition.GenerateWarning{
 			Warning: &definition.OptionNotAvailableWarning{
