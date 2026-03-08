@@ -121,7 +121,11 @@ from typing import List, Tuple, Union, overload
 
 {{ $curUnit := .Unit -}}
 {{ range $unit := .Unit.LocalImports.Values -}}
+{{ if $.GenOptions.RelativePath -}}
+from {{ $curUnit.Package.ToPyRelativePath $unit.Package "_bb" }} import *
+{{ else -}}
 from {{ $unit.Package.ToPath "." "_bb" }} import *
+{{ end -}}
 {{ end }}
 {{ range $entry := .GenTypes.Entries -}}
 {{- $type := $entry.Value -}}
@@ -179,8 +183,9 @@ func (g PythonGenerator) GenerateUnit(unit *definition.CompilationUnit) error {
 	genTypes := g.GenTypes.Sub(start, end)
 
 	fileData := map[string]any{
-		"Unit":     unit,
-		"GenTypes": genTypes,
+		"Unit":       unit,
+		"GenTypes":   genTypes,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 
 	fileStr := util.ExecuteTemplate(fileTemplate, "file", nil, fileData)

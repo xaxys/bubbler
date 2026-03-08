@@ -42,6 +42,7 @@ Options:
   -t <target>              Target Language
   -o <output>              Output Path
   -rmpath <path[,path...]> Remove Path Prefix for Output
+  -relpath                 Use Relative Path for Include/Import
   -inner                   Generate Inner Class
   -single                  Generate Single File
   -minimal                 Generate Minimal Code
@@ -83,6 +84,7 @@ func main() {
 	target := ""
 	output := ""
 	rmpath := ""
+	relpath := false
 	inner := false
 	single := false
 	minimal := false
@@ -92,6 +94,7 @@ func main() {
 	flag.StringVar(&target, "t", "", "Target Language")
 	flag.StringVar(&output, "o", "", "Output Path")
 	flag.StringVar(&rmpath, "rmpath", "", "Remove Path Prefix for Output")
+	flag.BoolVar(&relpath, "relpath", false, "Use Relative Path for Include/Import")
 	flag.BoolVar(&inner, "inner", false, "Generate Inner Class")
 	flag.BoolVar(&single, "single", false, "Generate Single File")
 	flag.BoolVar(&minimal, "minimal", false, "Generate Minimal Code")
@@ -145,6 +148,7 @@ func main() {
 	// generate
 	options := gen.NewGenOptions(
 		gen.RemovePath(rmpath),
+		gen.RelativePath(relpath),
 		gen.SingleFile(single),
 		gen.InnerClass(inner),
 		gen.MinimalCode(minimal),

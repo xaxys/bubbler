@@ -18,6 +18,7 @@ const (
 
 type GenOptions struct {
 	RemovePath    []string
+	RelativePath  bool
 	InnerClass    bool
 	SingleFile    bool
 	MinimalCode   bool
@@ -29,6 +30,7 @@ type GenOptions struct {
 func NewGenOptions(setter ...GenOptionSetter) *GenOptions {
 	options := &GenOptions{
 		RemovePath:    nil,
+		RelativePath:  false,
 		SingleFile:    false,
 		InnerClass:    false,
 		MinimalCode:   false,
@@ -51,6 +53,12 @@ func RemovePath(path string) GenOptionSetter {
 	}
 	return func(options *GenOptions) {
 		options.RemovePath = paths
+	}
+}
+
+func RelativePath(relative bool) GenOptionSetter {
+	return func(options *GenOptions) {
+		options.RelativePath = relative
 	}
 }
 

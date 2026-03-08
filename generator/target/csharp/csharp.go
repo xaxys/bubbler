@@ -67,6 +67,15 @@ func (g *CSharpGenerator) generateBin(value any) string {
 
 func (g *CSharpGenerator) Generate(ctx *gen.GenCtx) (retErr error, retWarnings error) {
 	g.GenCtx = ctx
+	if ctx.GenOptions.RelativePath {
+		warn := &definition.GenerateWarning{
+			Warning: &definition.OptionNotAvailableWarning{
+				OptionName: "relpath",
+				Reason:     "CSharp target does not support relative path, the option will be ignored",
+			},
+		}
+		g.Warning = definition.TopLevelWarningsJoin(g.Warning, warn)
+	}
 	if ctx.GenOptions.InnerClass {
 		warn := &definition.GenerateWarning{
 			Warning: &definition.OptionNotAvailableWarning{

@@ -71,6 +71,15 @@ func (g *JavaGenerator) generateBin(value any) string {
 
 func (g *JavaGenerator) Generate(ctx *gen.GenCtx) (retErr error, retWarnings error) {
 	g.GenCtx = ctx
+	if ctx.GenOptions.RelativePath {
+		warn := &definition.GenerateWarning{
+			Warning: &definition.OptionNotAvailableWarning{
+				OptionName: "relpath",
+				Reason:     "Java target does not support relative path, the option will be ignored",
+			},
+		}
+		g.Warning = definition.TopLevelWarningsJoin(g.Warning, warn)
+	}
 	if ctx.GenOptions.SignExtMethod == gen.SignExtMethodShift {
 		warn := &definition.GenerateWarning{
 			Warning: &definition.OptionNotAvailableWarning{

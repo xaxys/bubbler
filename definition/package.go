@@ -112,6 +112,24 @@ func (p Package) ToRelativePath(other *Package, ext string) string {
 	return strings.Join(diff, "/") + ext
 }
 
+// ToPyRelativePath returns the relative python path of this package to other package
+// Special handling for Python
+//
+// ext can be used to add suffix like "_bb"
+func (p Package) ToPyRelativePath(other *Package, ext string) string {
+	diff := p.Difference(other)
+	n := 0
+	for _, d := range diff {
+		if d == ".." {
+			n++
+		} else {
+			break
+		}
+	}
+	res := "." + strings.Repeat(".", n) + strings.Join(diff[n:], ".") + ext
+	return res
+}
+
 func (p Package) String() string {
 	return strings.Join(p.PackageFullPaths, ".")
 }

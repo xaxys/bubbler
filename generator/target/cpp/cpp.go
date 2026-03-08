@@ -176,7 +176,11 @@ struct bytes {
 {{ $curUnit := .Unit -}}
 {{ if gt $curUnit.LocalImports.Len 0 -}}
 {{ range $unit := $curUnit.LocalImports.Values -}}
+{{ if $.GenOptions.RelativePath -}}
+#include "{{ $curUnit.Package.ToRelativePathStrict $unit.Package ".bb.hpp" }}"
+{{ else -}}
 #include "{{ $unit.Package.ToFilePath ".bb.hpp" }}"
+{{ end -}}
 {{ end }}
 {{ end -}}
 
@@ -219,7 +223,11 @@ namespace {{ .Unit.Package.ToPath "::" "" }}
 #include <cmath>
 {{- end }}
 
+{{ if .GenOptions.RelativePath -}}
+#include "{{ .Unit.Package.ToRelativePathStrict .Unit.Package ".bb.hpp" }}"
+{{ else -}}
 #include "{{ .Unit.Package.ToFilePath ".bb.hpp" }}"
+{{ end -}}
 
 {{- if .Unit.Options.Has "cpp_namespace" }}
 {{- $namespace0 := .Unit.Options.MustGet "cpp_namespace" }}
@@ -355,6 +363,7 @@ func (g CppGenerator) GenerateUnit(unit *definition.CompilationUnit) error {
 		"UseStringH":   g.GenState.UseStringH,
 		"UseStdLibH":   g.GenState.UseStdLibH,
 		"UseBytesType": g.GenState.UseBytesType,
+		"GenOptions":   g.GenCtx.GenOptions,
 	}
 
 	headerStr := util.ExecuteTemplate(fileTemplate, "headerFile", nil, headerData)
@@ -364,9 +373,10 @@ func (g CppGenerator) GenerateUnit(unit *definition.CompilationUnit) error {
 	}
 
 	sourceData := map[string]any{
-		"Unit":     unit,
-		"GenTypes": genTypes,
-		"UseMathH": g.GenState.UseMathH,
+		"Unit":       unit,
+		"GenTypes":   genTypes,
+		"UseMathH":   g.GenState.UseMathH,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	sourceStr := util.ExecuteTemplate(fileTemplate, "sourceFile", nil, sourceData)
 	err = g.GenCtx.WritePackage(unit.Package, ".bb.cpp", sourceStr)
