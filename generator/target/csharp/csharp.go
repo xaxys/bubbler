@@ -2484,6 +2484,7 @@ func (g CSharpGenerator) generateDecodeImpl(from, to int64, fieldProcessor func(
 		// we use 'from' and 'to' to denote the bit position in encoded data
 		begin := i
 		end := min(to, i+8)
+		width := end - begin
 
 		var expr definition.Expr
 
@@ -2517,7 +2518,7 @@ func (g CSharpGenerator) generateDecodeImpl(from, to int64, fieldProcessor func(
 		//      sep = 8, fieldMask = 0b00000111, shiftLeft = 5
 		if sep < end {
 			fieldMask := ((1 << (((end - 1) & 7) + 1)) - 1) & (^((1 << (sep & 7)) - 1))
-			shiftLeft := 8 - end%8
+			shiftLeft := width - end%8
 			// expr = expr | (((data[sep/8] & fieldMask) << shiftLeft)
 			expr = &definition.BinopExpr{
 				Op:    definition.ExprOp_BOR,

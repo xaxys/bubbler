@@ -2446,13 +2446,14 @@ func (g CGenerator) generateDecodeImpl(from, to int64, fieldProcessor func(strin
 		// we use 'from' and 'to' to denote the bit position in encoded data
 		begin := i
 		end := min(to, i+8)
+		width := end - begin
 
 		var expr definition.Expr
 
 		// separator to check if is aligned to 8 bits
 		sep := min(end, (begin+8)&(^7))
 		// first half
-		// e.g. begin = 3, end = 10
+		// e.g. begin = 3, end = 11 | [3, 11)
 		//      sep = 8, fieldMask = 0b11111000, shiftRight = 3
 		if begin < sep { // always true, just for beauty
 			fieldMask := ((1 << (((sep - 1) & 7) + 1)) - 1) & (^((1 << (begin & 7)) - 1))
@@ -2475,11 +2476,11 @@ func (g CGenerator) generateDecodeImpl(from, to int64, fieldProcessor func(strin
 			}
 		}
 		// second half
-		// e.g. begin = 8, end = 10
+		// e.g. begin = 8, end = 11 | [8, 11)
 		//      sep = 8, fieldMask = 0b00000111, shiftLeft = 5
 		if sep < end {
 			fieldMask := ((1 << (((end - 1) & 7) + 1)) - 1) & (^((1 << (sep & 7)) - 1))
-			shiftLeft := 8 - end%8
+			shiftLeft := width - end%8
 			// expr = expr | ((((uint8_t*)data)[sep/8] & fieldMask) << shiftLeft)
 			expr = &definition.BinopExpr{
 				Op:    definition.ExprOp_BOR,
