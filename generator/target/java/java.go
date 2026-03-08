@@ -13,6 +13,11 @@ import (
 	"github.com/xaxys/bubbler/util"
 )
 
+type GeneratedUnit struct {
+	SourceUnit  *definition.CompilationUnit
+	JavaPackage *definition.Package
+}
+
 type GeneratedType struct {
 	GeneratedDef string
 }
@@ -22,6 +27,7 @@ type GeneratedType struct {
 type JavaGenerator struct {
 	*gen.GenDispatcher
 	GenCtx   *gen.GenCtx
+	GenUnits *util.OrderedMap[string, *GeneratedUnit]
 	GenTypes *util.OrderedMap[string, *GeneratedType]
 	GenStack *util.OrderedMap[string, any]
 	Warning  definition.TopLevelWarning
@@ -30,6 +36,7 @@ type JavaGenerator struct {
 func NewJavaGenerator() *JavaGenerator {
 	generator := &JavaGenerator{
 		GenDispatcher: nil,
+		GenUnits:      util.NewOrderedMap[string, *GeneratedUnit](),
 		GenTypes:      util.NewOrderedMap[string, *GeneratedType](),
 		GenStack:      util.NewOrderedMap[string, any](),
 		Warning:       nil,
@@ -167,6 +174,30 @@ func (g JavaGenerator) GenerateUnit(unit *definition.CompilationUnit) error {
 		return nil
 	}
 
+	pkg := unit.Package
+	if javaPkg, ok := unit.Options.Get("java_package"); ok {
+		pkgStr := fmt.Sprint(unit.Options.MustGet("java_package").OptionValue)
+		pkgStr = pkgStr[1 : len(pkgStr)-1]
+		pkgStrs := strings.Split(pkgStr, ".")
+		pkg = definition.NewPackage(javaPkg, pkgStrs)
+	}
+
+	genUnit := &GeneratedUnit{
+		SourceUnit:  unit,
+		JavaPackage: pkg,
+	}
+
+	if prevUnit, ok := g.GenUnits.Get(pkg.String()); ok {
+		return &definition.CompileError{
+			Position: pkg.BasePosition,
+			Err: &definition.PackageDuplicateError{
+				PrevDef: prevUnit.JavaPackage.BasePosition,
+				Package: pkg,
+			},
+		}
+	}
+	g.GenUnits.Put(pkg.String(), genUnit)
+
 	for _, type_ := range unit.LocalTypes.Values() {
 		start := g.GenTypes.Len()
 		_, err := g.GenerateType(type_)
@@ -184,15 +215,7 @@ func (g JavaGenerator) GenerateUnit(unit *definition.CompilationUnit) error {
 			}
 
 			fileStr := util.ExecuteTemplate(fileTemplate, "file", nil, fileData)
-			filePath := ""
-			if unit.Options.Has("java_package") {
-				pkgName := fmt.Sprint(unit.Options.MustGet("java_package").OptionValue)
-				pkgName = pkgName[1 : len(pkgName)-1]
-				pkgName = strings.ReplaceAll(pkgName, ".", "/")
-				filePath = fmt.Sprintf("/%s/%s.java", pkgName, name)
-			} else {
-				filePath = unit.Package.ToFilePath(fmt.Sprintf("/%s.java", name))
-			}
+			filePath := pkg.ToFilePath(fmt.Sprintf("/%s.java", name))
 			err := g.GenCtx.WriteFile(filePath, fileStr)
 			if err != nil {
 				return err

@@ -273,11 +273,11 @@ func (g GoGenerator) GenerateUnit(unit *definition.CompilationUnit) error {
 	}
 
 	pkg := unit.Package
-	if unit.Options.Has("go_package") {
+	if goPkg, ok := unit.Options.Get("go_package"); ok {
 		pkgStr := fmt.Sprint(unit.Options.MustGet("go_package").OptionValue)
 		pkgStr = pkgStr[1 : len(pkgStr)-1]
 		pkgStrs := strings.Split(pkgStr, "/")
-		pkg = definition.NewPackage(nil, pkgStrs)
+		pkg = definition.NewPackage(goPkg, pkgStrs)
 	}
 
 	genUnit := &GeneratedUnit{
@@ -286,6 +286,15 @@ func (g GoGenerator) GenerateUnit(unit *definition.CompilationUnit) error {
 		GeneratedTypes: util.NewOrderedMap[string, *GeneratedType](),
 	}
 
+	if prevUnit, ok := g.GenUnits.Get(pkg.String()); ok {
+		return &definition.CompileError{
+			Position: pkg.BasePosition,
+			Err: &definition.PackageDuplicateError{
+				PrevDef: prevUnit.GoPackage.BasePosition,
+				Package: pkg,
+			},
+		}
+	}
 	g.GenUnits.Put(pkg.String(), genUnit)
 
 	g.GenUnitsByPkg.Put(unit.Package.String(), genUnit)
