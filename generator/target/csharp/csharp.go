@@ -463,7 +463,7 @@ var structTemplate = `
 
         public override int GetHashCode() {
             int result = 17;
-        {{- $memoryCopy := .GenOption.MemoryCopy }}
+        {{- $memoryCopy := .GenOptions.MemoryCopy }}
         {{- range $field := $structDef.StructFields.Values }}
         {{- if $field.GetFieldKind.IsNormal }}
             {{- $fieldName := TocamelCase $field.FieldName }}
@@ -574,7 +574,7 @@ func (g CSharpGenerator) generateStruct(structDef *definition.Struct) (*Generate
 		"MethodStrs":     methodStrs,
 		"EncoderStr":     encoderStr,
 		"DecoderStr":     decoderStr,
-		"GenOption":      g.GenCtx.GenOptions,
+		"GenOptions":     g.GenCtx.GenOptions,
 	}
 
 	defStr := util.ExecuteTemplate(structTemplate, "structDef", nil, defData)
@@ -738,8 +738,8 @@ func (g CSharpGenerator) GenerateDefaultGetter(method *definition.GetMethod) (st
 	}
 
 	fieldData := map[string]any{
-		"MethodDef": method,
-		"GenOption": g.GenCtx.GenOptions,
+		"MethodDef":  method,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(defaultGetterTemplate, "defaultGetter", funcMap, fieldData)
 	return fieldStr, nil
@@ -771,8 +771,8 @@ func (g CSharpGenerator) GenerateDefaultSetter(method *definition.SetMethod) (st
 	}
 
 	fieldData := map[string]any{
-		"MethodDef": method,
-		"GenOption": g.GenCtx.GenOptions,
+		"MethodDef":  method,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(defaultSetterTemplate, "defaultSetter", funcMap, fieldData)
 	return fieldStr, nil
@@ -829,7 +829,7 @@ func (g CSharpGenerator) GenerateCustomGetterSetter(group *util.OrderedMap[defin
 		"MethodGroup": group,
 		"GetMethod":   getMethod,
 		"SetMethod":   setMethod,
-		"GenOption":   g.GenCtx.GenOptions,
+		"GenOptions":  g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(customGetterSetterTemplate, "customGetterSetter", funcMap, fieldData)
 	return fieldStr, nil
@@ -869,8 +869,8 @@ func (g CSharpGenerator) GenerateRawGetterSetter(field definition.Field) (string
 	}
 
 	fieldData := map[string]any{
-		"FieldDef":  field,
-		"GenOption": g.GenCtx.GenOptions,
+		"FieldDef":   field,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(rawGetterSetterTemplate, "rawGetterSetter", funcMap, fieldData)
 	return fieldStr, nil
@@ -1018,7 +1018,7 @@ var encoderTemplate = `
         }
 
         // Encoder: {{ $structName }}
-        {{ if .GenOption.MemoryCopy -}}
+        {{ if .GenOptions.MemoryCopy -}}
         /**
          * Encode the struct into a byte array.
          * @return the encoded byte array.
@@ -1134,7 +1134,7 @@ func (g CSharpGenerator) GenerateEncoder(structDef *definition.Struct) (string, 
 	fieldData := map[string]any{
 		"StructDef":  structDef,
 		"EncodeStrs": encodeStrs,
-		"GenOption":  g.GenCtx.GenOptions,
+		"GenOptions": g.GenCtx.GenOptions,
 		"Dynamic":    structDef.StructDynamic,
 	}
 
@@ -1169,7 +1169,7 @@ var fieldEncoderTemplate = `
 {{- end -}}
 
 {{- define "encodeNormalFieldStruct" -}}
-{{- if .GenOption.MemoryCopy -}}
+{{- if .GenOptions.MemoryCopy -}}
     {{ if .FieldStruct.GetTypeDynamic }}offset += {{ end }}{{ .FieldName }}.Encode(data, {{ if .Dynamic }}offset + {{ end }}start + {{ .FromByte }});
 {{- else -}}
     {{ if .FieldStruct.GetTypeDynamic }}offset += {{ end }}{{ .FieldName }}.Encode(data.Slice({{ if .Dynamic }}offset + {{ end }}{{ .FromByte }}));
@@ -1223,7 +1223,7 @@ var fieldEncoderTemplate = `
 {{- define "encodeNormalFieldString" -}}
             {
                 {{ .TyBytes }} {{ .TempName }} = Encoding.UTF8.GetBytes({{ .FieldName }});
-                {{ if .GenOption.MemoryCopy -}}
+                {{ if .GenOptions.MemoryCopy -}}
                 {{ .TempName }}.CopyTo(data, offset + start + {{ .FromByte }});
                 data[offset + start + {{ .FromByte }} + {{ .TempName }}.Length] = 0;
                 {{ else -}}
@@ -1237,7 +1237,7 @@ var fieldEncoderTemplate = `
 {{- define "encodeNormalFieldBytes" -}}
             {
                 {{ .TyInt }} {{ .TempName }} = {{ .FieldName }}.Length;
-                {{ if .GenOption.MemoryCopy -}}
+                {{ if .GenOptions.MemoryCopy -}}
                 do { data[offset + start + {{ .FromByte }}] = (byte)(({{ .TempName }} & {{ .GetMask }}) | {{ .SetMask }}); offset++; {{ .TempName }} >>= {{ .Shift }}; } while ({{ .TempName }} > 0);
                 data[offset - 1 + start + {{ .FromByte }}] &= unchecked((byte)~{{ .SetMask }});
                 {{ .FieldName }}.CopyTo(data, offset + start + {{ .FromByte }});
@@ -1251,7 +1251,7 @@ var fieldEncoderTemplate = `
 {{- end -}}
 
 {{- define "encodeImpl" -}}
-        data[{{ if .Dynamic }}offset + {{ end }}{{ if .GenOption.MemoryCopy }}start + {{ end }}{{ .BytePos }}] {{ .Operator }} (byte){{ .FieldData }};
+        data[{{ if .Dynamic }}offset + {{ end }}{{ if .GenOptions.MemoryCopy }}start + {{ end }}{{ .BytePos }}] {{ .Operator }} (byte){{ .FieldData }};
 {{- end -}}
 `
 
@@ -1495,7 +1495,7 @@ func (g CSharpGenerator) generateEncodeNormalFieldImpl(fieldNameStr string, fiel
 			"FieldName":   fieldNameStr,
 			"FromByte":    from / 8,
 			"Dynamic":     structDynamic,
-			"GenOption":   g.GenCtx.GenOptions,
+			"GenOptions":  g.GenCtx.GenOptions,
 		}
 
 		stmt := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldStruct", nil, encodeNormalFieldStructData)
@@ -1503,11 +1503,11 @@ func (g CSharpGenerator) generateEncodeNormalFieldImpl(fieldNameStr string, fiel
 
 	case *definition.String:
 		encodeNormalFieldStringData := map[string]any{
-			"TyBytes":   "byte[]",
-			"FieldName": fieldNameStr,
-			"FromByte":  from / 8,
-			"TempName":  g.generateEncodeTempVarName(from),
-			"GenOption": g.GenCtx.GenOptions,
+			"TyBytes":    "byte[]",
+			"FieldName":  fieldNameStr,
+			"FromByte":   from / 8,
+			"TempName":   g.generateEncodeTempVarName(from),
+			"GenOptions": g.GenCtx.GenOptions,
 		}
 
 		stmt := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldString", nil, encodeNormalFieldStringData)
@@ -1515,14 +1515,14 @@ func (g CSharpGenerator) generateEncodeNormalFieldImpl(fieldNameStr string, fiel
 
 	case *definition.Bytes:
 		encodeNormalFieldBytesData := map[string]any{
-			"TyInt":     typeMap[definition.TypeID_Int32],
-			"FieldName": fieldNameStr,
-			"FromByte":  from / 8,
-			"GetMask":   g.generateHex((1 << 7) - 1),
-			"SetMask":   g.generateHex(1 << 7),
-			"Shift":     7,
-			"TempName":  g.generateEncodeTempVarName(from),
-			"GenOption": g.GenCtx.GenOptions,
+			"TyInt":      typeMap[definition.TypeID_Int32],
+			"FieldName":  fieldNameStr,
+			"FromByte":   from / 8,
+			"GetMask":    g.generateHex((1 << 7) - 1),
+			"SetMask":    g.generateHex(1 << 7),
+			"Shift":      7,
+			"TempName":   g.generateEncodeTempVarName(from),
+			"GenOptions": g.GenCtx.GenOptions,
 		}
 
 		stmt := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldBytes", nil, encodeNormalFieldBytesData)
@@ -1712,12 +1712,12 @@ func (g CSharpGenerator) generateEncodeImpl(from, to int64, fieldData func(int64
 
 		// generate encode statement
 		encodeImplData := map[string]any{
-			"TyUint8":   typeMap[definition.TypeID_Uint8],
-			"BytePos":   i / 8,
-			"Operator":  operator,
-			"FieldData": exprStr,
-			"Dynamic":   structDynamic,
-			"GenOption": g.GenCtx.GenOptions,
+			"TyUint8":    typeMap[definition.TypeID_Uint8],
+			"BytePos":    i / 8,
+			"Operator":   operator,
+			"FieldData":  exprStr,
+			"Dynamic":    structDynamic,
+			"GenOptions": g.GenCtx.GenOptions,
 		}
 
 		encodeStmt := util.ExecuteTemplate(fieldEncoderTemplate, "encodeImpl", nil, encodeImplData)
@@ -1739,7 +1739,7 @@ var decoderTemplate = `
 {{- define "decoder" -}}
 {{- $structName := .StructDef.StructName -}}
         // Decoder: {{ $structName }}
-        {{ if .GenOption.MemoryCopy -}}
+        {{ if .GenOptions.MemoryCopy -}}
         /**
          * Decode the struct from the given byte array.
          * @param data the byte array to decode from
@@ -1844,7 +1844,7 @@ func (g CSharpGenerator) GenerateDecoder(structDef *definition.Struct) (string, 
 	fieldData := map[string]any{
 		"StructDef":  structDef,
 		"DecodeStrs": decodeStrs,
-		"GenOption":  g.GenCtx.GenOptions,
+		"GenOptions": g.GenCtx.GenOptions,
 		"Dynamic":    structDef.GetTypeDynamic(),
 	}
 
@@ -1884,7 +1884,7 @@ var fieldDecoderTemplate = `
 {{- define "decodeNormalFieldStruct" -}}
 {{- if .FieldStruct.GetTypeDynamic -}}
             {
-                {{ if .GenOption.MemoryCopy -}}
+                {{ if .GenOptions.MemoryCopy -}}
                 int {{ .TempName }} = {{ .FieldName }}.Decode(data, offset + start + {{ .FromByte }});
                 {{ else -}}
                 int {{ .TempName }} = {{ .FieldName }}.Decode(memoryData.Slice(offset + {{ .FromByte }}));
@@ -1893,7 +1893,7 @@ var fieldDecoderTemplate = `
                 offset += {{ .TempName }};
             }
 {{- else -}}
-    {{ if .GenOption.MemoryCopy -}}
+    {{ if .GenOptions.MemoryCopy -}}
     if ({{ .FieldName }}.Decode(data, {{ if .Dynamic }}offset + {{ end }}start + {{ .FromByte }}) < 0) return -1;
     {{ else -}}
     if ({{ .FieldName }}.Decode(memoryData.Slice({{ if .Dynamic }}offset + {{ end }}{{ .FromByte }})) < 0) return -1;
@@ -1924,7 +1924,7 @@ var fieldDecoderTemplate = `
 {{- define "decodeNormalFieldString" -}}
             {
                 {{ .TyInt }} {{ .TempName }} = offset;
-                {{ if .GenOption.MemoryCopy -}}
+                {{ if .GenOptions.MemoryCopy -}}
                 while (data[{{ .TempName }} + start + {{ .FromByte }}] != 0) {{ .TempName }}++;
                 {{ .FieldName }} = Encoding.UTF8.GetString(data, offset + start + {{ .FromByte }}, {{ .TempName }} - offset);
                 {{ else -}}
@@ -1939,7 +1939,7 @@ var fieldDecoderTemplate = `
             {
                 {{ .TyInt }} {{ .TempName }} = 0;
                 {{ .TyUint8 }} shift = 0;
-                {{ if .GenOption.MemoryCopy -}}
+                {{ if .GenOptions.MemoryCopy -}}
                 while ((data[offset + start + {{ .FromByte }}] & {{ .SetMask }}) != 0) { {{ .TempName }} |= ({{ .TyInt }})(data[offset + start + {{ .FromByte }}] & {{ .GetMask }}) << shift; shift += {{ .Shift }}; offset++; }
                 {{ .TempName }} |= ({{ .TyInt }})(data[offset + start + {{ .FromByte }}] & {{ .GetMask }}) << shift; offset++;
                 {{ .FieldName }} = new byte[{{ .TempName }}];
@@ -1954,7 +1954,7 @@ var fieldDecoderTemplate = `
 {{- end -}}
 
 {{- define "decodeData" -}}
-    data[{{ if .Dynamic }}offset + {{ end }}{{ if .GenOption.MemoryCopy }}start + {{ end }}{{ .BytePos }}]
+    data[{{ if .Dynamic }}offset + {{ end }}{{ if .GenOptions.MemoryCopy }}start + {{ end }}{{ .BytePos }}]
 {{- end -}}
 
 {{- define "decodeImpl" -}}
@@ -2293,9 +2293,9 @@ func (g CSharpGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fiel
 
 	dataDataFunc := func(i int64) string {
 		decodeDataData := map[string]any{
-			"GenOption": g.GenCtx.GenOptions,
-			"Dynamic":   structDynamic,
-			"BytePos":   i,
+			"GenOptions": g.GenCtx.GenOptions,
+			"Dynamic":    structDynamic,
+			"BytePos":    i,
 		}
 		return util.ExecuteTemplate(fieldDecoderTemplate, "decodeData", nil, decodeDataData)
 	}
@@ -2308,7 +2308,7 @@ func (g CSharpGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fiel
 			"FromByte":    from / 8,
 			"Dynamic":     structDynamic,
 			"TempName":    g.generateDecodeTempVarName(from),
-			"GenOption":   g.GenCtx.GenOptions,
+			"GenOptions":  g.GenCtx.GenOptions,
 		}
 
 		stmt := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldStruct", nil, decodeNormalFieldStructData)
@@ -2319,11 +2319,11 @@ func (g CSharpGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fiel
 
 	case *definition.String:
 		decodeNormalFieldStringData := map[string]any{
-			"TyInt":     typeMap[definition.TypeID_Int32],
-			"FieldName": fieldNameStr,
-			"FromByte":  from / 8,
-			"TempName":  g.generateDecodeTempVarName(from),
-			"GenOption": g.GenCtx.GenOptions,
+			"TyInt":      typeMap[definition.TypeID_Int32],
+			"FieldName":  fieldNameStr,
+			"FromByte":   from / 8,
+			"TempName":   g.generateDecodeTempVarName(from),
+			"GenOptions": g.GenCtx.GenOptions,
 		}
 
 		stmt := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldString", nil, decodeNormalFieldStringData)
@@ -2331,15 +2331,15 @@ func (g CSharpGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fiel
 
 	case *definition.Bytes:
 		decodeNormalFieldBytesData := map[string]any{
-			"TyInt":     typeMap[definition.TypeID_Int32],
-			"TyUint8":   typeMap[definition.TypeID_Uint8],
-			"FieldName": fieldNameStr,
-			"FromByte":  from / 8,
-			"GetMask":   g.generateHex((1 << 7) - 1),
-			"SetMask":   g.generateHex(1 << 7),
-			"Shift":     g.generateDec(7),
-			"TempName":  g.generateDecodeTempVarName(from),
-			"GenOption": g.GenCtx.GenOptions,
+			"TyInt":      typeMap[definition.TypeID_Int32],
+			"TyUint8":    typeMap[definition.TypeID_Uint8],
+			"FieldName":  fieldNameStr,
+			"FromByte":   from / 8,
+			"GetMask":    g.generateHex((1 << 7) - 1),
+			"SetMask":    g.generateHex(1 << 7),
+			"Shift":      g.generateDec(7),
+			"TempName":   g.generateDecodeTempVarName(from),
+			"GenOptions": g.GenCtx.GenOptions,
 		}
 
 		stmt := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldBytes", nil, decodeNormalFieldBytesData)

@@ -1137,8 +1137,8 @@ func (g CommonJSGenerator) GenerateCustomGetter(method *definition.GetMethod) (s
 	}
 
 	fieldData := map[string]any{
-		"MethodDef": method,
-		"GenOption": g.GenCtx.GenOptions,
+		"MethodDef":  method,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(customGetterTemplate, "customGetter", funcMap, fieldData)
 	return fieldStr, nil
@@ -1164,8 +1164,8 @@ func (g CommonJSGenerator) GenerateCustomSetter(method *definition.SetMethod) (s
 	}
 
 	fieldData := map[string]any{
-		"MethodDef": method,
-		"GenOption": g.GenCtx.GenOptions,
+		"MethodDef":  method,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(customSetterTemplate, "customSetter", funcMap, fieldData)
 	return fieldStr, nil
@@ -1403,7 +1403,7 @@ func (g CommonJSGenerator) GenerateEncoder(structDef *definition.Struct) (string
 	fieldData := map[string]any{
 		"StructDef":  structDef,
 		"EncodeStrs": encodeStrs,
-		"GenOption":  g.GenCtx.GenOptions,
+		"GenOptions": g.GenCtx.GenOptions,
 		"Dynamic":    structDef.GetTypeDynamic(),
 	}
 
@@ -2062,7 +2062,7 @@ func (g CommonJSGenerator) GenerateDecoder(structDef *definition.Struct) (string
 	fieldData := map[string]any{
 		"StructDef":  structDef,
 		"DecodeStrs": decodeStrs,
-		"GenOption":  g.GenCtx.GenOptions,
+		"GenOptions": g.GenCtx.GenOptions,
 		"Dynamic":    structDef.GetTypeDynamic(),
 	}
 

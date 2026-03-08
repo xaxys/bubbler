@@ -690,8 +690,8 @@ func (g JavaGenerator) GenerateDefaultGetter(method *definition.GetMethod) (stri
 	}
 
 	fieldData := map[string]any{
-		"MethodDef": method,
-		"GenOption": g.GenCtx.GenOptions,
+		"MethodDef":  method,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(defaultGetterTemplate, "defaultGetter", funcMap, fieldData)
 	return fieldStr, nil
@@ -722,8 +722,8 @@ func (g JavaGenerator) GenerateDefaultSetter(method *definition.SetMethod) (stri
 	}
 
 	fieldData := map[string]any{
-		"MethodDef": method,
-		"GenOption": g.GenCtx.GenOptions,
+		"MethodDef":  method,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(defaultSetterTemplate, "defaultSetter", funcMap, fieldData)
 	return fieldStr, nil
@@ -753,8 +753,8 @@ func (g JavaGenerator) GenerateCustomGetter(method *definition.GetMethod) (strin
 	}
 
 	fieldData := map[string]any{
-		"MethodDef": method,
-		"GenOption": g.GenCtx.GenOptions,
+		"MethodDef":  method,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(customGetterTemplate, "customGetter", funcMap, fieldData)
 	return fieldStr, nil
@@ -783,8 +783,8 @@ func (g JavaGenerator) GenerateCustomSetter(method *definition.SetMethod) (strin
 	}
 
 	fieldData := map[string]any{
-		"MethodDef": method,
-		"GenOption": g.GenCtx.GenOptions,
+		"MethodDef":  method,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(customSetterTemplate, "customSetter", funcMap, fieldData)
 	return fieldStr, nil
@@ -834,8 +834,8 @@ func (g JavaGenerator) GenerateRawGetter(field definition.Field) (string, error)
 	}
 
 	fieldData := map[string]any{
-		"FieldDef":  field,
-		"GenOption": g.GenCtx.GenOptions,
+		"FieldDef":   field,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(rawGetterTemplate, "rawGetterSelector", funcMap, fieldData)
 	return fieldStr, nil
@@ -885,8 +885,8 @@ func (g JavaGenerator) GenerateRawSetter(field definition.Field) (string, error)
 	}
 
 	fieldData := map[string]any{
-		"FieldDef":  field,
-		"GenOption": g.GenCtx.GenOptions,
+		"FieldDef":   field,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(rawSetterTemplate, "rawSetterSelector", funcMap, fieldData)
 	return fieldStr, nil
@@ -1137,7 +1137,7 @@ func (g JavaGenerator) GenerateEncoder(structDef *definition.Struct) (string, er
 	fieldData := map[string]any{
 		"StructDef":  structDef,
 		"EncodeStrs": encodeStrs,
-		"GenOption":  g.GenCtx.GenOptions,
+		"GenOptions": g.GenCtx.GenOptions,
 		"Dynamic":    structDef.StructDynamic,
 	}
 
@@ -1787,7 +1787,7 @@ func (g JavaGenerator) GenerateDecoder(structDef *definition.Struct) (string, er
 	fieldData := map[string]any{
 		"StructDef":  structDef,
 		"DecodeStrs": decodeStrs,
-		"GenOption":  g.GenCtx.GenOptions,
+		"GenOptions": g.GenCtx.GenOptions,
 		"Dynamic":    structDef.GetTypeDynamic(),
 	}
 

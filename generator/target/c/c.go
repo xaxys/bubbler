@@ -727,7 +727,7 @@ var defaultGetterDeclTemplate = `
 {{- $fieldName := Tosnake_case $field.FieldName -}}
 {{- $structName := $field.FieldBelongs.StructName -}}
 // DefaultGetterDecl: {{ $structName }}_get_{{ $fieldName }}
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 {{ $retTyStr }} {{ $structName }}_get_{{ $fieldName }}(struct {{ $structName }}* ptr);
 {{- end -}}
 `
@@ -738,8 +738,8 @@ func (g CGenerator) GenerateDefaultGetterDecl(method *definition.GetMethod) (str
 	}
 
 	fieldData := map[string]any{
-		"MethodDef": method,
-		"GenOption": g.GenCtx.GenOptions,
+		"MethodDef":  method,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(defaultGetterDeclTemplate, "defaultGetterDecl", funcMap, fieldData)
 	return fieldStr, nil
@@ -754,7 +754,7 @@ var defaultSetterDeclTemplate = `
 {{- $fieldName := Tosnake_case $field.FieldName -}}
 {{- $structName := $field.FieldBelongs.StructName -}}
 // DefaultSetterDecl: {{ $structName }}_set_{{ $fieldName }}
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 void {{ $structName }}_set_{{ $fieldName }}(struct {{ $structName }}* ptr, {{ $paramTyStr }} value);
 {{- end -}}
 `
@@ -765,8 +765,8 @@ func (g CGenerator) GenerateDefaultSetterDecl(method *definition.SetMethod) (str
 	}
 
 	fieldData := map[string]any{
-		"MethodDef": method,
-		"GenOption": g.GenCtx.GenOptions,
+		"MethodDef":  method,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(defaultSetterDeclTemplate, "defaultSetterDecl", funcMap, fieldData)
 	return fieldStr, nil
@@ -928,7 +928,7 @@ var defaultGetterTemplate = `
 {{- $valueStr := printf "ptr->%s" $fieldName -}}
 {{- $exprStr := GenerateExpr .MethodDef.MethodExpr $valueStr -}}
 // DefaultGetter: {{ $structName }}_get_{{ $fieldName }}
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 {{ $retTyStr }} {{ $structName }}_get_{{ $fieldName }}(struct {{ $structName }}* ptr) {
     return {{ $exprStr }};
 }
@@ -942,8 +942,8 @@ func (g CGenerator) GenerateDefaultGetter(method *definition.GetMethod) (string,
 	}
 
 	fieldData := map[string]any{
-		"MethodDef": method,
-		"GenOption": g.GenCtx.GenOptions,
+		"MethodDef":  method,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(defaultGetterTemplate, "defaultGetter", funcMap, fieldData)
 	return fieldStr, nil
@@ -961,7 +961,7 @@ var defaultSetterTemplate = `
 {{- $structName := $field.FieldBelongs.StructName -}}
 {{- $exprStr := GenerateExpr .MethodDef.MethodExpr "value" -}}
 // DefaultSetter: {{ $structName }}_set_{{ $fieldName }}
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 void {{ $structName }}_set_{{ $fieldName }}(struct {{ $structName }}* ptr, {{ $paramTyStr }} value) {
     ptr->{{ $fieldName }} = {{ $exprStr }};
 }
@@ -975,8 +975,8 @@ func (g CGenerator) GenerateDefaultSetter(method *definition.SetMethod) (string,
 	}
 
 	fieldData := map[string]any{
-		"MethodDef": method,
-		"GenOption": g.GenCtx.GenOptions,
+		"MethodDef":  method,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(defaultSetterTemplate, "defaultSetter", funcMap, fieldData)
 	return fieldStr, nil
@@ -994,7 +994,7 @@ var customGetterTemplate = `
 {{- $valueStr := printf "ptr->%s" $fieldName -}}
 {{- $exprStr := GenerateExpr .MethodDef.MethodExpr $valueStr -}}
 // CustomGetter: {{ $structName }}_get_{{ $methodName }}
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 {{ $retTyStr }} {{ $structName }}_get_{{ $methodName }}(struct {{ $structName }}* ptr) {
     return {{ $exprStr }};
 }
@@ -1008,8 +1008,8 @@ func (g CGenerator) GenerateCustomGetter(method *definition.GetMethod) (string, 
 	}
 
 	fieldData := map[string]any{
-		"MethodDef": method,
-		"GenOption": g.GenCtx.GenOptions,
+		"MethodDef":  method,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(customGetterTemplate, "customGetter", funcMap, fieldData)
 	return fieldStr, nil
@@ -1026,7 +1026,7 @@ var customSetterTemplate = `
 {{- $methodName := Tosnake_case .MethodDef.MethodName -}}
 {{- $exprStr := GenerateExpr .MethodDef.MethodExpr "value" -}}
 // CustomSetter: {{ $structName }}_set_{{ $methodName }}
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 void {{ $structName }}_set_{{ $methodName }}(struct {{ $structName }}* ptr, {{ $paramTyStr }} value) {
     ptr->{{ $fieldName }} = {{ $exprStr }};
 }
@@ -1040,8 +1040,8 @@ func (g CGenerator) GenerateCustomSetter(method *definition.SetMethod) (string, 
 	}
 
 	fieldData := map[string]any{
-		"MethodDef": method,
-		"GenOption": g.GenCtx.GenOptions,
+		"MethodDef":  method,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(customSetterTemplate, "customSetter", funcMap, fieldData)
 	return fieldStr, nil
@@ -1056,7 +1056,7 @@ var rawGetterTemplate = `
 {{- $fieldName := Tosnake_case $field.FieldName -}}
 {{- $structName := $field.FieldBelongs.StructName -}}
 // RawGetter: {{ $structName }}_get_{{ $fieldName }}
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 {{ $retTyStr }} {{ $structName }}_get_{{ $fieldName }}(struct {{ $structName }}* ptr) {
     return ptr->{{ $fieldName }};
 }
@@ -1068,19 +1068,19 @@ var rawGetterTemplate = `
 {{- $fieldName := Tosnake_case .FieldDef.FieldName -}}
 {{- $structName := .FieldDef.FieldBelongs.StructName -}}
 // RawGetterArray: {{ $structName }}_get_{{ $fieldName }}
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 {{ $elemTyStr }}* {{ $structName }}_get_{{ $fieldName }}(struct {{ $structName }}* ptr) {
     return ptr->{{ $fieldName }};
 }
 
 // RawGetterArrayItem: {{ $structName }}_get_{{ $fieldName }}_item
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 {{ $elemTyStr }} {{ $structName }}_get_{{ $fieldName }}_item(struct {{ $structName }}* ptr, uint64_t index) {
     return ptr->{{ $fieldName }}[index];
 }
 
 // RawGetterArrayLength: {{ $structName }}_get_{{ $fieldName }}_length
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 uint64_t {{ $structName }}_get_{{ $fieldName }}_length(struct {{ $structName }}* ptr) {
     return {{ $length }};
 }
@@ -1101,8 +1101,8 @@ func (g CGenerator) GenerateRawGetter(field definition.Field) (string, error) {
 	}
 
 	fieldData := map[string]any{
-		"FieldDef":  field,
-		"GenOption": g.GenCtx.GenOptions,
+		"FieldDef":   field,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(rawGetterTemplate, "rawGetterSelector", funcMap, fieldData)
 	return fieldStr, nil
@@ -1116,7 +1116,7 @@ var rawSetterTemplate = `
 {{- $fieldName := Tosnake_case .FieldDef.FieldName -}}
 {{- $structName := .FieldDef.FieldBelongs.StructName -}}
 // RawSetter: {{ $structName }}_set_{{ $fieldName }}
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 void {{ $structName }}_set_{{ $fieldName }}(struct {{ $structName }}* ptr, {{ $paramTyStr }} value) {
     ptr->{{ $fieldName }} = value;
 }
@@ -1128,7 +1128,7 @@ void {{ $structName }}_set_{{ $fieldName }}(struct {{ $structName }}* ptr, {{ $p
 {{- $fieldName := Tosnake_case .FieldDef.FieldName -}}
 {{- $structName := .FieldDef.FieldBelongs.StructName -}}
 // RawSetterArray: {{ $structName }}_set_{{ $fieldName }}
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 void {{ $structName }}_set_{{ $fieldName }}(struct {{ $structName }}* ptr, {{ $elemTyStr }}* value, uint64_t length) {
 {{- range $i := iterate 0 $length }}
     ptr->{{ $fieldName }}[{{ $i }}] = value[{{ $i }}];
@@ -1136,7 +1136,7 @@ void {{ $structName }}_set_{{ $fieldName }}(struct {{ $structName }}* ptr, {{ $e
 }
 
 // RawSetterArrayItem: {{ $structName }}_set_{{ $fieldName }}_item
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 void {{ $structName }}_set_{{ $fieldName }}_item(struct {{ $structName }}* ptr, uint64_t index, {{ $elemTyStr }} value) {
     ptr->{{ $fieldName }}[index] = value;
 }
@@ -1157,8 +1157,8 @@ func (g CGenerator) GenerateRawSetter(field definition.Field) (string, error) {
 	}
 
 	fieldData := map[string]any{
-		"FieldDef":  field,
-		"GenOption": g.GenCtx.GenOptions,
+		"FieldDef":   field,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(rawSetterTemplate, "rawSetterSelector", funcMap, fieldData)
 	return fieldStr, nil
@@ -1228,19 +1228,19 @@ var encoderDeclTemplate = `
 {{- define "encoderDecl" -}}
 {{- $structName := .StructDef.StructName -}}
 // EncodeSizeDecl: {{ $structName }}_encode_size
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 uint64_t {{ $structName }}_encode_size(struct {{ $structName }}* ptr);
 
 // EncoderDecl: {{ $structName }}_encode
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 uint64_t {{ $structName }}_encode(struct {{ $structName }}* ptr, void* data);
 {{- end -}}
 `
 
 func (g CGenerator) GenerateEncoderDecl(structDef *definition.Struct) (string, error) {
 	fieldData := map[string]any{
-		"StructDef": structDef,
-		"GenOption": g.GenCtx.GenOptions,
+		"StructDef":  structDef,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(encoderDeclTemplate, "encoderDecl", nil, fieldData)
 	return fieldStr, nil
@@ -1252,15 +1252,15 @@ var decoderDeclTemplate = `
 {{- define "decoderDecl" -}}
 {{- $structName := .StructDef.StructName -}}
 // DecoderDecl: {{ $structName }}_decode
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 int64_t {{ $structName }}_decode(void* data, struct {{ $structName }}* ptr);
 {{- end -}}
 `
 
 func (g CGenerator) GenerateDecoderDecl(structDef *definition.Struct) (string, error) {
 	fieldData := map[string]any{
-		"StructDef": structDef,
-		"GenOption": g.GenCtx.GenOptions,
+		"StructDef":  structDef,
+		"GenOptions": g.GenCtx.GenOptions,
 	}
 	fieldStr := util.ExecuteTemplate(decoderDeclTemplate, "decoderDecl", nil, fieldData)
 	return fieldStr, nil
@@ -1305,7 +1305,7 @@ var encoderTemplate = `
 {{- define "encoder" -}}
 {{- $structName := .StructDef.StructName -}}
 // EncodeSize: {{ $structName }}_encode_size
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 uint64_t {{ $structName }}_encode_size(struct {{ $structName }}* ptr) {
     {{- if .StructDef.StructDynamic }}
     uint64_t size = {{ calc .StructDef.StructBitSize "/" 8 }};
@@ -1348,7 +1348,7 @@ uint64_t {{ $structName }}_encode_size(struct {{ $structName }}* ptr) {
 }
 
 // Encoder: {{ $structName }}_encode
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 uint64_t {{ $structName }}_encode(struct {{ $structName }}* ptr, void* data) {
     {{ if .Dynamic -}}
     uint64_t offset = 0;
@@ -1397,7 +1397,7 @@ func (g CGenerator) GenerateEncoder(structDef *definition.Struct) (string, error
 	fieldData := map[string]any{
 		"StructDef":  structDef,
 		"EncodeStrs": encodeStrs,
-		"GenOption":  g.GenCtx.GenOptions,
+		"GenOptions": g.GenCtx.GenOptions,
 		"Dynamic":    structDef.GetTypeDynamic(),
 	}
 
@@ -1902,7 +1902,7 @@ var decoderTemplate = `
 {{- $structName := .StructDef.StructName -}}
 {{- $structBytes := calc .StructDef.StructBitSize "/" 8 -}}
 // Decoder: {{ $structName }}_decode
-{{ if .GenOption.SingleFile }}static {{ end -}}
+{{ if .GenOptions.SingleFile }}static {{ end -}}
 int64_t {{ $structName }}_decode(void* data, struct {{ $structName }}* ptr) {
     {{- if .Dynamic }}
     uint64_t offset = 0;
@@ -1951,7 +1951,7 @@ func (g CGenerator) GenerateDecoder(structDef *definition.Struct) (string, error
 	fieldData := map[string]any{
 		"StructDef":  structDef,
 		"DecodeStrs": decodeStrs,
-		"GenOption":  g.GenCtx.GenOptions,
+		"GenOptions": g.GenCtx.GenOptions,
 		"Dynamic":    structDef.GetTypeDynamic(),
 	}
 
