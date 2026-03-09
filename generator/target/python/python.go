@@ -1533,16 +1533,17 @@ var fieldDecoderTemplate = `
 {{- end -}}
 
 {{- define "decodeConstantField" -}}
-    if {{ .TempName }} != {{ .ConstantValue }}: return False
+    if {{ .TempName }} != {{ .ConstantValue }}: return False, 0
 {{- end -}}
 
 {{- define "decodeNormalFieldStruct" -}}
 {{- if .FieldStruct.GetTypeDynamic -}}
         success, {{ .TempName }} = {{ .FieldName }}.decode(data[offset+{{ .FromByte }}:])
-        if not success: return False
+        if not success: return False, 0
         offset += {{ .TempName }}
 {{- else -}}
-    if not {{ .FieldName }}.decode(data[{{ if .Dynamic }}offset+{{ end }}{{ .FromByte }}:]): return False
+        success, _ = {{ .FieldName }}.decode(data[{{ if .Dynamic }}offset+{{ end }}{{ .FromByte }}:])
+        if not success: return False, 0
 {{- end -}}
 {{- end -}}
 
