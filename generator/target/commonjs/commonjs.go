@@ -2545,6 +2545,25 @@ func (g CommonJSGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fi
 
 		decodeStmts = append(decodeStmts, g.generateDecodeImpl(from, to, fieldProcessor, dataDataFunc, generateBin, generateDec)...)
 
+		// convert integer to bool
+		if ty.GetTypeID().IsBool() {
+			castExpr := &definition.CastExpr{
+				ToType: &definition.Bool,
+				Expr1:  &definition.RawExpr{Expr: fieldNameStr},
+			}
+			castExprStr, err := g.GenerateExpr(castExpr, "")
+			if err != nil {
+				panic(fmt.Errorf("internal error: %s", err))
+			}
+			boolConvertData := map[string]any{
+				"FieldName": fieldNameStr,
+				"Operator":  exprOpToString[definition.ExprOp_ASSIGN],
+				"Expr":      castExprStr,
+			}
+			stmt := util.ExecuteTemplate(fieldDecoderTemplate, "decodeImpl", nil, boolConvertData)
+			decodeStmts = append(decodeStmts, stmt)
+		}
+
 		// set sign bit
 		if ty.GetTypeID().IsInt() {
 			originFromBitSize := fieldBitSize
