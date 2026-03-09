@@ -14,6 +14,10 @@ Warning: Bubbler is still in development and is not ready for production use.
 
 ## Installation
 
+You can download the latest release and the precompiled binary from the [releases page](https://github.com/xaxys/bubbler/releases/).
+
+Or you can build from source code:
+
 ```sh
 git clone https://github.com/xaxys/bubbler.git
 cd bubbler
@@ -201,6 +205,7 @@ enum FrameType[1] {
     CURRENT_SERVO_A = 0xA0,
     CURRENT_SERVO_B = 0xA1,
 };
+```
 
 ### Variable-sized Types
 
@@ -279,6 +284,10 @@ struct Frame[20] {
 In this example, `Frame` is a data structure with three fields: `opcode`, `SomeEmbed`, and `payload`. `opcode` is of type `FrameType`, `SomeEmbed` is an anonymous embedded data structure, and `payload` is of type `uint8`.
 
 Please note that Bubbler does not have the concept of scope (to accommodate the C language), so the names `Frame` and `SomeEmbed` as data structure names are not allowed to be duplicated globally, even if `SomeEmbed` is an anonymous embedded data structure.
+
+This also defines the structure width to be 20 bytes. The structure width is optional and can be written as `struct Frame {` without the width.
+
+If the width is not filled in, the structure width is the sum of all field widths. However, if the width is filled in, the structure width must be exactly equal to the sum of all field widths, otherwise an error will occur. If the structure contains variable-sized fields (such as `string` or `bytes`), or other variable-sized structures, the structure width must be omitted.
 
 Recommended to use **PascalCase** for data structure names. But only capitialization of the first letter is mandatory.
 
@@ -426,6 +435,10 @@ struct AnotherTest {
 In this example, the byte order of the `arr` field is set to big-endian.
 
 > Note: The setting of endianness is also effective for floating-point types. However, currently, floating-point values are always interpreted in little-endian order, with the most significant bit storing the sign bit, followed by the exponent bits, and finally the fraction bits.
+>
+> What does this mean? For example, for a `uint32` field with value `0x00123456`, you can set its field width to 3 bytes, making it a `"uint24"`. You can then encode this `"uint24"` in big-endian as `12 34 56`, or in little-endian as `56 34 12`.
+>
+> However, for a `float32` field with sign bit `1`, if you set its field width to 31 bits, the sign bit is discarded during encoding. It thus becomes an `"unsigned float31"`. Although you can still choose big-endian or little-endian encoding, the sign bit is always discarded regardless of the encoding, so when decoded its sign bit will always be `0`.
 
 ### Custom getter/setter
 
