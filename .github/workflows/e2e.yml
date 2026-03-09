@@ -1,0 +1,307 @@
+##############################################################################
+# Bubbler E2E Tests — GitHub Actions Workflow
+#
+# Triggers: push / PR to main (or master)
+#
+# Strategy:
+#   • build  — compiles bubbler binary and uploads as artifact
+#   • test-* — matrix of language tests, each downloads the binary
+#              and generates + runs tests for that language
+#   • test-compiler — runs compiler option + error tests
+##############################################################################
+name: E2E Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  GO_VERSION: "1.22"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 1: Build the bubbler binary
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  build:
+    name: Build bubbler
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build
+        run: go build -o bubbler .
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: bubbler-linux
+          path: bubbler
+          retention-days: 1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 2: C codec tests
+# ─────────────────────────────────────────────────────────────────────────────
+  test-c:
+    name: Test — C
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with: { name: bubbler-linux }
+
+      - run: chmod +x bubbler
+
+      - name: Generate C code
+        run: |
+          mkdir -p e2e/tests/c/gen
+          ./bubbler -t c -o e2e/tests/c/gen/ e2e/testcase.bb
+          ./bubbler -t c -o e2e/tests/c/gen/ e2e/features/bitwid.bb
+
+      - name: Compile and run
+        run: |
+          cd e2e/tests/c
+          gcc -std=c11 -Igen -o run_test main.c gen/testpkg.bb.c gen/bitwid.bb.c -lm
+          ./run_test
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 3: C++ codec tests
+# ─────────────────────────────────────────────────────────────────────────────
+  test-cpp:
+    name: Test — C++
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with: { name: bubbler-linux }
+
+      - run: chmod +x bubbler
+
+      - name: Generate C++ code
+        run: |
+          mkdir -p e2e/tests/cpp/gen
+          ./bubbler -t cpp -single -o e2e/tests/cpp/gen/testcase.bb.hpp e2e/testcase.bb
+          ./bubbler -t cpp -single -o e2e/tests/cpp/gen/bitwid.bb.hpp   e2e/features/bitwid.bb
+
+      - name: Compile and run
+        run: |
+          cd e2e/tests/cpp
+          g++ -std=c++17 -Igen -o run_test main.cpp -lm
+          ./run_test
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 4: Go codec tests
+# ─────────────────────────────────────────────────────────────────────────────
+  test-go:
+    name: Test — Go
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - uses: actions/download-artifact@v4
+        with: { name: bubbler-linux }
+
+      - run: chmod +x bubbler
+
+      - name: Generate Go code
+        run: |
+          ./bubbler -t go -o e2e/tests/go/ e2e/testcase.bb
+          ./bubbler -t go -o e2e/tests/go/ e2e/features/bitwid.bb
+
+      - name: Run tests
+        run: |
+          cd e2e/tests/go
+          go test ./... -v
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 5: Python codec tests
+# ─────────────────────────────────────────────────────────────────────────────
+  test-python:
+    name: Test — Python
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with: { name: bubbler-linux }
+
+      - run: chmod +x bubbler
+
+      - name: Generate Python code
+        run: |
+          mkdir -p e2e/tests/python/gen
+          ./bubbler -t py -single -o e2e/tests/python/gen/testcase_bb.py e2e/testcase.bb
+          ./bubbler -t py -single -o e2e/tests/python/gen/bitwid_bb.py   e2e/features/bitwid.bb
+
+      - name: Run tests
+        run: |
+          cd e2e/tests/python
+          python3 test_main.py
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 6: Java codec tests
+# ─────────────────────────────────────────────────────────────────────────────
+  test-java:
+    name: Test — Java
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/download-artifact@v4
+        with: { name: bubbler-linux }
+
+      - run: chmod +x bubbler
+
+      - name: Generate Java code
+        run: |
+          mkdir -p e2e/tests/java/gen
+          ./bubbler -t java -o e2e/tests/java/gen/ e2e/testcase.bb
+          ./bubbler -t java -o e2e/tests/java/gen/ e2e/features/bitwid.bb
+
+      - name: Compile and run
+        run: |
+          cd e2e/tests/java
+          mkdir -p out
+          find gen -name "*.java" -exec javac -encoding UTF-8 -d out {} +
+          javac -encoding UTF-8 -cp out -d out Main.java
+          java -cp out Main
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 7: C# codec tests
+# ─────────────────────────────────────────────────────────────────────────────
+  test-csharp:
+    name: Test — C#
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - uses: actions/download-artifact@v4
+        with: { name: bubbler-linux }
+
+      - run: chmod +x bubbler
+
+      - name: Generate C# code
+        run: |
+          mkdir -p e2e/tests/csharp/gen
+          ./bubbler -t cs -single -o e2e/tests/csharp/gen/testcase.bb.cs e2e/testcase.bb
+          ./bubbler -t cs -single -o e2e/tests/csharp/gen/bitwid.bb.cs   e2e/features/bitwid.bb
+
+      - name: Run tests (net8.0)
+        run: |
+          cd e2e/tests/csharp
+          dotnet run -f net8.0 --project test.csproj
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 8a: C# .NET 4.7.2 — Windows runner (native .NET Framework)
+# ─────────────────────────────────────────────────────────────────────────────
+  test-csharp-net47-windows:
+    name: Test — C# .NET 4.7.2 (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build bubbler
+        run: go build -o bubbler.exe .
+
+      - name: Generate C# code
+        run: |
+          mkdir -p e2e/tests/csharp/gen
+          ./bubbler.exe -t cs -single -o e2e/tests/csharp/gen/testcase.bb.cs e2e/testcase.bb
+          ./bubbler.exe -t cs -single -o e2e/tests/csharp/gen/bitwid.bb.cs   e2e/features/bitwid.bb
+
+      - name: Run tests (net472 native)
+        run: |
+          cd e2e/tests/csharp
+          dotnet run -f net472 --project test.csproj
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 8: JavaScript (CommonJS) codec tests
+# ─────────────────────────────────────────────────────────────────────────────
+  test-js:
+    name: Test — JavaScript
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - uses: actions/download-artifact@v4
+        with: { name: bubbler-linux }
+
+      - run: chmod +x bubbler
+
+      - name: Generate JS code
+        run: |
+          mkdir -p e2e/tests/js/gen
+          ./bubbler -t cjs -single -o e2e/tests/js/gen/testcase.bb.js e2e/testcase.bb
+          ./bubbler -t cjs -single -o e2e/tests/js/gen/bitwid.bb.js   e2e/features/bitwid.bb
+
+      - name: Run tests
+        run: |
+          cd e2e/tests/js
+          node test.mjs
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 9: Compiler option and error tests
+# ─────────────────────────────────────────────────────────────────────────────
+  test-compiler:
+    name: Test — Compiler Options & Errors
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with: { name: bubbler-linux }
+
+      - run: chmod +x bubbler
+
+      - name: Compiler option tests
+        run: |
+          cd e2e
+          BUBBLER=../bubbler bash compiler/test_options.sh
+
+      - name: Compiler error tests
+        run: |
+          cd e2e
+          BUBBLER=../bubbler bash compiler/test_errors.sh

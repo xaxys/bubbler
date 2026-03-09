@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  # Run the complete E2E test suite inside Docker.
+  # Usage:  docker-compose run --rm e2e
+  e2e:
+    build:
+      context: ..
+      dockerfile: e2e/Dockerfile
+    container_name: bubbler-e2e
+    environment:
+      # Override BUBBLER path if needed (default is /app/bubbler from Dockerfile)
+      BUBBLER: /app/bubbler
+    # Optional: skip individual language suites
+    # SKIP_C:    "1"
+    # SKIP_CPP:  "1"
+    # SKIP_GO:   "1"
+    # SKIP_PY:   "1"
+    # SKIP_JAVA: "1"
+    # SKIP_CS:   "1"
+    # SKIP_JS:   "1"
+    volumes:
+      # Mount project directory for live iteration (optional)
+      # - ..:/app:ro
+      []
+    working_dir: /app/e2e
+    command: ["bash", "/app/e2e/run_tests.sh"]

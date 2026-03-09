@@ -79,4 +79,30 @@ clean:
 	@$(RM_CMD_1) "*.out"      $(RM_CMD_2)
 	@$(RM_CMD_1) "*.yaml"     $(RM_CMD_2)
 
-.PHONY: all gen build run test test-full test-short clean
+e2e: $(TARGET)
+ifeq ($(OS),Windows_NT)
+	@echo Running e2e tests via Docker on Windows ...
+	@docker-compose -f e2e/docker-compose.yml run --build --rm e2e
+else
+	@echo Running e2e tests ...
+	@BUBBLER=$(PWD)/$(TARGET) bash e2e/run_tests.sh
+endif
+
+e2e-docker:
+	@echo Running e2e tests in Docker ...
+	@docker-compose -f e2e/docker-compose.yml run --build --rm e2e
+
+clean-e2e:
+	@echo Cleaning e2e artifacts ...
+	@docker-compose -f e2e/docker-compose.yml down --rmi local --volumes 2>/dev/null || true
+	@$(RM_CMD_1) "e2e/tests/c/run_test"    $(RM_CMD_2)
+	@$(RM_CMD_1) "e2e/tests/cpp/run_test"  $(RM_CMD_2)
+ifeq ($(OS),Windows_NT)
+	@if exist e2e\tests\java\out    rmdir /s /q e2e\tests\java\out
+	@if exist e2e\tests\csharp\bin  rmdir /s /q e2e\tests\csharp\bin
+	@if exist e2e\tests\csharp\obj  rmdir /s /q e2e\tests\csharp\obj
+else
+	@rm -rf e2e/tests/java/out e2e/tests/csharp/bin e2e/tests/csharp/obj
+endif
+
+.PHONY: all gen build run test test-full test-short clean e2e e2e-docker clean-e2e
