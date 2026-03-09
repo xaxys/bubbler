@@ -49,6 +49,7 @@ Options:
   -decnum                  Force Generate Decimal Format for Constant Value
   -memcpy                  Allocate Memory and Copy Data for Variable-Size Type
   -signext <method>        Sign Extension Method (shift, arith)
+  -compat                  Generate Compatible Code
 
 Targets:
 {{ range .Generators }}  {{ . }}
@@ -90,6 +91,7 @@ func main() {
 	minimal := false
 	decnum := false
 	memcpy := false
+	compat := false
 	signext := ""
 	flag.StringVar(&target, "t", "", "Target Language")
 	flag.StringVar(&output, "o", "", "Output Path")
@@ -100,6 +102,7 @@ func main() {
 	flag.BoolVar(&minimal, "minimal", false, "Generate Minimal Code")
 	flag.BoolVar(&decnum, "decnum", false, "Force Generate Decimal Format for Constant Value")
 	flag.BoolVar(&memcpy, "memcpy", false, "Allocate Memory and Copy Data for Variable-Size Type")
+	flag.BoolVar(&compat, "compat", false, "Generate Compatible Code")
 	flag.StringVar(&signext, "signext", "", "Sign Extension Method (shift, arith)")
 	flag.Parse()
 
@@ -154,6 +157,7 @@ func main() {
 		gen.MinimalCode(minimal),
 		gen.DecimalNumber(decnum),
 		gen.MemoryCopy(memcpy),
+		gen.CompatibleMode(compat),
 		signextOpt,
 	)
 	ctx := &gen.GenCtx{

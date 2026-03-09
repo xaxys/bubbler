@@ -277,7 +277,7 @@ g_current = "DynamicFields";
     s.data  = [...blob];  // Array of numbers
 
     const buf = pkg.DynamicFields.encode(s);
-    check(Array.isArray(buf), "encode returns Array");
+    check(buf instanceof Uint8Array, "encode returns Uint8Array");
     const d = new pkg.DynamicFields();
     const n = pkg.DynamicFields.decode(d, buf);
     check(n > 0, `decode > 0: got ${n}`);

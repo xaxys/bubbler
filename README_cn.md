@@ -43,6 +43,7 @@ bubbler [options] <input file>
 - `-decnum`: 强制生成十进制格式的常量值（将 `0xFF` 翻译为 `255`, `0b1111` 翻译为 `15` 等）
 - `-memcpy`: 启用字段的内存复制（解码时复制 `string` 和 `bytes` 字段的内容，而不是直接引用原始解码缓冲区）
 - `-signext <method>`: 用于整数字段的符号扩展方法（选项: `shift`, `arith`）
+- `-compat`: 生成兼容性代码（在 CommonJS 目标中使用 `Array` 代替 `Uint8Array` 等 typed array 作为缓冲區和 `bytes` 字段的类型。默认使用 `Uint8Array` 以提高性能）
 
 ### 示例
 
@@ -92,6 +93,8 @@ Targets:
 
 - `commonjs`：CommonJS模块，为每个 `.bb` 文件输出一个 `.bb.js` 文件。（请注意，`int64` 和 `uint64` 字段使用了 `BigInt`，在某些环境中可能不支持）
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
+  - 不使用 `-compat`：使用 `Uint8Array` 作为编码缓冲区和 `bytes` 字段的类型，以提高性能（默认）。
+  - 使用 `-compat`：使用 `Array` 代替 `Uint8Array` 作为编码缓冲区和 `bytes` 字段的类型，最大化对旧环境的兑容性。
   - 强制启用：`-memcpy`。
   - 强制启用：`-relpath`：生成相对路径引用（如 `require("./foo_bb")`或`require("../foo_bb")`）。
 

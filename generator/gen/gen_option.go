@@ -17,26 +17,28 @@ const (
 )
 
 type GenOptions struct {
-	RemovePath    []string
-	RelativePath  bool
-	InnerClass    bool
-	SingleFile    bool
-	MinimalCode   bool
-	DecimalNumber bool
-	MemoryCopy    bool
-	SignExtMethod SignExtMethodID
+	RemovePath     []string
+	RelativePath   bool
+	InnerClass     bool
+	SingleFile     bool
+	MinimalCode    bool
+	DecimalNumber  bool
+	MemoryCopy     bool
+	CompatibleMode bool
+	SignExtMethod  SignExtMethodID
 }
 
 func NewGenOptions(setter ...GenOptionSetter) *GenOptions {
 	options := &GenOptions{
-		RemovePath:    nil,
-		RelativePath:  false,
-		SingleFile:    false,
-		InnerClass:    false,
-		MinimalCode:   false,
-		DecimalNumber: false,
-		MemoryCopy:    false,
-		SignExtMethod: SignExtMethodDefault,
+		RemovePath:     nil,
+		RelativePath:   false,
+		SingleFile:     false,
+		InnerClass:     false,
+		MinimalCode:    false,
+		DecimalNumber:  false,
+		MemoryCopy:     false,
+		CompatibleMode: false,
+		SignExtMethod:  SignExtMethodDefault,
 	}
 	for _, s := range setter {
 		s(options)
@@ -89,6 +91,12 @@ func DecimalNumber(decnum bool) GenOptionSetter {
 func MemoryCopy(memcopy bool) GenOptionSetter {
 	return func(options *GenOptions) {
 		options.MemoryCopy = memcopy
+	}
+}
+
+func CompatibleMode(compat bool) GenOptionSetter {
+	return func(options *GenOptions) {
+		options.CompatibleMode = compat
 	}
 }
 

@@ -43,6 +43,7 @@ bubbler [options] <input file>
 - `-decnum`: Force Generate Decimal Format for Constant Value (Translate `0xFF` to `255`, `0b1111` to `15`, etc.)
 - `-memcpy`: Enable memory copy for fields (Duplicate content of `string` and `bytes` fields when decoding, instead of directly referencing the original buffer)
 - `-signext <method>`: Sign Extension Method used for Integer Field (Options: `shift`, `arith`)
+- `-compat`: Generate Compatible Code (Use `Array` instead of typed arrays like `Uint8Array` for buffers and `bytes` fields in CommonJS target. By default, `Uint8Array` is used for better performance.)
 
 ### Examples
 
@@ -92,6 +93,8 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
 
 - `commonjs`: CommonJS module, output one `.bb.js` file for each `.bb` file. (Please note that `BigInt` is used for `int64` and `uint64` fields, which is not supported in some environments.)
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
+  - Without `-compat`: Use `Uint8Array` for encode buffers and `bytes` fields for better performance (default).
+  - With `-compat`: Use `Array` instead of `Uint8Array` for encode buffers and `bytes` fields, maximizing compatibility with older environments.
   - Force enabled: `-memcpy`.
   - Force enabled: Relative paths are always used via `require()`. `-relpath` is implicitly enabled.
 

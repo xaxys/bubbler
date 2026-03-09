@@ -164,6 +164,23 @@ check_exists "$out_shift/testpkg.bb.c" "-signext shift: code generated"
 check_exists "$out_arith/testpkg.bb.c" "-signext arith: code generated"
 
 ##############################################################################
+# 10. -compat — CommonJS uses Array instead of Uint8Array
+##############################################################################
+echo
+echo "=== #10: -compat switches CommonJS from Uint8Array to Array ==="
+out_cjs_default="$TMPDIR_BASE/cjs_default"
+out_cjs_compat="$TMPDIR_BASE/cjs_compat"
+"$BUBBLER" -t cjs -single -o "$out_cjs_default/testcase.bb.js" testcase.bb
+"$BUBBLER" -t cjs -compat -single -o "$out_cjs_compat/testcase.bb.js" testcase.bb
+
+# Without -compat: allocates Uint8Array for encode buffers
+check_contains     "$out_cjs_default/testcase.bb.js" "new Uint8Array(" "-compat absent: Uint8Array used"
+check_not_contains "$out_cjs_default/testcase.bb.js" "if (data === undefined) data = new Array(" "-compat absent: no Array alloc"
+# With -compat: allocates Array for encode buffers
+check_contains     "$out_cjs_compat/testcase.bb.js" "if (data === undefined) data = new Array(" "-compat: Array alloc used"
+check_not_contains "$out_cjs_compat/testcase.bb.js" "if (data === undefined) data = new Uint8Array(" "-compat: no Uint8Array alloc"
+
+##############################################################################
 # Summary
 ##############################################################################
 echo

@@ -728,13 +728,19 @@ func (g CommonJSGenerator) GenerateStringDefaultValue(string_ *definition.String
 // ==================== GenerateBytes ====================
 
 func (g CommonJSGenerator) GenerateBytes(bytes *definition.Bytes) (string, error) {
-	return "Array", nil
+	if g.GenCtx.GenOptions.CompatibleMode {
+		return "Array", nil
+	}
+	return "Uint8Array", nil
 }
 
 // ==================== GenerateBytesDefaultValue ====================
 
 func (g CommonJSGenerator) GenerateBytesDefaultValue(bytes *definition.Bytes) (string, error) {
-	return `[]`, nil
+	if g.GenCtx.GenOptions.CompatibleMode {
+		return "[]", nil
+	}
+	return "new Uint8Array(0)", nil
 }
 
 // ==================== GenerateArray ====================
@@ -1346,12 +1352,12 @@ var encoderTemplate = `
                  * @param {{"{"}}{{ .StructDef.StructBelongs.Package }}.I{{ $structName }}} obj {{ $structName }} object
                  * @param {Array | Uint8Array} [buffer] The buffer to encode data
                  * @param {Number} [start] The start position to store the encoded data
-                 * @returns {Array | Number} Array with encoded data if data is not provided, otherwise number of bytes encoded
+                 * @returns {{ if .GenOptions.CompatibleMode }}{Array | Number}{{ else }}{Uint8Array | Number}{{ end }} Array with encoded data if data is not provided, otherwise number of bytes encoded
                  */
                 {{ $structName }}.encode = function(obj, buffer, start) {
                     if (obj === undefined) return buffer === undefined ? -1 : undefined;
                     var data = buffer;
-                    if (data === undefined) data = new Array({{ if .Dynamic }}obj.encode_size(){{ else }}{{ calc .StructDef.StructBitSize "/" 8 }}{{ end }});
+                    if (data === undefined) data = new {{ if .GenOptions.CompatibleMode }}Array{{ else }}Uint8Array{{ end }}({{ if .Dynamic }}obj.encode_size(){{ else }}{{ calc .StructDef.StructBitSize "/" 8 }}{{ end }});
                     if (start === undefined) start = 0;
                     {{- if .Dynamic }}
                     var offset = 0;
@@ -1369,7 +1375,7 @@ var encoderTemplate = `
                  * @instance
                  * @param {Array | Uint8Array} [data] The buffer to encode data
                  * @param {Number} [start] The start position to store the encoded data
-                 * @returns {Array | Number} Array with encoded data if data is not provided, otherwise number of bytes encoded
+                 * @returns {{ if .GenOptions.CompatibleMode }}{Array | Number}{{ else }}{Uint8Array | Number}{{ end }} Array with encoded data if data is not provided, otherwise number of bytes encoded
                  */
                 {{ $structName }}.prototype.encode = function(data, start) {
                     return {{ $structName }}.encode(this, data, start);
@@ -2157,7 +2163,7 @@ var fieldDecoderTemplate = `
                         var shift = 0;
                         while ((data[offset + start + {{ .FromByte }}] & {{ .SetMask }}) !== 0) { {{ .TempName }} |= (data[offset + start + {{ .FromByte }}] & {{ .GetMask }}) << shift; shift += {{ .Shift }}; offset++; }
                         {{ .TempName }} |= (data[offset + start + {{ .FromByte }}] & {{ .GetMask }}) << shift; offset++;
-                        {{ .FieldName }} = new Array({{ .TempName }});
+                        {{ .FieldName }} = new {{ if .GenOptions.CompatibleMode }}Array{{ else }}Uint8Array{{ end }}({{ .TempName }});
                         for (var i = 0; i < {{ .TempName }}; i++) {{ .FieldName }}[i] = data[offset + start + {{ .FromByte }} + i];
                         offset += {{ .TempName }};
                     })();
@@ -2464,12 +2470,13 @@ func (g CommonJSGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fi
 
 	case *definition.Bytes:
 		decodeNormalFieldBytesData := map[string]any{
-			"FieldName": fieldNameStr,
-			"FromByte":  from / 8,
-			"GetMask":   g.generateHex((1 << 7) - 1),
-			"SetMask":   g.generateHex(1 << 7),
-			"Shift":     7,
-			"TempName":  g.generateDecodeTempVarName(from),
+			"FieldName":  fieldNameStr,
+			"FromByte":   from / 8,
+			"GetMask":    g.generateHex((1 << 7) - 1),
+			"SetMask":    g.generateHex(1 << 7),
+			"Shift":      7,
+			"TempName":   g.generateDecodeTempVarName(from),
+			"GenOptions": g.GenCtx.GenOptions,
 		}
 
 		stmt := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldBytes", nil, decodeNormalFieldBytesData)
