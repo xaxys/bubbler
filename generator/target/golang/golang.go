@@ -2178,7 +2178,7 @@ func (g GoGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fieldTyp
 				decodeStmts = append(decodeStmts, stmt)
 
 			case gen.SignExtMethodArith:
-				signMask := int64(1) << (originFromBitSize - 1)
+				signMask := uint64(1) << (originFromBitSize - 1)
 				signMaskStr := g.generateHex(signMask)
 				signExtendData := map[string]any{
 					"FieldName": fieldNameStr,

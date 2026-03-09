@@ -2563,7 +2563,7 @@ func (g CommonJSGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fi
 					stmt := util.ExecuteTemplate(fieldDecoderTemplate, "signExtendLogic", nil, signExtendData)
 					decodeStmts = append(decodeStmts, stmt)
 				} else {
-					signMask := int64(1) << (originFromBitSize - 1)
+					signMask := uint64(1) << (originFromBitSize - 1)
 					signMaskStr := generateHex(signMask)
 					signExtendData := map[string]any{
 						"FieldName": fieldNameStr,

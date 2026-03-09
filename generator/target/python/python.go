@@ -1846,7 +1846,7 @@ func (g PythonGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fiel
 
 			switch g.GenCtx.GenOptions.SignExtMethod {
 			case gen.SignExtMethodDefault, gen.SignExtMethodShift, gen.SignExtMethodArith:
-				signMask := int64(1) << (originFromBitSize - 1)
+				signMask := uint64(1) << (originFromBitSize - 1)
 				signMaskStr := g.generateHex(signMask)
 				signExtendData := map[string]any{
 					"FieldName": fieldNameStr,
