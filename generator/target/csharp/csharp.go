@@ -441,7 +441,13 @@ var structTemplate = `
 
         {{ .DecoderStr }}
 
+#if NET5_0_OR_GREATER || NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+#nullable enable
+        public override bool Equals(object? obj) {
+#nullable restore
+#else
         public override bool Equals(Object obj) {
+#endif
             if (this == obj) return true;
             if (obj == null) return false;
             if (this.GetType() != obj.GetType()) return false;
