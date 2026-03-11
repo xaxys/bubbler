@@ -64,6 +64,7 @@ Targets:
   cpp
   csharp [cs]
   commonjs [cjs]
+  esmodule [javascript, js, mjs, esm]
   go
   java
   python [py]
@@ -97,6 +98,13 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
   - With `-compat`: Use `Array` instead of `Uint8Array` for encode buffers and `bytes` fields, maximizing compatibility with older environments.
   - Force enabled: `-memcpy`.
   - Force enabled: Relative paths are always used via `require()`. `-relpath` is implicitly enabled.
+
+- `esmodule`: ES6 module, output one `.bb.js` file for each `.bb` file. Uses native `import`/`export` syntax, suitable for modern browsers and Node.js ESM. (Please note that `BigInt` is used for `int64` and `uint64` fields, which is not supported in some environments.)
+  - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
+  - Without `-compat`: Use `Uint8Array` for encode buffers and `bytes` fields for better performance (default).
+  - With `-compat`: Use `Array` instead of `Uint8Array` for encode buffers and `bytes` fields, maximizing compatibility with older environments.
+  - Force enabled: `-memcpy`.
+  - Force enabled: Relative paths are always used via `import`. `-relpath` is implicitly enabled.
 
 - `go`: Go language, output one `.bb.go` file for each `.bb` file. The folder structure will be affected by the `go_package` option. (i.e., `github.com/xaxys/bubbler` will generate in the `github.com/xaxys/bubbler` directory)
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option. The package name is determined by the package statement of the input `.bb` file.

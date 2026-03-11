@@ -20,6 +20,8 @@ func ExecuteTemplate(templ, templateName string, fns template.FuncMap, data inte
 	fns["TocamelCase"] = TocamelCase
 	fns["Tosnake_case"] = Tosnake_case
 	fns["ToALLCAP_CASE"] = ToALLCAP_CASE
+	fns["indentspace"] = func(n int, v any) string { return IndentSpaceNoFirst(v, n) }
+	fns["indent"] = func(n int, v any) string { return IndentSpace(v, n) }
 	templ = strings.Replace(templ, "\\\r\n", "", -1)
 	templ = strings.Replace(templ, "\\\r", "", -1)
 	templ = strings.Replace(templ, "\\\n", "", -1)

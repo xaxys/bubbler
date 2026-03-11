@@ -64,6 +64,7 @@ Targets:
   cpp
   csharp [cs]
   commonjs [cjs]
+  esmodule [javascript, js, mjs, esm]
   go
   java
   python [py]
@@ -97,6 +98,13 @@ Targets:
   - 使用 `-compat`：使用 `Array` 代替 `Uint8Array` 作为编码缓冲区和 `bytes` 字段的类型，最大化对旧环境的兑容性。
   - 强制启用：`-memcpy`。
   - 强制启用：`-relpath`：生成相对路径引用（如 `require("./foo_bb")`或`require("../foo_bb")`）。
+
+- `esmodule`：ES6模块，为每个 `.bb` 文件输出一个 `.bb.js` 文件。使用原生 ES6 `import`/`export` 语法，适用于现代浏览器和 Node.js ESM。（请注意，`int64` 和 `uint64` 字段使用了 `BigInt`，在某些环境中可能不支持）
+  - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
+  - 不使用 `-compat`：使用 `Uint8Array` 作为编码缓冲区和 `bytes` 字段的类型，以提高性能（默认）。
+  - 使用 `-compat`：使用 `Array` 代替 `Uint8Array` 作为编码缓冲区和 `bytes` 字段的类型，最大化对旧环境的兼容性。
+  - 强制启用：`-memcpy`。
+  - 强制启用：`-relpath`：生成相对路径导入（如 `import X from "./foo_bb.mjs"`或`import X from "../foo_bb.mjs"`）。
 
 - `go`：Go 语言，为每个 `.bb` 文件输出一个 `.bb.go` 文件。生成的文件夹结构将受到 `go_package` 选项的影响。例如，`github.com/xaxys/bubbler` 将在 `github.com/xaxys/bubbler` 目录中生成。
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。包名由输入 `.bb` 文件的包名声明确定。
