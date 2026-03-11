@@ -114,13 +114,13 @@ jobs:
       - name: Generate C++ code
         run: |
           mkdir -p e2e/tests/cpp/gen
-          ./bubbler -t cpp -single -o e2e/tests/cpp/gen/testcase.bb.hpp e2e/testcase.bb
-          ./bubbler -t cpp -single -o e2e/tests/cpp/gen/bitwid.bb.hpp   e2e/features/bitwid.bb
+          ./bubbler -t cpp -o e2e/tests/cpp/gen/ e2e/testcase.bb
+          ./bubbler -t cpp -o e2e/tests/cpp/gen/ e2e/features/bitwid.bb
 
       - name: Compile and run
         run: |
           cd e2e/tests/cpp
-          g++ -std=c++17 -Igen -o run_test main.cpp -lm
+          g++ -std=c++17 -Igen -o run_test main.cpp gen/testpkg.bb.cpp gen/bitwid.bb.cpp -lm
           ./run_test
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -274,7 +274,7 @@ jobs:
 # ─────────────────────────────────────────────────────────────────────────────
 # Job 8: JavaScript (CommonJS) codec tests
 # ─────────────────────────────────────────────────────────────────────────────
-  test-js:
+  test-cjs:
     name: Test — JavaScript
     needs: build-linux
     runs-on: ubuntu-latest
@@ -292,13 +292,13 @@ jobs:
 
       - name: Generate JS code
         run: |
-          mkdir -p e2e/tests/js/gen
-          ./bubbler -t cjs -single -o e2e/tests/js/gen/testcase.bb.js e2e/testcase.bb
-          ./bubbler -t cjs -single -o e2e/tests/js/gen/bitwid.bb.js   e2e/features/bitwid.bb
+          mkdir -p e2e/tests/cjs/gen
+          ./bubbler -t cjs -single -o e2e/tests/cjs/gen/testcase.bb.js e2e/testcase.bb
+          ./bubbler -t cjs -single -o e2e/tests/cjs/gen/bitwid.bb.js   e2e/features/bitwid.bb
 
       - name: Run tests
         run: |
-          cd e2e/tests/js
+          cd e2e/tests/cjs
           node test.mjs
 
 # ─────────────────────────────────────────────────────────────────────────────

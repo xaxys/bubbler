@@ -62,7 +62,7 @@ variant_c() {
     mkdir -p "$out/gen"
     "$BUBBLER" -t c "$@" -o "$out/gen/" testcase.bb
     "$BUBBLER" -t c "$@" -o "$out/gen/" features/bitwid.bb
-    gcc -std=c11 -I"$out/gen" -o "$out/run_test" tests/c/main.c "$out/gen/testpkg.bb.c" "$out/gen/bitwid.bb.c" -lm
+    gcc -std=c11 -I"$out" -I"$out/gen" -o "$out/run_test" tests/c/main.c "$out/gen/testpkg.bb.c" "$out/gen/bitwid.bb.c" -lm
     "$out/run_test" > /dev/null
 }
 
@@ -73,7 +73,7 @@ variant_cpp() {
     mkdir -p "$out/gen"
     "$BUBBLER" -t cpp "$@" -o "$out/gen/" testcase.bb
     "$BUBBLER" -t cpp "$@" -o "$out/gen/" features/bitwid.bb
-    g++ -std=c++17 -I"$out/gen" -o "$out/run_test" tests/cpp/main.cpp "$out/gen/testpkg.bb.cpp" "$out/gen/bitwid.bb.cpp" -lm
+    g++ -std=c++17 -I"$out" -I"$out/gen" -o "$out/run_test" tests/cpp/main.cpp "$out/gen/testpkg.bb.cpp" "$out/gen/bitwid.bb.cpp" -lm
     "$out/run_test" > /dev/null
 }
 
