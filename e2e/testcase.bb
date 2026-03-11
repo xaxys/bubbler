@@ -130,7 +130,7 @@ struct ConstantFields {
     uint8  header      = 0xAA;
     uint8  version     = 0x02;
     uint16 length;
-    uint8  magic_color = GREEN;
+    uint8  magic_color = 0x02;
 }
 
 // ============================================================

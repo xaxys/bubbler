@@ -17,7 +17,9 @@
 #   SKIP_PY   — Set to 1 to skip Python tests
 #   SKIP_JAVA — Set to 1 to skip Java tests
 #   SKIP_CS   — Set to 1 to skip C# tests
-#   SKIP_JS   — Set to 1 to skip JS tests
+#   SKIP_CJS  — Set to 1 to skip CommonJS tests
+#   SKIP_JS   — Deprecated alias of SKIP_CJS
+#   SKIP_ESM  — Set to 1 to skip ESModule tests
 ##############################################################################
 set -euo pipefail
 
@@ -35,7 +37,10 @@ cd "$E2E_DIR"
 
 # ─── locate bubbler binary ───────────────────────────────────────────────────
 if [[ -z "${BUBBLER:-}" ]]; then
-    if [[ -x "$PROJECT_ROOT/bubbler" ]]; then
+    # Prefer Windows-built binary when running in Git-Bash/WSL path views.
+    if [[ -x "$PROJECT_ROOT/bubbler.exe" ]]; then
+        BUBBLER="$PROJECT_ROOT/bubbler.exe"
+    elif [[ -x "$PROJECT_ROOT/bubbler" ]]; then
         BUBBLER="$PROJECT_ROOT/bubbler"
     elif command -v bubbler &>/dev/null; then
         BUBBLER="bubbler"
@@ -71,9 +76,16 @@ GO_DIR="$E2E_DIR/tests/go"
 PY_DIR="$E2E_DIR/tests/python"
 JAVA_DIR="$E2E_DIR/tests/java"
 CS_DIR="$E2E_DIR/tests/csharp"
-JS_DIR="$E2E_DIR/tests/js"
+ESM_DIR="$E2E_DIR/tests/esm"
 
-mkdir -p "$C_DIR/gen" "$CPP_DIR/gen" "$JAVA_DIR/gen" "$PY_DIR/gen" "$CS_DIR/gen" "$JS_DIR/gen"
+# Backward-compatible alias while migrating from ambiguous "js" naming.
+if [[ -n "${SKIP_JS:-}" && -z "${SKIP_CJS:-}" ]]; then
+    SKIP_CJS="$SKIP_JS"
+fi
+
+CJS_DIR="$E2E_DIR/tests/cjs"
+
+mkdir -p "$C_DIR/gen" "$CPP_DIR/gen" "$JAVA_DIR/gen" "$PY_DIR/gen" "$CS_DIR/gen" "$CJS_DIR/gen" "$ESM_DIR/gen"
 
 ##############################################################################
 # CODE GENERATION
@@ -86,22 +98,24 @@ echo "════════════════════════�
 # — testcase.bb for all targets —
 echo "[gen] testcase.bb"
 "$BUBBLER" -t c   -o "$C_DIR/gen/"                              testcase.bb
-"$BUBBLER" -t cpp -single -o "$CPP_DIR/gen/testcase.bb.hpp"    testcase.bb
-"$BUBBLER" -t go  -o "$GO_DIR/"                                 testcase.bb
-"$BUBBLER" -t java        -o "$JAVA_DIR/gen/"                   testcase.bb
-"$BUBBLER" -t py  -single -o "$PY_DIR/gen/testcase_bb.py"      testcase.bb
-"$BUBBLER" -t cs  -single -o "$CS_DIR/gen/testcase.bb.cs"      testcase.bb
-"$BUBBLER" -t cjs -single -o "$JS_DIR/gen/testcase.bb.js"      testcase.bb
+"$BUBBLER" -t cpp -o "$CPP_DIR/gen/"                            testcase.bb
+"$BUBBLER" -t go  -o "tests/go/"                                 testcase.bb
+"$BUBBLER" -t java        -o "tests/java/gen/"                   testcase.bb
+"$BUBBLER" -t py  -single -o "tests/python/gen/testcase_bb.py"      testcase.bb
+"$BUBBLER" -t cs  -single -o "tests/csharp/gen/testcase.bb.cs"      testcase.bb
+"$BUBBLER" -t cjs -single -o "tests/cjs/gen/testcase.bb.js"      testcase.bb
+"$BUBBLER" -t mjs -single -o "tests/esm/gen/testcase.bb.js"    testcase.bb
 
 # — bitwid.bb (narrow array feature) for all targets —
 echo "[gen] bitwid.bb"
 "$BUBBLER" -t c   -o "$C_DIR/gen/"                              features/bitwid.bb
-"$BUBBLER" -t cpp -single -o "$CPP_DIR/gen/bitwid.bb.hpp"      features/bitwid.bb
-"$BUBBLER" -t go  -o "$GO_DIR/"                                 features/bitwid.bb
-"$BUBBLER" -t java        -o "$JAVA_DIR/gen/"                   features/bitwid.bb
-"$BUBBLER" -t py  -single -o "$PY_DIR/gen/bitwid_bb.py"        features/bitwid.bb
-"$BUBBLER" -t cs  -single -o "$CS_DIR/gen/bitwid.bb.cs"        features/bitwid.bb
-"$BUBBLER" -t cjs -single -o "$JS_DIR/gen/bitwid.bb.js"        features/bitwid.bb
+"$BUBBLER" -t cpp -o "$CPP_DIR/gen/"                            features/bitwid.bb
+"$BUBBLER" -t go  -o "tests/go/"                                 features/bitwid.bb
+"$BUBBLER" -t java        -o "tests/java/gen/"                   features/bitwid.bb
+"$BUBBLER" -t py  -single -o "tests/python/gen/bitwid_bb.py"        features/bitwid.bb
+"$BUBBLER" -t cs  -single -o "tests/csharp/gen/bitwid.bb.cs"        features/bitwid.bb
+"$BUBBLER" -t cjs -single -o "tests/cjs/gen/bitwid.bb.js"        features/bitwid.bb
+"$BUBBLER" -t mjs -single -o "tests/esm/gen/bitwid.bb.js"      features/bitwid.bb
 
 echo "[gen] done"
 
@@ -133,7 +147,7 @@ if [[ "${SKIP_CPP:-0}" != "1" ]]; then
     echo "--- C++ ---"
     (
         cd "$CPP_DIR"
-        g++ -std=c++17 -Igen -o run_test main.cpp -lm
+        g++ -std=c++17 -Igen -o run_test main.cpp gen/testpkg.bb.cpp gen/bitwid.bb.cpp -lm
         ./run_test
     )
     section_pass "C++" "$?"
@@ -187,40 +201,70 @@ fi
 if [[ "${SKIP_CS:-0}" != "1" ]]; then
     echo
     echo "--- C# (net8.0) ---"
-    (
-        cd "$CS_DIR"
-        dotnet run -f net8.0 --project test.csproj
-    )
-    section_pass "C# net8.0" "$?"
-
-    echo
-    echo "--- C# (net472 / Mono) ---"
-    if [[ "$(uname)" == "Linux" ]]; then
-        echo "  [SKIP] C# net472 (Linux: net472 requires Windows; tested in CI Windows runner)"
+    if ! command -v dotnet >/dev/null 2>&1; then
+        echo "  [SKIP] C# (dotnet not found)"
     else
         (
             cd "$CS_DIR"
-            dotnet build test.csproj -f net472 -c Release --nologo -q
-            mono bin/Release/net472/test.exe
+            dotnet run -f net8.0 --project test.csproj
         )
-        section_pass "C# net472" "$?"
+        section_pass "C# net8.0" "$?"
+
+        echo
+        echo "--- C# (net472 / Mono) ---"
+        if [[ "$(uname)" == "Linux" ]]; then
+            echo "  [SKIP] C# net472 (Linux: net472 requires Windows; tested in CI Windows runner)"
+        else
+            (
+                cd "$CS_DIR"
+                dotnet build test.csproj -f net472 -c Release --nologo -q
+                mono bin/Release/net472/test.exe
+            )
+            section_pass "C# net472" "$?"
+        fi
     fi
 else
     echo "  [SKIP] C#"
 fi
 
-# ── JavaScript (CommonJS) ────────────────────────────────────────────────────
-if [[ "${SKIP_JS:-0}" != "1" ]]; then
+# ── CommonJS (cjs) ───────────────────────────────────────────────────────────
+if [[ "${SKIP_CJS:-0}" != "1" ]]; then
     echo
-    echo "--- JavaScript ---"
+    echo "--- CommonJS (cjs) ---"
     (
-        cd "$JS_DIR"
+        cd "$CJS_DIR"
         node test.mjs
     )
-    section_pass "JavaScript" "$?"
+    section_pass "CommonJS (cjs)" "$?"
 else
-    echo "  [SKIP] JavaScript"
+    echo "  [SKIP] CommonJS (cjs)"
 fi
+
+# ── ESModule (mjs target) ────────────────────────────────────────────────────
+if [[ "${SKIP_ESM:-0}" != "1" ]]; then
+    echo
+    echo "--- ESModule (mjs) ---"
+    (
+        cd "$ESM_DIR"
+        node test.mjs
+    )
+    section_pass "ESModule (mjs)" "$?"
+else
+    echo "  [SKIP] ESModule (mjs)"
+fi
+
+    ##############################################################################
+    # EMPTY SCHEMA CODEGEN TESTS
+    ##############################################################################
+    echo
+    echo "════════════════════════════════════════════"
+    echo " Empty Schema Codegen Tests"
+    echo "════════════════════════════════════════════"
+    (
+        export BUBBLER
+        bash framework/test_empty_codegen.sh
+    )
+    section_pass "Empty Schema Codegen Matrix" "$?"
 
 ##############################################################################
 # COMPILER OPTION TESTS

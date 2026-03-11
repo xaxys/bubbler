@@ -2,11 +2,11 @@
  * Bubbler E2E Test — C++ target
  *
  * Build (from this directory, after code-gen step):
- *   g++ -std=c++17 -Igen -o run_test main.cpp -lm
+ *   g++ -std=c++17 -Igen -o run_test main.cpp gen/testpkg.bb.cpp gen/bitwid.bb.cpp -lm
  *
  * The run_tests.sh script generates gen/ then invokes this.
  */
-#include "gen/testcase.bb.hpp"
+#include "gen/testpkg.bb.hpp"
 #include "gen/bitwid.bb.hpp"
 #include <cmath>
 #include <cstdio>

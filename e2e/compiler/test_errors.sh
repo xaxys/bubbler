@@ -14,8 +14,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."   # ensure we run from e2e/
 
-BUBBLER="${BUBBLER:-../bubbler}"
-TMPDIR_BASE="${TMPDIR:-/tmp}/bubbler_errs_$$"
+if [[ -z "${BUBBLER:-}" ]]; then
+    if [[ -x "../bubbler.exe" ]]; then
+        BUBBLER="../bubbler.exe"
+    else
+        BUBBLER="../bubbler"
+    fi
+fi
+TMPDIR_BASE="tests/.tmp_bubbler_errs_$$"
 mkdir -p "$TMPDIR_BASE"
 trap 'rm -rf "$TMPDIR_BASE"' EXIT
 

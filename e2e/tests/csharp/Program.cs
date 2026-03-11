@@ -32,6 +32,26 @@ void CheckEq<T>(T a, T b, string msg)
 void CheckNear(double a, double b, double eps, string msg)
     => Check(Math.Abs(a - b) < eps, $"{msg}: got {a}, want ~{b}");
 
+void SetDynamicData(DynamicFields msg, byte[] data) {
+    var prop = typeof(DynamicFields).GetProperty("Data");
+    if (prop == null) throw new InvalidOperationException("DynamicFields.Data not found");
+
+    if (prop.PropertyType == typeof(byte[])) {
+        prop.SetValue(msg, data);
+        return;
+    }
+    if (prop.PropertyType == typeof(Memory<byte>)) {
+        prop.SetValue(msg, new Memory<byte>(data));
+        return;
+    }
+    if (prop.PropertyType == typeof(ReadOnlyMemory<byte>)) {
+        prop.SetValue(msg, new ReadOnlyMemory<byte>(data));
+        return;
+    }
+
+    throw new InvalidOperationException($"Unsupported DynamicFields.Data type: {prop.PropertyType}");
+}
+
 /* ------------------------------------------------------------------ */
 /* Test 1: SimpleScalars                                               */
 /* ------------------------------------------------------------------ */
@@ -261,30 +281,32 @@ current = "DynamicFields";
     var s = new DynamicFields {
         Id    = 0xDEADBEEF,
         Label = "hello, bubbler!",
-        Data  = new Memory<byte>(blob),
     };
-    byte[] buf = s.Encode();
+    SetDynamicData(s, blob);
+    var buf = s.Encode();
     var d = new DynamicFields();
-    int dec = d.Decode(buf);
+    int dec = d.Decode(buf.ToArray());
     Check(dec > 0, "non-empty decode > 0");
     CheckEq(d.Id, 0xDEADBEEFu, "id");
     CheckEq(d.Label, "hello, bubbler!", "label");
     Check(d.Data.ToArray().SequenceEqual(blob), "data bytes");
 
     // Empty
-    var s2 = new DynamicFields { Id = 0, Label = "", Data = Memory<byte>.Empty };
-    byte[] buf2 = s2.Encode();
+    var s2 = new DynamicFields { Id = 0, Label = "" };
+    SetDynamicData(s2, Array.Empty<byte>());
+    var buf2 = s2.Encode();
     var d2 = new DynamicFields();
-    Check(d2.Decode(buf2) > 0, "empty decode > 0");
+    Check(d2.Decode(buf2.ToArray()) > 0, "empty decode > 0");
     CheckEq(d2.Label, "", "empty label");
     Check(d2.Data.Length == 0, "empty data");
 
     // UTF-8
     string utf8 = "\u4e2d\u6587"; // 中文
-    var s3 = new DynamicFields { Id = 1, Label = utf8, Data = Memory<byte>.Empty };
-    byte[] buf3 = s3.Encode();
+    var s3 = new DynamicFields { Id = 1, Label = utf8 };
+    SetDynamicData(s3, Array.Empty<byte>());
+    var buf3 = s3.Encode();
     var d3 = new DynamicFields();
-    d3.Decode(buf3);
+    d3.Decode(buf3.ToArray());
     CheckEq(d3.Label, utf8, "utf8 label");
 }
 

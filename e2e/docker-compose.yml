@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # Run the complete E2E test suite inside Docker.
   # Usage:  docker-compose run --rm e2e
@@ -18,7 +16,7 @@ services:
     # SKIP_PY:   "1"
     # SKIP_JAVA: "1"
     # SKIP_CS:   "1"
-    # SKIP_JS:   "1"
+    # SKIP_CJS:  "1"
     volumes:
       # Mount project directory for live iteration (optional)
       # - ..:/app:ro

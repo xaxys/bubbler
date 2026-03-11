@@ -12,8 +12,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."   # ensure we run from e2e/
 
-BUBBLER="${BUBBLER:-../bubbler}"
-TMPDIR_BASE="${TMPDIR:-/tmp}/bubbler_opts_$$"
+if [[ -z "${BUBBLER:-}" ]]; then
+    if [[ -x "../bubbler.exe" ]]; then
+        BUBBLER="../bubbler.exe"
+    else
+        BUBBLER="../bubbler"
+    fi
+fi
+TMPDIR_BASE="tests/.tmp_bubbler_opts_$$"
 mkdir -p "$TMPDIR_BASE"
 trap 'rm -rf "$TMPDIR_BASE"' EXIT
 
@@ -37,6 +43,117 @@ check_contains() {
 check_not_contains() {
     local file="$1" pattern="$2" label="$3"
     grep -q "$pattern" "$file" && fail "$label: pattern '$pattern' should NOT be in $file" || ok "$label"
+}
+
+run_variant() {
+    local label="$1"
+    shift
+    if "$@"; then
+        ok "$label"
+    else
+        fail "$label"
+    fi
+}
+
+variant_c() {
+    local name="$1"
+    shift
+    local out="$TMPDIR_BASE/variants/c/$name"
+    mkdir -p "$out/gen"
+    "$BUBBLER" -t c "$@" -o "$out/gen/" testcase.bb
+    "$BUBBLER" -t c "$@" -o "$out/gen/" features/bitwid.bb
+    gcc -std=c11 -I"$out/gen" -o "$out/run_test" tests/c/main.c "$out/gen/testpkg.bb.c" "$out/gen/bitwid.bb.c" -lm
+    "$out/run_test" > /dev/null
+}
+
+variant_cpp() {
+    local name="$1"
+    shift
+    local out="$TMPDIR_BASE/variants/cpp/$name"
+    mkdir -p "$out/gen"
+    "$BUBBLER" -t cpp "$@" -o "$out/gen/" testcase.bb
+    "$BUBBLER" -t cpp "$@" -o "$out/gen/" features/bitwid.bb
+    g++ -std=c++17 -I"$out/gen" -o "$out/run_test" tests/cpp/main.cpp "$out/gen/testpkg.bb.cpp" "$out/gen/bitwid.bb.cpp" -lm
+    "$out/run_test" > /dev/null
+}
+
+variant_go() {
+    local name="$1"
+    shift
+    local out="$TMPDIR_BASE/variants/go/$name"
+    mkdir -p "$out/bitwid" "$out/testpkg"
+    cp tests/go/go.mod "$out/go.mod"
+    cp tests/go/bitwid/bitwid_test.go "$out/bitwid/"
+    cp tests/go/testpkg/testpkg_test.go "$out/testpkg/"
+    "$BUBBLER" -t go "$@" -o "$out/" testcase.bb
+    "$BUBBLER" -t go "$@" -o "$out/" features/bitwid.bb
+    (cd "$out" && go test ./... -v > /dev/null)
+}
+
+variant_java() {
+    local name="$1"
+    shift
+    local out="$TMPDIR_BASE/variants/java/$name"
+    mkdir -p "$out/gen"
+    cp tests/java/Main.java "$out/Main.java"
+    "$BUBBLER" -t java "$@" -o "$out/gen/" testcase.bb
+    "$BUBBLER" -t java "$@" -o "$out/gen/" features/bitwid.bb
+    (cd "$out" && rm -rf out && mkdir out && find gen -name "*.java" -exec javac -encoding UTF-8 -d out {} + && javac -encoding UTF-8 -cp out -d out Main.java && java -cp out Main > /dev/null)
+}
+
+variant_python() {
+    local name="$1"
+    shift
+    local out="$TMPDIR_BASE/variants/python/$name"
+    mkdir -p "$out/gen"
+    cp tests/python/test_main.py "$out/test_main.py"
+    "$BUBBLER" -t py "$@" -single -o "$out/gen/testcase_bb.py" testcase.bb
+    "$BUBBLER" -t py "$@" -single -o "$out/gen/bitwid_bb.py" features/bitwid.bb
+    (cd "$out" && python3 test_main.py > /dev/null)
+}
+
+variant_csharp() {
+    local name="$1"
+    shift
+    local out="$TMPDIR_BASE/variants/csharp/$name"
+    mkdir -p "$out/gen"
+    cp tests/csharp/Program.cs "$out/Program.cs"
+    cp tests/csharp/test.csproj "$out/test.csproj"
+    "$BUBBLER" -t cs "$@" -single -o "$out/gen/testcase.bb.cs" testcase.bb
+    "$BUBBLER" -t cs "$@" -single -o "$out/gen/bitwid.bb.cs" features/bitwid.bb
+    (
+        cd "$out"
+        dotnet run -f net8.0 --project test.csproj > dotnet.log 2>&1 || {
+            echo "[csharp:$name] dotnet run failed" >&2
+            cat dotnet.log >&2
+            echo "[csharp:$name] Program.cs around reported lines:" >&2
+            awk '{printf("%6d  %s\n", NR, $0)}' Program.cs | sed -n '250,295p' >&2
+            return 1
+        }
+    )
+}
+
+variant_cjs() {
+    local name="$1"
+    shift
+    local out="$TMPDIR_BASE/variants/cjs/$name"
+    mkdir -p "$out/gen"
+    cp tests/cjs/test.mjs "$out/test.mjs"
+    "$BUBBLER" -t cjs "$@" -single -o "$out/gen/testcase.bb.js" testcase.bb
+    "$BUBBLER" -t cjs "$@" -single -o "$out/gen/bitwid.bb.js" features/bitwid.bb
+    (cd "$out" && node test.mjs > /dev/null)
+}
+
+variant_esm() {
+    local name="$1"
+    shift
+    local out="$TMPDIR_BASE/variants/esm/$name"
+    mkdir -p "$out/gen"
+    cp tests/esm/test.mjs "$out/test.mjs"
+    cp tests/esm/package.json "$out/package.json"
+    "$BUBBLER" -t mjs "$@" -single -o "$out/gen/testcase.bb.js" testcase.bb
+    "$BUBBLER" -t mjs "$@" -single -o "$out/gen/bitwid.bb.js" features/bitwid.bb
+    (cd "$out" && node test.mjs > /dev/null)
 }
 
 ##############################################################################
@@ -179,6 +296,69 @@ check_not_contains "$out_cjs_default/testcase.bb.js" "if (data === undefined) da
 # With -compat: allocates Array for encode buffers
 check_contains     "$out_cjs_compat/testcase.bb.js" "if (data === undefined) data = new Array(" "-compat: Array alloc used"
 check_not_contains "$out_cjs_compat/testcase.bb.js" "if (data === undefined) data = new Uint8Array(" "-compat: no Uint8Array alloc"
+
+##############################################################################
+# 11. Runtime matrix — per-target CLI option variants must pass codec tests
+##############################################################################
+echo
+echo "=== #11: per-target option variants runtime matrix ==="
+
+if command -v gcc >/dev/null 2>&1; then
+    run_variant "C runtime: default"            variant_c default
+    run_variant "C runtime: -minimal"           variant_c minimal -minimal
+    run_variant "C runtime: -decnum"            variant_c decnum -decnum
+    run_variant "C runtime: -signext arith"     variant_c signext_arith -signext arith
+else
+    ok "C runtime matrix skipped (gcc not found)"
+fi
+
+if command -v g++ >/dev/null 2>&1; then
+    run_variant "C++ runtime: default"          variant_cpp default
+    run_variant "C++ runtime: -minimal"         variant_cpp minimal -minimal
+    run_variant "C++ runtime: -decnum"          variant_cpp decnum -decnum
+    run_variant "C++ runtime: -signext arith"   variant_cpp signext_arith -signext arith
+else
+    ok "C++ runtime matrix skipped (g++ not found)"
+fi
+
+if command -v go >/dev/null 2>&1; then
+    run_variant "Go runtime: default"           variant_go default
+    run_variant "Go runtime: -decnum"           variant_go decnum -decnum
+    run_variant "Go runtime: -signext arith"    variant_go signext_arith -signext arith
+else
+    ok "Go runtime matrix skipped (go not found)"
+fi
+
+if command -v python3 >/dev/null 2>&1; then
+    run_variant "Python runtime: default"       variant_python default
+    run_variant "Python runtime: -decnum"       variant_python decnum -decnum
+    run_variant "Python runtime: -signext arith" variant_python signext_arith -signext arith
+else
+    ok "Python runtime matrix skipped (python3 not found)"
+fi
+
+if command -v javac >/dev/null 2>&1 && command -v java >/dev/null 2>&1; then
+    run_variant "Java runtime: default"         variant_java default
+    run_variant "Java runtime: -decnum"         variant_java decnum -decnum
+else
+    ok "Java runtime matrix skipped (javac/java not found)"
+fi
+
+if command -v dotnet >/dev/null 2>&1; then
+    run_variant "C# runtime: default"           variant_csharp default
+    run_variant "C# runtime: -memcpy"           variant_csharp memcpy -memcpy
+else
+    ok "C# runtime matrix skipped (dotnet not found)"
+fi
+
+if command -v node >/dev/null 2>&1; then
+    run_variant "CommonJS runtime: default"     variant_cjs default
+    run_variant "CommonJS runtime: -compat"     variant_cjs compat -compat
+    run_variant "ESModule runtime: default"     variant_esm default
+    run_variant "ESModule runtime: -compat"     variant_esm compat -compat
+else
+    ok "JS runtime matrices skipped (node not found)"
+fi
 
 ##############################################################################
 # Summary

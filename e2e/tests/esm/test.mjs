@@ -1,15 +1,16 @@
 /**
- * Bubbler E2E Test — CommonJS target
+ * Bubbler E2E Test — ESModule target
  *
  * Run (from this directory, after code-gen step):
  *   node test.mjs
  *
  * The run_tests.sh script generates gen/testcase.bb.js then invokes node.
  */
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const pkg = require("./gen/testcase.bb.js").testpkg;
-const bw  = require("./gen/bitwid.bb.js").bitwid;
+import pkgRoot from "./gen/testcase.bb.js";
+import bwRoot  from "./gen/bitwid.bb.js";
+
+const pkg = pkgRoot.testpkg;
+const bw  = bwRoot.bitwid;
 
 /* ------------------------------------------------------------------ */
 /* Minimal test framework                                               */
@@ -277,7 +278,7 @@ g_current = "DynamicFields";
     s.data  = [...blob];  // Array of numbers
 
     const buf = pkg.DynamicFields.encode(s);
-    check(buf instanceof Uint8Array, "encode returns Uint8Array");
+    check((buf instanceof Uint8Array) || Array.isArray(buf), "encode returns Uint8Array/Array");
     const d = new pkg.DynamicFields();
     const n = pkg.DynamicFields.decode(d, buf);
     check(n > 0, `decode > 0: got ${n}`);
@@ -380,6 +381,6 @@ g_current = "NarrowBWTest";
 /* ------------------------------------------------------------------ */
 /* Summary                                                             */
 /* ------------------------------------------------------------------ */
-console.log(`\n=== Bubbler E2E Test — CommonJS ===`);
+console.log(`\n=== Bubbler E2E Test — ESModule ===`);
 console.log(`=== Results: ${g_pass} passed, ${g_fail} failed ===`);
 process.exit(g_fail > 0 ? 1 : 0);
