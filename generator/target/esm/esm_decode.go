@@ -1,7 +1,8 @@
-package esm
+﻿package esm
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/xaxys/bubbler/definition"
 	"github.com/xaxys/bubbler/generator/gen"
@@ -18,8 +19,18 @@ var decoderTemplate = `
 {{- end -}}
 {{- end -}}
 
-{{- define "decoder" -}}
+{{- define "decoderFunc" -}}
 {{- $structName := .StructDef.StructName -}}
+/**
+ * Decode buffer to {{ $structName }} object.
+ * @function decode
+ * @memberof {{ .StructDef.StructBelongs.Package }}.{{ $structName }}
+ * @static
+ * @param {Object} obj {{ $structName }} object.
+ * @param {Array|Uint8Array} data The buffer to decode from.
+ * @param {Number} [start] Start position of buffer to decode.
+ * @returns {Number} -1 if decode failed, otherwise number of bytes decoded.
+ */
 static decode(obj, data, start) {
     if (obj === undefined) return -1;
     if (data === undefined) return -1;
@@ -33,13 +44,181 @@ static decode(obj, data, start) {
     return {{ if .Dynamic }}offset + {{ end }}{{ calc .StructDef.StructBitSize "/" 8 }};
 }
 
+/**
+ * Decode buffer to {{ $structName }} object.
+ * @function decode
+ * @memberof {{ .StructDef.StructBelongs.Package }}.{{ $structName }}
+ * @instance
+ * @param {Array|Uint8Array} data The buffer to decode from.
+ * @param {Number} [start] Start position of buffer to decode.
+ * @returns {Number} -1 if decode failed, otherwise number of bytes decoded.
+ */
 decode(data, start) {
     return {{ $structName }}.decode(this, data, start);
+}
+{{- end -}}
+
+{{- define "decoder" -}}
+{{ template "decoderSize" . }}
+
+{{ template "decoderFunc" . }}
+{{- end -}}
+
+{{- define "decoderSizeField" -}}
+{{- $fromByte := .FromByte -}}
+{{- $f := .Field -}}
+{{- if $f.FieldType.GetTypeID.IsArray -}}
+    {{- if $f.FieldType.ElementType.GetTypeID.IsString -}}
+        {{- range $i := iterate 0 $f.FieldType.Length }}
+    { // string[{{ $i }}]: {{ $f.FieldName }}
+        let _pos = offset + {{ $fromByte }};
+        if (data.length - start <= _pos) return -(_pos + 1);
+        let _length = 0;
+        while (data[_pos + start + _length] !== 0) {
+            _length++;
+            if (_pos + _length >= data.length - start) { return -(_pos + _length + 1); }
+        }
+        offset += _length + 1;
+    }
+        {{- end -}}
+    {{- else if $f.FieldType.ElementType.GetTypeID.IsBytes -}}
+        {{- range $i := iterate 0 $f.FieldType.Length }}
+    { // bytes[{{ $i }}]: {{ $f.FieldName }}
+        let _pos = offset + {{ $fromByte }};
+        if (data.length - start <= _pos) { return -(_pos + 1); }
+        let _length = 0;
+        let _shift = 0;
+        while ((data[_pos + start] & 0x80) !== 0) {
+            _length |= (data[_pos + start] & 0x7F) << _shift;
+            _shift += 7;
+            _pos++;
+            if (_pos >= data.length - start) { return -(_pos + 1); }
+        }
+        _length |= (data[_pos + start] & 0x7F) << _shift;
+        _pos++;
+        if (data.length - start < _pos + _length) return -(_pos + _length);
+        offset += _pos - (offset + {{ $fromByte }}) + _length;
+    }
+        {{- end -}}
+    {{- else if $f.FieldType.ElementType.GetTypeID.IsStruct -}}
+        {{- if $f.FieldType.ElementType.GetTypeDynamic -}}
+            {{- $pkgPrefix := FieldStructPkgPrefix $f -}}
+            {{- range $i := iterate 0 $f.FieldType.Length }}
+    { // struct[{{ $i }}]: {{ $f.FieldName }}
+        const _subSize = {{ $pkgPrefix }}.decode_size(data, offset + start + {{ $fromByte }});
+        if (_subSize < 0) { return -(offset + {{ $fromByte }}) + _subSize; }
+        offset += _subSize;
+    }
+            {{- end -}}
+        {{- end -}}
+    {{- end -}}
+{{- else if $f.FieldType.GetTypeID.IsString }}
+    { // string: {{ $f.FieldName }}
+        let _pos = offset + {{ $fromByte }};
+        if (data.length - start <= _pos) return -(_pos + 1);
+        let _length = 0;
+        while (data[_pos + start + _length] !== 0) {
+            _length++;
+            if (_pos + _length >= data.length - start) { return -(_pos + _length + 1); }
+        }
+        offset += _length + 1;
+    }
+{{- else if $f.FieldType.GetTypeID.IsBytes }}
+    { // bytes: {{ $f.FieldName }}
+        let _pos = offset + {{ $fromByte }};
+        if (data.length - start <= _pos) { return -(_pos + 1); }
+        let _length = 0;
+        let _shift = 0;
+        while ((data[_pos + start] & 0x80) !== 0) {
+            _length |= (data[_pos + start] & 0x7F) << _shift;
+            _shift += 7;
+            _pos++;
+            if (_pos >= data.length - start) { return -(_pos + 1); }
+        }
+        _length |= (data[_pos + start] & 0x7F) << _shift;
+        _pos++;
+        if (data.length - start < _pos + _length) return -(_pos + _length);
+        offset += _pos - (offset + {{ $fromByte }}) + _length;
+    }
+{{- else if $f.FieldType.GetTypeID.IsStruct -}}
+    {{- if $f.FieldType.GetTypeDynamic -}}
+    {{- $pkgPrefix := FieldStructPkgPrefix $f -}}
+    { // struct: {{ $f.FieldName }}
+        const _subSize = {{ $pkgPrefix }}.decode_size(data, offset + start + {{ $fromByte }});
+        if (_subSize < 0) { return -(offset + {{ $fromByte }}) + _subSize; }
+        offset += _subSize;
+    }
+    {{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "decoderSize" -}}
+{{- $structName := .StructDef.StructName -}}
+{{- $structBytes := calc .StructDef.StructBitSize "/" 8 -}}
+/**
+ * Calculate size of {{ $structName }} from buffer.
+ * @function decode_size
+ * @description Returns the encoded size (> 0) if successful, or the negative minimum required size (< 0) if data is insufficient. The required size may change as more data is provided.
+ * @memberof {{ .StructDef.StructBelongs.Package }}.{{ $structName }}
+ * @static
+ * @param {Array|Uint8Array} data The buffer to probe.
+ * @param {Number} [start] Start position of buffer.
+ * @returns {Number} Positive frame size if complete, negative minimum needed size if incomplete.
+ */
+static decode_size(data, start) {
+    if (data === undefined) return -1;
+    if (start === undefined) start = 0;
+    {{- if .StructDef.StructDynamic }}
+    let offset = 0;
+    {{- $fixedStart := 0 }}
+    {{- range $field := .StructDef.StructFields.Values }}
+        {{- if and $field.GetFieldKind.IsNormal (lt $field.GetFieldBitSize 0) }}
+    {{- template "decoderSizeField" (dict "Field" $field "FromByte" (calc $fixedStart "/" 8)) }}
+        {{- end }}
+        {{- if ne $field.GetFieldBitSize -1 }}
+    {{- $fixedStart = calc $fixedStart "+" $field.GetFieldBitSize }}
+        {{- end }}
+    {{- end }}
+    if (data.length - start < offset + {{ $structBytes }}) return -(offset + {{ $structBytes }});
+    return offset + {{ $structBytes }};
+    {{- else }}
+    if (data.length - start < {{ $structBytes }}) return -({{ $structBytes }});
+    return {{ $structBytes }};
+    {{- end }}
+}
+
+/**
+ * Calculate size of {{ $structName }} from buffer.
+ * @function decode_size
+ * @memberof {{ .StructDef.StructBelongs.Package }}.{{ $structName }}
+ * @instance
+ * @param {Array|Uint8Array} data The buffer to probe.
+ * @param {Number} [start] Start position of buffer.
+ * @returns {Number} Positive frame size if complete, negative minimum needed size if incomplete.
+ */
+decode_size(data, start) {
+    return {{ $structName }}.decode_size(data, start);
 }
 {{- end -}}
 `
 
 func (g ESModuleGenerator) GenerateDecoder(structDef *definition.Struct) (string, error) {
+	funcMap := map[string]any{
+		"FieldStructPkgPrefix": func(f interface{}) string {
+			if nf, ok := f.(*definition.NormalField); ok {
+				if s, ok := nf.FieldType.(*definition.Struct); ok {
+					return strings.TrimSpace(g.generateStructPackagePrefix(s))
+				}
+				if a, ok := nf.FieldType.(*definition.Array); ok {
+					if s, ok := a.ElementType.(*definition.Struct); ok {
+						return strings.TrimSpace(g.generateStructPackagePrefix(s))
+					}
+				}
+			}
+			return ""
+		},
+	}
+
 	decodeStrs := []string{}
 	if err := structDef.ForEachFieldWithPos(func(field definition.Field, fieldIndex int, startBits int64, dynamic bool, pos string) error {
 		decodeStmts, err := g.generateDecodeField(field, startBits)
@@ -60,7 +239,7 @@ func (g ESModuleGenerator) GenerateDecoder(structDef *definition.Struct) (string
 			"Field":       field,
 			"DecodeStmts": filtered,
 		}
-		str := util.ExecuteTemplate(decoderTemplate, "decodeField", nil, decodeFieldData)
+		str := util.ExecuteTemplate(decoderTemplate, "decodeField", funcMap, decodeFieldData)
 		decodeStrs = append(decodeStrs, str)
 		return nil
 	}); err != nil {
@@ -73,7 +252,7 @@ func (g ESModuleGenerator) GenerateDecoder(structDef *definition.Struct) (string
 		"GenOptions": g.GenCtx.GenOptions,
 		"Dynamic":    structDef.GetTypeDynamic(),
 	}
-	return util.ExecuteTemplate(decoderTemplate, "decoder", nil, fieldData), nil
+	return util.ExecuteTemplate(decoderTemplate, "decoder", funcMap, fieldData), nil
 }
 
 func (g ESModuleGenerator) generateDecodeField(field definition.Field, startBits int64) ([]string, error) {

@@ -6,6 +6,7 @@ package testpkg
 
 import (
 	"bytes"
+	"encoding/binary"
 	"math"
 	"testing"
 )
@@ -387,6 +388,85 @@ func TestDynamicFields(t *testing.T) {
 		d.Decode(buf)
 		if d.Label != utf8str {
 			t.Errorf("UTF-8 label mismatch: got %q", d.Label)
+		}
+	})
+}
+
+func TestDynamicFieldsDecodeSize(t *testing.T) {
+	buildPacket := func(label string, payload []byte) []byte {
+		s := DynamicFields{Id: 1, Label: label, Data: payload}
+		return s.Encode()
+	}
+
+	t.Run("complete packet", func(t *testing.T) {
+		buf := buildPacket("hello", []byte{0xAA, 0xBB, 0xCC})
+		var d DynamicFields
+		if got := d.DecodeSize(buf); got != len(buf) {
+			t.Fatalf("DecodeSize complete: got %d, want %d", got, len(buf))
+		}
+	})
+
+	t.Run("truncate one byte", func(t *testing.T) {
+		buf := buildPacket("hello", []byte{0xAA, 0xBB, 0xCC})
+		var d DynamicFields
+		if got := d.DecodeSize(buf[:len(buf)-1]); got != -len(buf) {
+			t.Fatalf("DecodeSize truncated: got %d, want %d", got, -len(buf))
+		}
+	})
+
+	t.Run("string without terminator", func(t *testing.T) {
+		malformed := []byte{1, 0, 0, 0, 'A'}
+		var d DynamicFields
+		if got := d.DecodeSize(malformed); got != -6 {
+			t.Fatalf("DecodeSize missing string terminator: got %d, want -6", got)
+		}
+	})
+
+	t.Run("bytes varint length truncated", func(t *testing.T) {
+		malformed := []byte{1, 0, 0, 0, 'A', 0, 0x80}
+		var d DynamicFields
+		if got := d.DecodeSize(malformed); got != -8 {
+			t.Fatalf("DecodeSize truncated varint: got %d, want -8", got)
+		}
+	})
+
+	t.Run("bytes payload truncated", func(t *testing.T) {
+		malformed := []byte{1, 0, 0, 0, 'A', 0, 0x03, 0xAA, 0xBB}
+		var d DynamicFields
+		if got := d.DecodeSize(malformed); got != -10 {
+			t.Fatalf("DecodeSize truncated payload: got %d, want -10", got)
+		}
+	})
+
+	t.Run("empty dynamic fields", func(t *testing.T) {
+		buf := buildPacket("", nil)
+		var d DynamicFields
+		if got := d.DecodeSize(buf); got != len(buf) {
+			t.Fatalf("DecodeSize empty dynamic: got %d, want %d", got, len(buf))
+		}
+	})
+
+	t.Run("multi-byte varint payload", func(t *testing.T) {
+		payload := make([]byte, 130)
+		for i := range payload {
+			payload[i] = byte(i)
+		}
+		buf := buildPacket("a", payload)
+		var d DynamicFields
+		if got := d.DecodeSize(buf); got != len(buf) {
+			t.Fatalf("DecodeSize multi-byte varint: got %d, want %d", got, len(buf))
+		}
+
+		// Build a deterministic malformed frame: id + "a\0" + varint(130) + only 129 payload bytes.
+		malformed := make([]byte, 0, 4+2+2+129)
+		id := make([]byte, 4)
+		binary.LittleEndian.PutUint32(id, 1)
+		malformed = append(malformed, id...)
+		malformed = append(malformed, 'a', 0)
+		malformed = append(malformed, 0x82, 0x01)
+		malformed = append(malformed, payload[:129]...)
+		if got := d.DecodeSize(malformed); got != -138 {
+			t.Fatalf("DecodeSize multi-byte varint truncated payload: got %d, want -138", got)
 		}
 	})
 }

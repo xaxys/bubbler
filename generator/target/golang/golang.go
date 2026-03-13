@@ -1,4 +1,4 @@
-package golang
+﻿package golang
 
 import (
 	"bytes"
@@ -1054,6 +1054,7 @@ var encoderTemplate = `
 {{- define "encoder" -}}
 {{- $structName := .StructDef.StructName -}}
 // EncodeSize: {{ $structName }}.EncodeSize
+// Returns an estimation of the encoded size in bytes.
 func (this {{ $structName }}) EncodeSize() int {    
     {{- if .StructDef.StructDynamic }}
     size := {{ calc .StructDef.StructBitSize "/" 8 }}
@@ -1679,7 +1680,7 @@ var decoderTemplate = `
     {{- end -}}
 {{- end -}}
 
-{{- define "decoder" -}}
+{{- define "decoderFunc" -}}
 {{- $structName := .StructDef.StructName -}}
 // Decoder: {{ $structName }}.Decode
 func (this *{{ $structName }}) Decode(data []byte) int {
@@ -1690,6 +1691,136 @@ func (this *{{ $structName }}) Decode(data []byte) int {
     {{ $decodeStr }}
     {{- end }}
     return {{ if .Dynamic }}offset + {{ end }}{{ calc .StructDef.StructBitSize "/" 8 }}
+}
+{{- end -}}
+
+{{- define "decoder" -}}
+{{ template "decoderSize" . }}
+
+{{ template "decoderFunc" . }}
+{{- end -}}
+
+{{- define "decoderSizeField" -}}
+{{- $fromByte := .FromByte -}}
+{{- $f := .Field -}}
+{{- if $f.FieldType.GetTypeID.IsArray -}}
+    {{- if $f.FieldType.ElementType.GetTypeID.IsString -}}
+        {{- range $i := iterate 0 $f.FieldType.Length }}
+    {   // string[{{ $i }}]: {{ ToPascalCase $f.FieldName }}
+        pos := offset + {{ $fromByte }}
+        if len(data) <= pos { return -(pos + 1) }
+        length := 0
+        for data[pos+length] != 0 {
+            length++
+            if pos+length >= len(data) { return -(pos + length + 1) }
+        }
+        offset += length + 1
+    }
+        {{- end -}}
+    {{- else if $f.FieldType.ElementType.GetTypeID.IsBytes -}}
+        {{- range $i := iterate 0 $f.FieldType.Length }}
+    {   // bytes[{{ $i }}]: {{ ToPascalCase $f.FieldName }}
+        pos := offset + {{ $fromByte }}
+        if len(data) <= pos { return -(pos + 1) }
+        length := 0
+        shift := uint(0)
+        for data[pos] & 0x80 != 0 {
+            length |= int(data[pos]&0x7F) << shift
+            shift += 7
+            pos++
+            if pos >= len(data) { return -(pos + 1) }
+        }
+        length |= int(data[pos]&0x7F) << shift
+        pos++
+        if len(data) < pos+length { return -(pos + length) }
+        offset += pos - (offset + {{ $fromByte }}) + length
+    }
+        {{- end -}}
+    {{- else if $f.FieldType.ElementType.GetTypeID.IsStruct -}}
+        {{- if $f.FieldType.ElementType.GetTypeDynamic -}}
+            {{- range $i := iterate 0 $f.FieldType.Length }}
+    {   // struct[{{ $i }}]: {{ ToPascalCase $f.FieldName }}[{{ $i }}]
+        subOffset := offset + {{ $fromByte }}
+        var subData []byte
+        if len(data) > subOffset { subData = data[subOffset:] }
+        subSize := this.{{ ToPascalCase $f.FieldName }}[{{ $i }}].DecodeSize(subData)
+        if subSize < 0 { return -subOffset + subSize }
+        offset += subSize
+    }
+            {{- end -}}
+        {{- end -}}
+    {{- end -}}
+{{- else if $f.FieldType.GetTypeID.IsString }}
+    {   // string: {{ ToPascalCase $f.FieldName }}
+        pos := offset + {{ $fromByte }}
+        if len(data) <= pos { return -(pos + 1) }
+        length := 0
+        for data[pos+length] != 0 {
+            length++
+            if pos+length >= len(data) { return -(pos + length + 1) }
+        }
+        offset += length + 1
+    }
+{{- else if $f.FieldType.GetTypeID.IsBytes }}
+    {   // bytes: {{ ToPascalCase $f.FieldName }}
+        pos := offset + {{ $fromByte }}
+        if len(data) <= pos { return -(pos + 1) }
+        length := 0
+        shift := uint(0)
+        for data[pos] & 0x80 != 0 {
+            length |= int(data[pos]&0x7F) << shift
+            shift += 7
+            pos++
+            if pos >= len(data) { return -(pos + 1) }
+        }
+        length |= int(data[pos]&0x7F) << shift
+        pos++
+        if len(data) < pos+length { return -(pos + length) }
+        offset += pos - (offset + {{ $fromByte }}) + length
+    }
+{{- else if $f.FieldType.GetTypeID.IsStruct -}}
+    {{- if $f.FieldType.GetTypeDynamic }}
+    {   // struct: {{ ToPascalCase $f.FieldName }}
+        subOffset := offset + {{ $fromByte }}
+        var subData []byte
+        if len(data) > subOffset { subData = data[subOffset:] }
+        subSize := this.{{ ToPascalCase $f.FieldName }}.DecodeSize(subData)
+        if subSize < 0 { return -subOffset + subSize }
+        offset += subSize
+    }
+    {{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "decoderSize" -}}
+{{- $structName := .StructDef.StructName -}}
+{{- $structBytes := calc .StructDef.StructBitSize "/" 8 -}}
+// DecoderSize: {{ $structName }}.DecodeSize
+// Returns the encoded size (> 0) if successful, 
+// or the negative minimum required size (< 0) if data is insufficient.
+// The required size may change as more data is provided.
+func (this *{{ $structName }}) DecodeSize(data []byte) int {
+    {{- if .StructDef.StructDynamic }}
+    offset := 0
+    {{- $fixedStart := 0 }}
+    {{- range $field := .StructDef.StructFields.Values }}
+        {{- if and $field.GetFieldKind.IsNormal (lt $field.GetFieldBitSize 0) }}
+    {{- template "decoderSizeField" (dict "Field" $field "FromByte" (calc $fixedStart "/" 8)) }}
+        {{- end }}
+        {{- if ne $field.GetFieldBitSize -1 }}
+    {{- $fixedStart = calc $fixedStart "+" $field.GetFieldBitSize }}
+        {{- end }}
+    {{- end }}
+    if len(data) < offset + {{ $structBytes }} {
+        return -(offset + {{ $structBytes }})
+    }
+    return offset + {{ $structBytes }}
+    {{- else }}
+    if len(data) < {{ $structBytes }} {
+        return -{{ $structBytes }}
+    }
+    return {{ $structBytes }}
+    {{- end }}
 }
 {{- end -}}
 `

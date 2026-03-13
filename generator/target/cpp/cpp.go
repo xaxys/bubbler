@@ -1,4 +1,4 @@
-package cpp
+﻿package cpp
 
 import (
 	"bytes"
@@ -1295,6 +1295,7 @@ var encoderDeclTemplate = `
 {{- define "encoderDecl" -}}
 {{- $structName := .StructDef.StructName -}}
         // EncodeSizeDecl: encode_size
+        // Returns an estimation of the encoded size in bytes.
         {{ if not .StructDef.StructDynamic -}}constexpr {{ end -}}
         uint64_t encode_size() const;
         // EncoderDecl: encode
@@ -1316,6 +1317,11 @@ func (g CppGenerator) GenerateEncoderDecl(structDef *definition.Struct) (string,
 var decoderDeclTemplate = `
 {{- define "decoderDecl" -}}
 {{- $structName := .StructDef.StructName -}}
+        // DecoderSizeDecl: decode_size
+        // Returns the encoded size (> 0) if successful, 
+        // or the negative minimum required size (< 0) if data is insufficient.
+        // The required size may change as more data is provided.
+        static int64_t decode_size(const uint8_t* data, uint64_t size);
         // DecoderDecl: decode
         int64_t decode(void* data);
 {{- end -}}
@@ -1369,6 +1375,7 @@ var encoderTemplate = `
 {{- define "encoder" -}}
 {{- $structName := .StructDef.StructName -}}
     // EncodeSize: {{ $structName }}::encode_size
+    // Returns an estimation of the encoded size in bytes.
     {{ if not .StructDef.StructDynamic -}}constexpr {{ end -}}
     uint64_t {{ if not .GenOptions.SingleFile }}{{ $structName }}::{{ end }}encode_size() const {
         {{- if .StructDef.StructDynamic }}
@@ -1961,7 +1968,7 @@ var decoderTemplate = `
     {{- end -}}
 {{- end -}}
 
-{{- define "decoder" -}}
+{{- define "decoderFunc" -}}
 {{- $structName := .StructDef.StructName -}}
 {{- $structBytes := calc .StructDef.StructBitSize "/" 8 -}}
     // Decoder: {{ $structName }}::decode
@@ -1973,6 +1980,132 @@ var decoderTemplate = `
         {{ $decodeStr }}
         {{- end }}
         return {{ if .Dynamic }}static_cast<int64_t>(offset) + {{ end }}{{ $structBytes }};
+    }
+{{- end -}}
+
+{{- define "decoder" -}}
+    {{ template "decoderSize" . }}
+
+    {{ template "decoderFunc" . }}
+{{- end -}}
+
+{{- define "decoderSizeField" -}}
+{{- $fromByte := .FromByte -}}
+{{- $f := .Field -}}
+{{- if $f.FieldType.GetTypeID.IsArray -}}
+    {{- if $f.FieldType.ElementType.GetTypeID.IsString -}}
+        {{- range $i := iterate 0 $f.FieldType.Length }}
+    {   // string[{{ $i }}]: {{ Tosnake_case $f.FieldName }}
+        uint64_t pos = offset + {{ $fromByte }};
+        if (size <= pos) return -(int64_t)(pos + 1);
+        uint64_t len = 0;
+        while (static_cast<const uint8_t*>(data)[pos + len] != 0) {
+            len++;
+            if (pos + len >= size) return -(int64_t)(pos + len + 1);
+        }
+        offset += len + 1;
+    }
+        {{- end -}}
+    {{- else if $f.FieldType.ElementType.GetTypeID.IsBytes -}}
+        {{- range $i := iterate 0 $f.FieldType.Length }}
+    {   // bytes[{{ $i }}]: {{ Tosnake_case $f.FieldName }}
+        uint64_t pos = offset + {{ $fromByte }};
+        if (size <= pos) return -(int64_t)(pos + 1);
+        uint64_t len = 0;
+        uint8_t shift = 0;
+        while (static_cast<const uint8_t*>(data)[pos] & 0x80) {
+            len |= (uint64_t)(static_cast<const uint8_t*>(data)[pos] & 0x7F) << shift;
+            shift += 7;
+            pos++;
+            if (pos >= size) return -(int64_t)(pos + 1);
+        }
+        len |= (uint64_t)(static_cast<const uint8_t*>(data)[pos] & 0x7F) << shift;
+        pos++;
+        if (size < pos + len) return -(int64_t)(pos + len);
+        offset += pos - (offset + {{ $fromByte }}) + len;
+    }
+        {{- end -}}
+    {{- else if $f.FieldType.ElementType.GetTypeID.IsStruct -}}
+        {{- $structType := $f.FieldType.ElementType -}}
+        {{- if $structType.GetTypeDynamic -}}
+            {{- range $i := iterate 0 $f.FieldType.Length }}
+    {   // struct[{{ $i }}]: {{ Tosnake_case $f.FieldName }}[{{ $i }}]
+        uint64_t sub_offset = offset + {{ $fromByte }};
+        uint64_t remaining = size > sub_offset ? size - sub_offset : 0;
+        int64_t sub_size = {{ $structType.StructBelongs.Package.ToPath "::" "" }}::{{ $structType.StructName }}::decode_size(static_cast<const uint8_t*>(data) + sub_offset, remaining);
+        if (sub_size < 0) return -(int64_t)sub_offset + sub_size;
+        offset += (uint64_t)sub_size;
+    }
+            {{- end -}}
+        {{- end -}}
+    {{- end -}}
+{{- else if $f.FieldType.GetTypeID.IsString }}
+    {   // string: {{ Tosnake_case $f.FieldName }}
+        uint64_t pos = offset + {{ $fromByte }};
+        if (size <= pos) return -(int64_t)(pos + 1);
+        uint64_t len = 0;
+        while (static_cast<const uint8_t*>(data)[pos + len] != 0) {
+            len++;
+            if (pos + len >= size) return -(int64_t)(pos + len + 1);
+        }
+        offset += len + 1;
+    }
+{{- else if $f.FieldType.GetTypeID.IsBytes }}
+    {   // bytes: {{ Tosnake_case $f.FieldName }}
+        uint64_t pos = offset + {{ $fromByte }};
+        if (size <= pos) return -(int64_t)(pos + 1);
+        uint64_t len = 0;
+        uint8_t shift = 0;
+        while (static_cast<const uint8_t*>(data)[pos] & 0x80) {
+            len |= (uint64_t)(static_cast<const uint8_t*>(data)[pos] & 0x7F) << shift;
+            shift += 7;
+            pos++;
+            if (pos >= size) return -(int64_t)(pos + 1);
+        }
+        len |= (uint64_t)(static_cast<const uint8_t*>(data)[pos] & 0x7F) << shift;
+        pos++;
+        if (size < pos + len) return -(int64_t)(pos + len);
+        offset += pos - (offset + {{ $fromByte }}) + len;
+    }
+{{- else if $f.FieldType.GetTypeID.IsStruct -}}
+    {{- $structType := $f.FieldType.ElementType -}}
+    {{- if $structType.GetTypeDynamic }}
+    {   // struct: {{ Tosnake_case $f.FieldName }}
+        uint64_t sub_offset = offset + {{ $fromByte }};
+        uint64_t remaining = size > sub_offset ? size - sub_offset : 0;
+        int64_t sub_size = {{ $structType.StructBelongs.Package.ToPath "::" "" }}::{{ $structType.StructName }}::decode_size(static_cast<const uint8_t*>(data) + sub_offset, remaining);
+        if (sub_size < 0) return -(int64_t)sub_offset + sub_size;
+        offset += (uint64_t)sub_size;
+    }
+    {{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "decoderSize" -}}
+{{- $structName := .StructDef.StructName -}}
+{{- $structBytes := calc .StructDef.StructBitSize "/" 8 -}}
+    // DecoderSize: {{ $structName }}::decode_size
+    // Returns the encoded size (> 0) if successful, 
+    // or the negative minimum required size (< 0) if data is insufficient.
+    // The required size may change as more data is provided.
+    {{ if .GenOptions.SingleFile }}static {{ end }}int64_t {{ if not .GenOptions.SingleFile }}{{ $structName }}::{{ end }}decode_size(const uint8_t* data, uint64_t size) {
+        {{- if .StructDef.StructDynamic }}
+        uint64_t offset = 0;
+        {{- $fixedStart := 0 }}
+        {{- range $field := .StructDef.StructFields.Values }}
+            {{- if and $field.GetFieldKind.IsNormal (lt $field.GetFieldBitSize 0) }}
+        {{- template "decoderSizeField" (dict "Field" $field "FromByte" (calc $fixedStart "/" 8)) }}
+            {{- end }}
+            {{- if ne $field.GetFieldBitSize -1 }}
+        {{- $fixedStart = calc $fixedStart "+" $field.GetFieldBitSize }}
+            {{- end }}
+        {{- end }}
+        if (size < offset + {{ $structBytes }}) return -(int64_t)(offset + {{ $structBytes }});
+        return (int64_t)(offset + {{ $structBytes }});
+        {{- else }}
+        if (size < {{ $structBytes }}) return -(int64_t){{ $structBytes }};
+        return {{ $structBytes }};
+        {{- end }}
     }
 {{- end -}}
 `
@@ -2009,7 +2142,6 @@ func (g CppGenerator) GenerateDecoder(structDef *definition.Struct) (string, err
 	}); err != nil {
 		return "", err
 	}
-
 	fieldData := map[string]any{
 		"StructDef":  structDef,
 		"DecodeStrs": decodeStrs,

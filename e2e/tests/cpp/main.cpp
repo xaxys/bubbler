@@ -346,6 +346,37 @@ static void test_dynamic_fields() {
     DynamicFields d3{};
     d3.decode(buf3.data());
     CHECK(d3.label == utf8);
+
+    /* --- DecodeSize boundary checks --- */
+    DynamicFields s4{};
+    s4.id = 7;
+    s4.label = "probe";
+    s4.data = make_bytes_ref(blob, sizeof(blob));
+    std::vector<uint8_t> full_buf(s4.encode_size());
+    s4.encode(full_buf.data());
+
+    CHECK_EQ((long long)DynamicFields::decode_size(full_buf.data(), full_buf.size()), (long long)full_buf.size());
+    CHECK_EQ((long long)DynamicFields::decode_size(full_buf.data(), full_buf.size() - 1), -(long long)full_buf.size());
+
+    {
+        uint8_t malformed[] = {1, 0, 0, 0, 'A'};
+        CHECK_EQ((long long)DynamicFields::decode_size(malformed, sizeof(malformed)), -6LL);
+    }
+
+    {
+        uint8_t malformed[] = {1, 0, 0, 0, 'A', 0, 0x80};
+        CHECK_EQ((long long)DynamicFields::decode_size(malformed, sizeof(malformed)), -8LL);
+    }
+
+    {
+        uint8_t malformed[] = {1, 0, 0, 0, 'A', 0, 0x03, 0xAA, 0xBB};
+        CHECK_EQ((long long)DynamicFields::decode_size(malformed, sizeof(malformed)), -10LL);
+    }
+
+    {
+        uint8_t malformed[] = {1, 0, 0, 0};
+        CHECK_EQ((long long)DynamicFields::decode_size(malformed, sizeof(malformed)), -5LL);
+    }
 }
 
 /* ------------------------------------------------------------------ */

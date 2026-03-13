@@ -20,6 +20,15 @@ var encoderTemplate = `
 
 {{- define "encoder" -}}
 {{- $structName := .StructDef.StructName -}}
+/**
+ * Calculate encoded size of {{ $structName }} object.
+ * @function encode_size
+ * @description Returns an estimation of the encoded size in bytes.
+ * @memberof {{ .StructDef.StructBelongs.Package }}.{{ $structName }}
+ * @static
+ * @param {Object} obj {{ $structName }} object.
+ * @returns {Number} Encoded size of {{ $structName }} object.
+ */
 static encode_size(obj) {
 {{- if .StructDef.StructDynamic }}
     let size = {{ calc .StructDef.StructBitSize "/" 8 }}
@@ -61,10 +70,27 @@ static encode_size(obj) {
 {{- end }}
 }
 
+/**
+ * Calculate encoded size of {{ $structName }} object.
+ * @function encode_size
+ * @memberof {{ .StructDef.StructBelongs.Package }}.{{ $structName }}
+ * @instance
+ * @returns {Number} Encoded size of {{ $structName }} object.
+ */
 encode_size() {
     return {{ $structName }}.encode_size(this);
 }
 
+/**
+ * Encode {{ $structName }} object to buffer.
+ * @function encode
+ * @memberof {{ .StructDef.StructBelongs.Package }}.{{ $structName }}
+ * @static
+ * @param {Object} obj {{ $structName }} object.
+ * @param {Array|Uint8Array} [buffer] The buffer to encode data.
+ * @param {Number} [start] The start position to store the encoded data.
+ * @returns {Array|Uint8Array|Number} Encoded data buffer when buffer is omitted, otherwise encoded size.
+ */
 static encode(obj, buffer, start) {
     if (obj === undefined) return buffer === undefined ? -1 : undefined;
     let data = buffer;
@@ -79,6 +105,15 @@ static encode(obj, buffer, start) {
     return buffer === undefined ? data : {{ if .Dynamic }}offset + {{ end }}{{ calc .StructDef.StructBitSize "/" 8 }}
 }
 
+/**
+ * Encode {{ $structName }} object to buffer.
+ * @function encode
+ * @memberof {{ .StructDef.StructBelongs.Package }}.{{ $structName }}
+ * @instance
+ * @param {Array|Uint8Array} [data] The buffer to encode data.
+ * @param {Number} [start] The start position to store the encoded data.
+ * @returns {Array|Uint8Array|Number} Encoded data buffer when data is omitted, otherwise encoded size.
+ */
 encode(data, start) {
     return {{ $structName }}.encode(this, data, start);
 }

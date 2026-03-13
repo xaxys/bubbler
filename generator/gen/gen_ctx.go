@@ -15,7 +15,13 @@ type GenCtx struct {
 	OutputPath string
 }
 
+func normalizeGeneratedIndent(text string) string {
+	// Enforce space-based indentation in generated outputs.
+	return strings.ReplaceAll(text, "\t", "    ")
+}
+
 func (ctx *GenCtx) WritePackage(pkg *definition.Package, ext string, text string) error {
+	text = normalizeGeneratedIndent(text)
 	if ctx.OutputPath == "" {
 		fmt.Println(text)
 		return nil
@@ -26,6 +32,7 @@ func (ctx *GenCtx) WritePackage(pkg *definition.Package, ext string, text string
 }
 
 func (ctx *GenCtx) WriteFile(file string, text string) error {
+	text = normalizeGeneratedIndent(text)
 	for _, rmpath := range ctx.GenOptions.RemovePath {
 		if strings.HasPrefix(file, rmpath) {
 			file = file[len(rmpath):]
@@ -44,6 +51,7 @@ func (ctx *GenCtx) WriteFile(file string, text string) error {
 }
 
 func (ctx *GenCtx) WriteFileAbs(path string, text string) error {
+	text = normalizeGeneratedIndent(text)
 	if path == "" {
 		fmt.Println(text)
 		return nil

@@ -52,6 +52,26 @@ void SetDynamicData(DynamicFields msg, byte[] data) {
     throw new InvalidOperationException($"Unsupported DynamicFields.Data type: {prop.PropertyType}");
 }
 
+int DecodeSizeDynamic(DynamicFields msg, byte[] data, int start = 0) {
+    var t = typeof(DynamicFields);
+
+    var m2 = t.GetMethod("DecodeSize", new[] { typeof(byte[]), typeof(int) });
+    if (m2 != null) {
+        return (int)m2.Invoke(msg, new object[] { data, start })!;
+    }
+
+    var m1 = t.GetMethod("DecodeSize", new[] { typeof(byte[]) });
+    if (m1 != null) {
+        if (start == 0) {
+            return (int)m1.Invoke(msg, new object[] { data })!;
+        }
+        byte[] sliced = data.Skip(start).ToArray();
+        return (int)m1.Invoke(msg, new object[] { sliced })!;
+    }
+
+    throw new InvalidOperationException("DynamicFields.DecodeSize overloads are not available");
+}
+
 /* ------------------------------------------------------------------ */
 /* Test 1: SimpleScalars                                               */
 /* ------------------------------------------------------------------ */
@@ -308,6 +328,19 @@ current = "DynamicFields";
     var d3 = new DynamicFields();
     d3.Decode(buf3.ToArray());
     CheckEq(d3.Label, utf8, "utf8 label");
+
+    // DecodeSize boundary checks
+    var s4 = new DynamicFields { Id = 7, Label = "probe" };
+    SetDynamicData(s4, blob);
+    byte[] full = s4.Encode().ToArray();
+    var probe = new DynamicFields();
+    CheckEq(DecodeSizeDynamic(probe, full), full.Length, "decodeSize complete");
+    CheckEq(DecodeSizeDynamic(probe, full.Take(full.Length - 1).ToArray()), -full.Length, "decodeSize truncated 1 byte");
+
+    CheckEq(DecodeSizeDynamic(probe, new byte[] { 1, 0, 0, 0, (byte)'A' }), -6, "decodeSize missing string terminator");
+    CheckEq(DecodeSizeDynamic(probe, new byte[] { 1, 0, 0, 0, (byte)'A', 0, 0x80 }), -8, "decodeSize truncated bytes varint");
+    CheckEq(DecodeSizeDynamic(probe, new byte[] { 1, 0, 0, 0, (byte)'A', 0, 0x03, 0xAA, 0xBB }), -10, "decodeSize truncated bytes payload");
+    CheckEq(DecodeSizeDynamic(probe, new byte[] { 1, 0, 0, 0 }), -5, "decodeSize only fixed header");
 }
 
 /* ------------------------------------------------------------------ */

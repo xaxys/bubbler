@@ -292,6 +292,23 @@ class TestDynamicFields(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(d.label, utf8str)
 
+    def test_decode_size_boundaries(self):
+        blob = bytes([0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01, 0x02])
+        s = DynamicFields()
+        s.id = 7
+        s.label = "probe"
+        s.data = blob
+        full = s.encode()
+
+        d = DynamicFields()
+        self.assertEqual(d.decode_size(full), len(full), "decode_size complete")
+        self.assertEqual(d.decode_size(full[:-1]), -len(full), "decode_size truncated 1 byte")
+
+        self.assertEqual(d.decode_size(bytes([1, 0, 0, 0, ord('A')])), -6, "missing string terminator")
+        self.assertEqual(d.decode_size(bytes([1, 0, 0, 0, ord('A'), 0, 0x80])), -8, "truncated bytes varint")
+        self.assertEqual(d.decode_size(bytes([1, 0, 0, 0, ord('A'), 0, 0x03, 0xAA, 0xBB])), -10, "truncated bytes payload")
+        self.assertEqual(d.decode_size(bytes([1, 0, 0, 0])), -5, "only fixed header")
+
 
 class TestNarrowBWTest(unittest.TestCase):
     """Narrow bit-width array encoding/decoding (bitwid.bb)

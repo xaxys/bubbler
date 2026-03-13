@@ -26,6 +26,17 @@ function checkNear(a, b, eps, msg) {
     check(Math.abs(Number(a) - Number(b)) < eps, `${msg}: got ${a}, want ~${b}`);
 }
 
+function decodeSizeDynamic(data, start = 0) {
+    if (typeof pkg.DynamicFields.decode_size === "function") {
+        return pkg.DynamicFields.decode_size(data, start);
+    }
+    const inst = new pkg.DynamicFields();
+    if (typeof inst.decode_size === "function") {
+        return inst.decode_size(data, start);
+    }
+    throw new Error("DynamicFields decode_size is not available");
+}
+
 /* ------------------------------------------------------------------ */
 /* Test 1: SimpleScalars                                               */
 /* ------------------------------------------------------------------ */
@@ -321,6 +332,20 @@ g_current = "DynamicFields";
     pkg.DynamicFields.decode(d4, buf4);
     checkEq(d4.data.length, 200, "large data length");
     checkEq(d4.data[199], 199 & 0xFF, "large data last byte");
+
+    // DecodeSize boundary checks
+    const s5 = new pkg.DynamicFields();
+    s5.id = 7;
+    s5.label = "probe";
+    s5.data = [...blob];
+    const full = pkg.DynamicFields.encode(s5);
+    checkEq(decodeSizeDynamic(full, 0), full.length, "decode_size complete");
+    checkEq(decodeSizeDynamic(full.slice(0, full.length - 1), 0), -full.length, "decode_size truncated 1 byte");
+
+    checkEq(decodeSizeDynamic([1, 0, 0, 0, 'A'.charCodeAt(0)], 0), -6, "decode_size missing string terminator");
+    checkEq(decodeSizeDynamic([1, 0, 0, 0, 'A'.charCodeAt(0), 0, 0x80], 0), -8, "decode_size truncated bytes varint");
+    checkEq(decodeSizeDynamic([1, 0, 0, 0, 'A'.charCodeAt(0), 0, 0x03, 0xAA, 0xBB], 0), -10, "decode_size truncated bytes payload");
+    checkEq(decodeSizeDynamic([1, 0, 0, 0], 0), -5, "decode_size only fixed header");
 }
 
 /* ------------------------------------------------------------------ */

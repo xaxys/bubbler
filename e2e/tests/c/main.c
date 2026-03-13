@@ -377,6 +377,41 @@ static void test_dynamic_fields(void) {
     DynamicFields_decode(buf3, &d3);
     CHECK(strcmp(d3.label, utf8) == 0);
     free(buf3);
+
+    /* --- DecodeSize boundary checks --- */
+    struct DynamicFields s4 = {0};
+    s4.id = 7;
+    s4.label = "probe";
+    s4.data.data = blob;
+    s4.data.length = sizeof(blob);
+    uint64_t full_sz = DynamicFields_encode_size(&s4);
+    uint8_t *full_buf = (uint8_t *)malloc(full_sz);
+    DynamicFields_encode(&s4, full_buf);
+
+    CHECK_EQ((long long)DynamicFields_decode_size(full_buf, full_sz), (long long)full_sz);
+    CHECK_EQ((long long)DynamicFields_decode_size(full_buf, full_sz - 1), -(long long)full_sz);
+
+    {
+        uint8_t malformed[] = {1, 0, 0, 0, 'A'};
+        CHECK_EQ((long long)DynamicFields_decode_size(malformed, sizeof(malformed)), -6LL);
+    }
+
+    {
+        uint8_t malformed[] = {1, 0, 0, 0, 'A', 0, 0x80};
+        CHECK_EQ((long long)DynamicFields_decode_size(malformed, sizeof(malformed)), -8LL);
+    }
+
+    {
+        uint8_t malformed[] = {1, 0, 0, 0, 'A', 0, 0x03, 0xAA, 0xBB};
+        CHECK_EQ((long long)DynamicFields_decode_size(malformed, sizeof(malformed)), -10LL);
+    }
+
+    {
+        uint8_t malformed[] = {1, 0, 0, 0};
+        CHECK_EQ((long long)DynamicFields_decode_size(malformed, sizeof(malformed)), -5LL);
+    }
+
+    free(full_buf);
 }
 
 /* ------------------------------------------------------------------ */

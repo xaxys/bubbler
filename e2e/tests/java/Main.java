@@ -329,6 +329,23 @@ public class Main {
         DynamicFields d3 = new DynamicFields();
         d3.decode(buf3);
         check(utf8.equals(d3.getLabel()), "utf8 label");
+
+        // DecodeSize boundary checks
+        DynamicFields s4 = new DynamicFields();
+        s4.setId(7);
+        s4.setLabel("probe");
+        s4.setData(blob);
+        byte[] full = s4.encode();
+        DynamicFields probe = new DynamicFields();
+        checkEq(probe.decodeSize(full, 0), full.length, "decodeSize complete");
+        checkEq(probe.decodeSize(full, 0), probe.decodeSize(full), "decodeSize overload parity");
+        checkEq(probe.decodeSize(full, 0), full.length, "decodeSize complete (repeat)");
+        checkEq(probe.decodeSize(java.util.Arrays.copyOf(full, full.length - 1), 0), -full.length, "decodeSize truncated 1 byte");
+
+        checkEq(probe.decodeSize(new byte[] {1, 0, 0, 0, 'A'}, 0), -6, "decodeSize missing string terminator");
+        checkEq(probe.decodeSize(new byte[] {1, 0, 0, 0, 'A', 0, (byte)0x80}, 0), -8, "decodeSize truncated bytes varint");
+        checkEq(probe.decodeSize(new byte[] {1, 0, 0, 0, 'A', 0, 0x03, (byte)0xAA, (byte)0xBB}, 0), -10, "decodeSize truncated bytes payload");
+        checkEq(probe.decodeSize(new byte[] {1, 0, 0, 0}, 0), -5, "decodeSize only fixed header");
     }
 
     /* ------------------------------------------------------------------ */

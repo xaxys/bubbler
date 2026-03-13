@@ -1,4 +1,4 @@
-package csharp
+﻿package csharp
 
 import (
 	"bytes"
@@ -1742,7 +1742,7 @@ var decoderTemplate = `
         {{- end -}}
 {{- end -}}
 
-{{- define "decoder" -}}
+{{- define "decoderFunc" -}}
 {{- $structName := .StructDef.StructName -}}
         // Decoder: {{ $structName }}
         {{ if .GenOptions.MemoryCopy -}}
@@ -1809,6 +1809,264 @@ var decoderTemplate = `
             {{ $decodeStr }}
             {{- end }}
             return {{ if .Dynamic }}offset + {{ end }}{{ calc .StructDef.StructBitSize "/" 8 }};
+        }
+        {{- end -}}
+{{- end -}}
+
+{{- define "decoder" -}}
+        {{ template "decoderSize" . }}
+
+        {{ template "decoderFunc" . }}
+{{- end -}}
+
+{{- define "decoderSizeField" -}}
+{{- $fromByte := .FromByte -}}
+{{- $f := .Field -}}
+{{- $memcpy := .GenOptions.MemoryCopy -}}
+{{- if $f.FieldType.GetTypeID.IsArray -}}
+    {{- if $f.FieldType.ElementType.GetTypeID.IsString -}}
+        {{- range $i := iterate 0 $f.FieldType.Length }}
+            {   // string[{{ $i }}]: {{ TocamelCase $f.FieldName }}
+                int _pos = offset + {{ $fromByte }};
+                {{- if $memcpy }}
+                if (data.Length - start <= _pos) return -(_pos + 1);
+                int _length = 0;
+                while (data[_pos + start + _length] != 0) {
+                    _length++;
+                    if (_pos + _length >= data.Length - start) return -(_pos + _length + 1);
+                }
+                {{- else }}
+                if (data.Length <= _pos) return -(_pos + 1);
+                int _length = 0;
+                while (data[_pos + _length] != 0) {
+                    _length++;
+                    if (_pos + _length >= data.Length) return -(_pos + _length + 1);
+                }
+                {{- end }}
+                offset += _length + 1;
+            }
+        {{- end -}}
+    {{- else if $f.FieldType.ElementType.GetTypeID.IsBytes -}}
+        {{- range $i := iterate 0 $f.FieldType.Length }}
+            {   // bytes[{{ $i }}]: {{ TocamelCase $f.FieldName }}
+                int _pos = offset + {{ $fromByte }};
+                {{- if $memcpy }}
+                if (data.Length - start <= _pos) return -(_pos + 1);
+                int _length = 0;
+                byte _shift = 0;
+                while ((data[_pos + start] & 0x80) != 0) {
+                    _length |= (data[_pos + start] & 0x7F) << _shift;
+                    _shift += 7;
+                    _pos++;
+                    if (_pos >= data.Length - start) return -(_pos + 1);
+                }
+                _length |= (data[_pos + start] & 0x7F) << _shift;
+                _pos++;
+                if (data.Length - start < _pos + _length) return -(_pos + _length);
+                {{- else }}
+                if (data.Length <= _pos) return -(_pos + 1);
+                int _length = 0;
+                byte _shift = 0;
+                while ((data[_pos] & 0x80) != 0) {
+                    _length |= (data[_pos] & 0x7F) << _shift;
+                    _shift += 7;
+                    _pos++;
+                    if (_pos >= data.Length) return -(_pos + 1);
+                }
+                _length |= (data[_pos] & 0x7F) << _shift;
+                _pos++;
+                if (data.Length < _pos + _length) return -(_pos + _length);
+                {{- end }}
+                offset += _pos - (offset + {{ $fromByte }}) + _length;
+            }
+        {{- end -}}
+    {{- else if $f.FieldType.ElementType.GetTypeID.IsStruct -}}
+        {{- if $f.FieldType.ElementType.GetTypeDynamic -}}
+            {{- range $i := iterate 0 $f.FieldType.Length }}
+            {   // struct[{{ $i }}]: {{ TocamelCase $f.FieldName }}[{{ $i }}]
+                {{- if $memcpy }}
+                int _subSize = this.{{ TocamelCase $f.FieldName }}[{{ $i }}].DecodeSize(data, offset + start + {{ $fromByte }});
+                {{- else }}
+                int _subSize = this.{{ TocamelCase $f.FieldName }}[{{ $i }}].DecodeSize(memoryData.Slice(offset + {{ $fromByte }}));
+                {{- end }}
+                if (_subSize < 0) return -(offset + {{ $fromByte }}) + _subSize;
+                offset += _subSize;
+            }
+            {{- end -}}
+        {{- end -}}
+    {{- end -}}
+{{- else if $f.FieldType.GetTypeID.IsString }}
+            {   // string: {{ TocamelCase $f.FieldName }}
+                int _pos = offset + {{ $fromByte }};
+                {{- if $memcpy }}
+                if (data.Length - start <= _pos) return -(_pos + 1);
+                int _length = 0;
+                while (data[_pos + start + _length] != 0) {
+                    _length++;
+                    if (_pos + _length >= data.Length - start) return -(_pos + _length + 1);
+                }
+                {{- else }}
+                if (data.Length <= _pos) return -(_pos + 1);
+                int _length = 0;
+                while (data[_pos + _length] != 0) {
+                    _length++;
+                    if (_pos + _length >= data.Length) return -(_pos + _length + 1);
+                }
+                {{- end }}
+                offset += _length + 1;
+            }
+{{- else if $f.FieldType.GetTypeID.IsBytes }}
+            {   // bytes: {{ TocamelCase $f.FieldName }}
+                int _pos = offset + {{ $fromByte }};
+                {{- if $memcpy }}
+                if (data.Length - start <= _pos) return -(_pos + 1);
+                int _length = 0;
+                byte _shift = 0;
+                while ((data[_pos + start] & 0x80) != 0) {
+                    _length |= (data[_pos + start] & 0x7F) << _shift;
+                    _shift += 7;
+                    _pos++;
+                    if (_pos >= data.Length - start) return -(_pos + 1);
+                }
+                _length |= (data[_pos + start] & 0x7F) << _shift;
+                _pos++;
+                if (data.Length - start < _pos + _length) return -(_pos + _length);
+                {{- else }}
+                if (data.Length <= _pos) return -(_pos + 1);
+                int _length = 0;
+                byte _shift = 0;
+                while ((data[_pos] & 0x80) != 0) {
+                    _length |= (data[_pos] & 0x7F) << _shift;
+                    _shift += 7;
+                    _pos++;
+                    if (_pos >= data.Length) return -(_pos + 1);
+                }
+                _length |= (data[_pos] & 0x7F) << _shift;
+                _pos++;
+                if (data.Length < _pos + _length) return -(_pos + _length);
+                {{- end }}
+                offset += _pos - (offset + {{ $fromByte }}) + _length;
+            }
+{{- else if $f.FieldType.GetTypeID.IsStruct -}}
+    {{- if $f.FieldType.GetTypeDynamic }}
+            {   // struct: {{ TocamelCase $f.FieldName }}
+                {{- if $memcpy }}
+                int _subSize = this.{{ TocamelCase $f.FieldName }}.DecodeSize(data, offset + start + {{ $fromByte }});
+                {{- else }}
+                int _subSize = this.{{ TocamelCase $f.FieldName }}.DecodeSize(memoryData.Slice(offset + {{ $fromByte }}));
+                {{- end }}
+                if (_subSize < 0) return -(offset + {{ $fromByte }}) + _subSize;
+                offset += _subSize;
+            }
+    {{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "decoderSize" -}}
+{{- $structName := .StructDef.StructName -}}
+{{- $structBytes := calc .StructDef.StructBitSize "/" 8 -}}
+        // DecoderSize: {{ $structName }}
+        {{ if .GenOptions.MemoryCopy -}}
+        /**
+         * Calculate the size of the encoded struct from the given byte array
+         * without fully decoding it.
+         * @param data the byte array to calculate from
+         * @return the encoded size (> 0) if successful, 
+         * or the negative minimum required size (< 0) if data is insufficient.
+         * The requirement may change as more data is provided.
+         */
+        public int DecodeSize(byte[] data)
+        {
+            return this.DecodeSize(data, 0);
+        }
+
+        /**
+         * Calculate the size of the encoded struct from the given byte array
+         * without fully decoding it.
+         * @param data the byte array to calculate from
+         * @param start the start position in the byte array
+         * @return the encoded size (> 0) if successful,
+         * or the negative minimum required size (< 0) if data is insufficient.
+         * The requirement may change as more data is provided.
+         */
+        public int DecodeSize(byte[] data, int start)
+        {
+            {{- if .StructDef.StructDynamic }}
+            int offset = 0;
+            {{- $genOptions := .GenOptions }}
+            {{- $fixedStart := 0 }}
+            {{- range $field := .StructDef.StructFields.Values }}
+                {{- if and $field.GetFieldKind.IsNormal (lt $field.GetFieldBitSize 0) }}
+            {{- template "decoderSizeField" (dict "Field" $field "FromByte" (calc $fixedStart "/" 8) "GenOptions" $genOptions) }}
+                {{- end }}
+                {{- if ne $field.GetFieldBitSize -1 }}
+            {{- $fixedStart = calc $fixedStart "+" $field.GetFieldBitSize }}
+                {{- end }}
+            {{- end }}
+            if (data.Length - start < offset + {{ $structBytes }}) return -(offset + {{ $structBytes }});
+            return offset + {{ $structBytes }};
+            {{- else }}
+            if (data.Length - start < {{ $structBytes }}) return -({{ $structBytes }});
+            return {{ $structBytes }};
+            {{- end }}
+        }
+        {{- else -}}
+        /**
+         * Calculate the size of the encoded struct from the given byte array
+         * without fully decoding it.
+         * @param data the byte array to calculate from
+         * @return the encoded size (> 0) if successful, 
+         * or the negative minimum required size (< 0) if data is insufficient.
+         * The requirement may change as more data is provided.
+         */
+        public int DecodeSize(byte[] data)
+        {
+            return this.DecodeSize(new Memory<byte>(data));
+        }
+
+        /**
+         * Calculate the size of the encoded struct from the given byte array
+         * without fully decoding it.
+         * @param data the byte array to calculate from
+         * @param start the start position in the byte array
+         * @return the encoded size (> 0) if successful,
+         * or the negative minimum required size (< 0) if data is insufficient.
+         * The requirement may change as more data is provided.
+         */
+        public int DecodeSize(byte[] data, int start)
+        {
+            return this.DecodeSize(new Memory<byte>(data, start, data.Length - start));
+        }
+
+        /**
+         * Calculate the size of the encoded struct from the given memory
+         * without fully decoding it.
+         * @param data the memory to calculate from
+         * @return the encoded size (> 0) if successful,
+         * or the negative minimum required size (< 0) if data is insufficient.
+         * The requirement may change as more data is provided.
+         */
+        public int DecodeSize(Memory<byte> memoryData)
+        {
+            ReadOnlySpan<byte> data = memoryData.Span;
+            {{- if .StructDef.StructDynamic }}
+            int offset = 0;
+            {{- $genOptions := .GenOptions }}
+            {{- $fixedStart := 0 }}
+            {{- range $field := .StructDef.StructFields.Values }}
+                {{- if and $field.GetFieldKind.IsNormal (lt $field.GetFieldBitSize 0) }}
+            {{- template "decoderSizeField" (dict "Field" $field "FromByte" (calc $fixedStart "/" 8) "GenOptions" $genOptions) }}
+                {{- end }}
+                {{- if ne $field.GetFieldBitSize -1 }}
+            {{- $fixedStart = calc $fixedStart "+" $field.GetFieldBitSize }}
+                {{- end }}
+            {{- end }}
+            if (data.Length < offset + {{ $structBytes }}) return -(offset + {{ $structBytes }});
+            return offset + {{ $structBytes }};
+            {{- else }}
+            if (data.Length < {{ $structBytes }}) return -({{ $structBytes }});
+            return {{ $structBytes }};
+            {{- end }}
         }
         {{- end -}}
 {{- end -}}
