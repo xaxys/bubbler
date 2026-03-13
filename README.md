@@ -485,99 +485,189 @@ The generated code for each language provides a consistent API for encoding and 
 
 ```c
 // Encode struct to buffer. Returns number of bytes written.
-int64_t <StructName>_encode(<StructName>*ptr, void* data);
+uint64_t <StructName>_encode(struct <StructName>* ptr, void* data);
 
 // Decode struct from buffer. Returns number of bytes read, or -1 on error.
-int64_t <StructName>_decode(<StructName>*ptr, void* data);
+int64_t <StructName>_decode(void* data, struct <StructName>* ptr);
 
-// Calculate the size of the encoded data.
-int64_t <StructName>_encode_size(<StructName>* ptr);
+// Estimate encoded size in bytes.
+uint64_t <StructName>_encode_size(struct <StructName>* ptr);
+
+// Returns the encoded size (> 0) if successful, 
+// or the negative minimum required size (< 0) if data is insufficient.
+// The required size may change as more data is provided.
+int64_t <StructName>_decode_size(const uint8_t* data, uint64_t size);
 ```
 
 ### C++
 
 ```cpp
 // Encode to buffer. Returns number of bytes written.
-int64_t encode(void* data);
+uint64_t encode(void* data) const;
 
 // Decode from buffer. Returns number of bytes read, or -1 on error.
 int64_t decode(void* data);
 
-// Calculate the size of the encoded data.
-int64_t encode_size();
+// Estimate encoded size in bytes.
+uint64_t encode_size() const;
+
+// Returns the encoded size (> 0) if successful, 
+// or the negative minimum required size (< 0) if data is insufficient.
+// The required size may change as more data is provided.
+static int64_t decode_size(const uint8_t* data, uint64_t size);
 ```
 
 ### Go
 
 ```go
+// Encode. Returns encoded bytes.
+func (s StructName) Encode() []byte
+
 // Encode to buffer. Returns number of bytes written.
-func (s *StructName) Encode(data []byte) int64
+func (s StructName) EncodeTo(data []byte) int
 
 // Decode from buffer. Returns number of bytes read, or -1 on error.
-func (s *StructName) Decode(data []byte) int64
+func (s *StructName) Decode(data []byte) int
 
-// Calculate the size of the encoded data.
-func (s *StructName) EncodeSize() int64
+// Estimate encoded size in bytes.
+func (s StructName) EncodeSize() int
+
+// Returns the encoded size (> 0) if successful,
+// or the negative minimum required size (< 0) if data is insufficient.
+// The required size may change as more data is provided.
+func (s *StructName) DecodeSize(data []byte) int
 ```
 
 ### Java
 
 ```java
+// Encode to a newly allocated byte array.
+public byte[] encode();
+
 // Encode to buffer. Returns number of bytes written.
-public long encode(byte[] data);
+public int encode(byte[] data, int start);
 
 // Decode from buffer. Returns number of bytes read, or -1 on error.
-public long decode(byte[] data);
+public int decode(byte[] data);
+public int decode(byte[] data, int start);
 
-// Calculate the size of the encoded data.
-public long encodeSize();
+// Estimate encoded size in bytes.
+public int encodeSize();
+
+// Returns encoded size if successful, otherwise negative required size.
+public int decodeSize(byte[] data);
+public int decodeSize(byte[] data, int start);
 ```
 
 ### Python
 
 ```python
+# Encode to newly allocated bytes, or encode to a provided buffer.
+def encode(self, buffer: Union[None, bytearray, memoryview] = None) -> Union[bytearray, int]:
 
-# Encode to buffer. Returns number of bytes written
+# Decode from buffer.
+# Returns (True, bytes_read) on success, (False, -1) on failure.
+def decode(self, data: Union[bytes, bytearray, memoryview]) -> Tuple[bool, int]:
 
-def encode(self, data) -> int:
-
-# Decode from buffer. Returns number of bytes read, or -1 on error
-
-def decode(self, data) -> int:
-
-# Calculate the size of the encoded data
-
+# Estimate encoded size in bytes.
 def encode_size(self) -> int:
+
+# Returns encoded size if successful, otherwise negative required size.
+def decode_size(self, data: Union[bytes, bytearray, memoryview]) -> int:
 ```
 
 ### C\#
 
 ```csharp
+// Encode to newly allocated byte array.
+public byte[] Encode();
+
 // Encode to buffer. Returns number of bytes written.
-public long Encode(byte[] data);
-// or with -memcpy=false
-public long Encode(Span<byte> data);
+public int Encode(byte[] data, int start);
+
+// Extra overloads when -memcpy=false:
+public int Encode(Memory<byte> data);
+public int Encode(Span<byte> data);
 
 // Decode from buffer. Returns number of bytes read, or -1 on error.
-public long Decode(byte[] data);
-// or with -memcpy=false
-public long Decode(ReadOnlySpan<byte> data);
+public int Decode(byte[] data);
+public int Decode(byte[] data, int start);
 
-// Calculate the size of the encoded data.
-public long EncodeSize();
+// Extra overload when -memcpy=false:
+public int Decode(Memory<byte> memoryData);
+
+// Estimate encoded size in bytes.
+public int EncodeSize();
+
+// Returns encoded size if successful, otherwise negative required size.
+public int DecodeSize(byte[] data);
+public int DecodeSize(byte[] data, int start);
+
+// Extra overload when -memcpy=false:
+public int DecodeSize(Memory<byte> memoryData);
 ```
 
 ### CommonJS
 
 ```javascript
-// Encode to buffer. Returns number of bytes written.
-encode(data);
+// Static helpers
+StructName.encode(obj, buffer, start);
+StructName.decode(obj, data, start);
+StructName.encode_size(obj);
+StructName.decode_size(data, start);
 
-// Decode from buffer. Returns number of bytes read, or -1 on error.
-decode(data);
+// Instance helpers
+obj.encode(data, start);
+obj.decode(data, start);
+obj.encode_size();
+obj.decode_size(data, start);
+```
 
-// Calculate the size of the encoded data.
-encode_size();
+Runtime helper functions generated as needed:
+
+```javascript
+// common
+isObj(item);
+mergeDeep(target, ...sources);
+
+// optional by feature usage in schema
+createArray(length, init);
+floatToUint32Bits(value);
+uint32BitsToFloat(value);
+doubleToUint64Bits(value);
+uint64BitsToDouble(value);
+stringToUTF8BytesCount(str);
+stringToUTF8Bytes(str, data, start);
+stringFromUTF8Bytes(data, start);
+```
+
+### ESModule
+
+```javascript
+// Static helpers
+StructName.encode(obj, buffer, start);
+StructName.decode(obj, data, start);
+StructName.encode_size(obj);
+StructName.decode_size(data, start);
+
+// Instance helpers
+obj.encode(data, start);
+obj.decode(data, start);
+obj.encode_size();
+obj.decode_size(data, start);
+```
+
+Runtime helper functions generated as needed:
+
+```javascript
+createArray(length, init);
+floatToUint32Bits(value);
+uint32BitsToFloat(value);
+doubleToUint64Bits(value);
+uint64BitsToDouble(value);
+stringToUTF8BytesCount(str);
+stringToUTF8Bytes(str, data, start);
+stringFromUTF8Bytes(data, start);
 ```
 
 ## Contributing

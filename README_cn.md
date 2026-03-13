@@ -487,98 +487,183 @@ struct SensorTemperatureData {
 
 ```c
 // 编码结构体到缓冲区。返回写入的字节数。
-int64_t <StructName>_encode(<StructName>*ptr, void* data);
+uint64_t <StructName>_encode(struct <StructName>* ptr, void* data);
 
 // 从缓冲区解码结构体。返回读取的字节数，错误时返回 -1。
-int64_t <StructName>_decode(<StructName>*ptr, void* data);
+int64_t <StructName>_decode(void* data, struct <StructName>* ptr);
 
-// 计算编码数据的大小。
-int64_t <StructName>_encode_size(<StructName>* ptr);
+// 估算编码后的字节大小。
+uint64_t <StructName>_encode_size(struct <StructName>* ptr);
+
+// 返回编码帧大小（>0）；若数据不足，返回负的最小所需长度（<0）。
+int64_t <StructName>_decode_size(const uint8_t* data, uint64_t size);
 ```
 
 ### C++
 
 ```cpp
 // 编码到缓冲区。返回写入的字节数。
-int64_t encode(void* data);
+uint64_t encode(void* data) const;
 
 // 从缓冲区解码。返回读取的字节数，错误时返回 -1。
 int64_t decode(void* data);
 
-// 计算编码数据的大小。
-int64_t encode_size();
+// 估算编码后的字节大小。
+uint64_t encode_size() const;
+
+// 返回编码帧大小（>0）；若数据不足，返回负的最小所需长度（<0）。
+static int64_t decode_size(const uint8_t* data, uint64_t size);
 ```
 
 ### Go
 
 ```go
+// 编码并返回新分配的字节数组。
+func (s StructName) Encode() []byte
+
 // 编码到缓冲区。返回写入的字节数。
-func (s *StructName) Encode(data []byte) int64
+func (s StructName) EncodeTo(data []byte) int
 
 // 从缓冲区解码。返回读取的字节数，错误时返回 -1。
-func (s *StructName) Decode(data []byte) int64
+func (s *StructName) Decode(data []byte) int
 
-// 计算编码数据的大小。
-func (s *StructName) EncodeSize() int64
+// 估算编码后的字节大小。
+func (s StructName) EncodeSize() int
+
+// 返回编码帧大小（>0）；若数据不足，返回负的最小所需长度（<0）。
+func (s *StructName) DecodeSize(data []byte) int
 ```
 
 ### Java
 
 ```java
+// 编码并返回新分配的字节数组。
+public byte[] encode();
+
 // 编码到缓冲区。返回写入的字节数。
-public long encode(byte[] data);
+public int encode(byte[] data, int start);
 
 // 从缓冲区解码。返回读取的字节数，错误时返回 -1。
-public long decode(byte[] data);
+public int decode(byte[] data);
+public int decode(byte[] data, int start);
 
-// 计算编码数据的大小。
-public long encodeSize();
+// 估算编码后的字节大小。
+public int encodeSize();
+
+// 返回编码帧大小（>0）；若数据不足，返回负的最小所需长度（<0）。
+public int decodeSize(byte[] data);
+public int decodeSize(byte[] data, int start);
 ```
 
 ### Python
 
 ```python
-# 编码到缓冲区。返回写入的字节数
+# 编码为新字节数组，或编码到传入缓冲区
+def encode(self, buffer: Union[None, bytearray, memoryview] = None) -> Union[bytearray, int]:
 
-def encode(self, data) -> int:
+# 从缓冲区解码
+# 成功返回 (True, 已读取字节数)，失败返回 (False, -1)
+def decode(self, data: Union[bytes, bytearray, memoryview]) -> Tuple[bool, int]:
 
-# 从缓冲区解码。返回读取的字节数，错误时返回 -1
-
-def decode(self, data) -> int:
-
-# 计算编码数据的大小
-
+# 估算编码后的字节大小
 def encode_size(self) -> int:
+
+# 返回编码帧大小（>0）；若数据不足，返回负的最小所需长度（<0）
+def decode_size(self, data: Union[bytes, bytearray, memoryview]) -> int:
 ```
 
 ### C\#
 
 ```csharp
+// 编码并返回新分配的字节数组。
+public byte[] Encode();
+
 // 编码到缓冲区。返回写入的字节数。
-public long Encode(byte[] data);
-// 或者使用 -memcpy=false
-public long Encode(Span<byte> data);
+public int Encode(byte[] data, int start);
+
+// -memcpy=false 时额外提供：
+public int Encode(Memory<byte> data);
+public int Encode(Span<byte> data);
 
 // 从缓冲区解码。返回读取的字节数，错误时返回 -1。
-public long Decode(byte[] data);
-// 或者使用 -memcpy=false
-public long Decode(ReadOnlySpan<byte> data);
+public int Decode(byte[] data);
+public int Decode(byte[] data, int start);
 
-// 计算编码数据的大小。
-public long EncodeSize();
+// -memcpy=false 时额外提供：
+public int Decode(Memory<byte> memoryData);
+
+// 估算编码后的字节大小。
+public int EncodeSize();
+
+// 返回编码帧大小（>0）；若数据不足，返回负的最小所需长度（<0）。
+public int DecodeSize(byte[] data);
+public int DecodeSize(byte[] data, int start);
+
+// -memcpy=false 时额外提供：
+public int DecodeSize(Memory<byte> memoryData);
 ```
 
 ### CommonJS
 
 ```javascript
-// 编码到缓冲区。返回写入的字节数。
-encode(data);
+// 静态方法
+StructName.encode(obj, buffer, start);
+StructName.decode(obj, data, start);
+StructName.encode_size(obj);
+StructName.decode_size(data, start);
 
-// 从缓冲区解码。返回读取的字节数，错误时返回 -1。
-decode(data);
+// 实例方法
+obj.encode(data, start);
+obj.decode(data, start);
+obj.encode_size();
+obj.decode_size(data, start);
+```
 
-// 计算编码数据的大小。
-encode_size();
+按需生成的运行时辅助函数：
+
+```javascript
+// 通用
+isObj(item);
+mergeDeep(target, ...sources);
+
+// 由协议字段特性触发按需生成
+createArray(length, init);
+floatToUint32Bits(value);
+uint32BitsToFloat(value);
+doubleToUint64Bits(value);
+uint64BitsToDouble(value);
+stringToUTF8BytesCount(str);
+stringToUTF8Bytes(str, data, start);
+stringFromUTF8Bytes(data, start);
+```
+
+### ESModule
+
+```javascript
+// 静态方法
+StructName.encode(obj, buffer, start);
+StructName.decode(obj, data, start);
+StructName.encode_size(obj);
+StructName.decode_size(data, start);
+
+// 实例方法
+obj.encode(data, start);
+obj.decode(data, start);
+obj.encode_size();
+obj.decode_size(data, start);
+```
+
+按需生成的运行时辅助函数：
+
+```javascript
+createArray(length, init);
+floatToUint32Bits(value);
+uint32BitsToFloat(value);
+doubleToUint64Bits(value);
+uint64BitsToDouble(value);
+stringToUTF8BytesCount(str);
+stringToUTF8Bytes(str, data, start);
+stringFromUTF8Bytes(data, start);
 ```
 
 ## 贡献
