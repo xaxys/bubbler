@@ -78,13 +78,17 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
   - With `-minimal`: No generation of getter/setter methods for fields.
   - With `-memcpy`: Use `malloc` to heap-allocate memory for `string` and `bytes` fields, and copy the content from the original buffer.
   - Without `-memcpy`: Pointer reference to the original buffer for `string` and `bytes` fields. Zero-copy and zero-heap-allocate.
+  
+    **Warning**: Decoding function generated without `-memcpy` will still accept `const void*` as input, but this CONST may be VIOLATED, since the decoded struct will reference the original buffer for some fields. You MUST ensure that the original buffer remains VALID and UNCHANGED, and changing the value from the struct will also CHANGE the content in the buffer.
   - With `-relpath`: Generate relative path imports (e.g. `#include "./foo_bb.h"` or `#include "../foo_bb.h"`).
 
 - `cpp`: C++ language, output one `.bb.hpp` file and one `.bb.cpp` file for each `.bb` file. The folder structure will not be affected by the `cpp_namespace` option.
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
   - With `-minimal`: No generation of getter/setter methods for fields.
   - With `-memcpy`: Use `std::shared_ptr<uint8_t[]>` to heap-allocate memory for `bytes` fields, and copy the content from the original buffer. `string` fields will always use `std::string` and be copied every time.
-  - Without `-memcpy`: Use `std::shared_ptr<uint8_t[]>` with null deleter to reference the original buffer for `bytes` fields. `string` fields will always use `std::string` and be copied every time.
+  - Without `-memcpy`: Use `std::shared_ptr<uint8_t[]>` with null deleter to reference the original buffer for `bytes` fields. `string` fields will always use `std::string` and be copied every time. Zero-copy and zero-heap-allocate.
+
+    **Warning**: Decoding function generated without `-memcpy` will still accept `const void*` as input, but this CONST may be VIOLATED, since the decoded struct will reference the original buffer for some fields. You MUST ensure that the original buffer remains VALID and UNCHANGED, and changing the value from the struct will also CHANGE the content in the buffer.
   - With `-relpath`: Generate relative path imports (e.g. `#include "./foo_bb.hpp"` or `#include "../foo_bb.hpp"`).
 
 - `csharp`: C# language, output one `.cs` file for each structure defined in each `.bb` file. The folder structure will not be affected by the `csharp_namespace` option.

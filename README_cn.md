@@ -78,6 +78,8 @@ Targets:
   - 使用 `-minimal`：不为字段生成默认的getter/setter方法函数。
   - 使用 `-memcpy`：将使用 `malloc` 为 `string` 和 `bytes` 字段在堆上分配内存，并从原始缓冲区复制内容。
   - 不使用 `-memcpy`：`string` 和 `bytes` 字段的指针将直接引用原始解码缓冲区。提供零拷贝和零堆分配。
+  
+    **警告**：在不使用`-memcpy`的情况下生成的`decode`函数，虽然参数类型仍然是`const void*`，但此处的**CONST**语义可能会被**破坏**，因为解码后的结构体中的某些字段会直接引用原始缓冲区。你**必须**确保原始缓冲区在整个过程中保持**生命周期有效**且**不被修改**，并且需要注意，修改结构体字段的值也会**改变**原始缓冲区的内容。
   - 使用 `-relpath`：生成相对路径导入（如 `#include "./foo_bb.h"`或`#include "../foo_bb.h"`）。
 
 - `cpp`：C++ 语言，为每个 `.bb` 文件输出一个 `.bb.hpp` 文件和一个 `.bb.cpp` 文件。
@@ -85,6 +87,8 @@ Targets:
   - 使用 `-minimal`：不为字段生成默认的getter/setter方法函数。
   - 使用 `-memcpy`：使用 `std::shared_ptr<uint8_t[]>` 为 `bytes` 字段在堆上分配内存，并从原始缓冲区复制内容。`string` 字段将始终使用 `std::string` 并在每次复制时复制。
   - 不使用 `-memcpy`：使用 `std::shared_ptr<uint8_t[]>` 和空删除器引用 `bytes` 字段的原始缓冲区。`string` 字段将始终使用 `std::string` 并在每次复制时复制。
+  
+    **警告**：在不使用`-memcpy`的情况下生成的`decode`函数，虽然参数类型仍然是`const void*`，但此处的**CONST**语义可能会被**破坏**，因为解码后的结构体中的某些字段会直接引用原始缓冲区。你**必须**确保原始缓冲区在整个过程中保持**生命周期有效**且**不被修改**，并且需要注意，修改结构体字段的值也会**改变**原始缓冲区的内容。
   - 使用 `-relpath`：生成相对路径导入（如 `#include "./foo_bb.hpp"`或`#include "../foo_bb.hpp"`）。
 
 - `csharp`：C# 语言，为每个 `.bb` 文件输出一个 `.bb.cs` 文件。
