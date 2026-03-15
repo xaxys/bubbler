@@ -1257,11 +1257,11 @@ var decoderDeclTemplate = `
 // or the negative minimum required size (< 0) if data is insufficient.
 // The required size may change as more data is provided.
 {{ if .GenOptions.SingleFile }}static {{ end -}}
-int64_t {{ $structName }}_decode_size(const uint8_t* data, uint64_t size);
+int64_t {{ $structName }}_decode_size(const void* data, uint64_t size);
 
 // DecoderDecl: {{ $structName }}_decode
 {{ if .GenOptions.SingleFile }}static {{ end -}}
-int64_t {{ $structName }}_decode(void* data, struct {{ $structName }}* ptr);
+int64_t {{ $structName }}_decode(const void* data, struct {{ $structName }}* ptr);
 {{- end -}}
 `
 
@@ -1912,7 +1912,7 @@ var decoderTemplate = `
 {{- $structBytes := calc .StructDef.StructBitSize "/" 8 -}}
 // Decoder: {{ $structName }}_decode
 {{ if .GenOptions.SingleFile }}static {{ end -}}
-int64_t {{ $structName }}_decode(void* data, struct {{ $structName }}* ptr) {
+int64_t {{ $structName }}_decode(const void* data, struct {{ $structName }}* ptr) {
     {{- if .Dynamic }}
     uint64_t offset = 0;
     {{- end }}
@@ -2027,7 +2027,7 @@ int64_t {{ $structName }}_decode(void* data, struct {{ $structName }}* ptr) {
 // or the negative minimum required size (< 0) if data is insufficient.
 // The required size may change as more data is provided.
 {{ if .GenOptions.SingleFile }}static {{ end -}}
-int64_t {{ $structName }}_decode_size(const uint8_t* data, uint64_t size) {
+int64_t {{ $structName }}_decode_size(const void* data, uint64_t size) {
     {{- if .StructDef.StructDynamic }}
     uint64_t offset = 0;
     {{- $fixedStart := 0 }}
@@ -2125,12 +2125,12 @@ var fieldDecoderTemplate = `
 {{- define "decodeNormalFieldStruct" -}}
 {{- if .FieldStruct.GetTypeDynamic -}}
     {
-        {{ .TyInt64 }} {{ .TempName }} = {{ .FieldStruct.GetTypeName }}_decode((void*)((({{ .TyUint8 }}*)data) + offset + {{ .FromByte }}), &{{ .FieldName }});
+        {{ .TyInt64 }} {{ .TempName }} = {{ .FieldStruct.GetTypeName }}_decode((const void*)(((const {{ .TyUint8 }}*)data) + offset + {{ .FromByte }}), &{{ .FieldName }});
         if ({{ .TempName }} < 0) return -1;
         offset += (uint64_t){{ .TempName }};
     }
 {{- else -}}
-    if ({{ .FieldStruct.GetTypeName }}_decode((void*)((({{ .TyUint8 }}*)data) + {{ if .Dynamic }}offset + {{ end }}{{ .FromByte }}), &{{ .FieldName }}) < 0) return -1;
+    if ({{ .FieldStruct.GetTypeName }}_decode((const void*)(((const {{ .TyUint8 }}*)data) + {{ if .Dynamic }}offset + {{ end }}{{ .FromByte }}), &{{ .FieldName }}) < 0) return -1;
 {{- end -}}
 {{- end -}}
 
@@ -2156,11 +2156,11 @@ var fieldDecoderTemplate = `
 
 {{- define "decodeNormalFieldString" -}}
     {
-        uint64_t {{ .TempName }} = strlen(({{ .TyString }})(({{ .TyUint8 }}*)data + offset + {{ .FromByte }}));
+        uint64_t {{ .TempName }} = strlen((const char*)((const {{ .TyUint8 }}*)data + offset + {{ .FromByte }}));
         {{ if .MemoryCopy -}}
         {{ .FieldName }} = ({{ .TyString }})malloc({{ .TempName }} + 1);
         {{ .FieldName }}[{{ .TempName }}] = 0;
-        memcpy({{ .FieldName }}, ({{ .TyUint8 }}*)data + offset + {{ .FromByte }}, {{ .TempName }});
+        memcpy({{ .FieldName }}, (const {{ .TyUint8 }}*)data + offset + {{ .FromByte }}, {{ .TempName }});
         {{ else -}}
         {{ .FieldName }} = ({{ .TyString }})(({{ .TyUint8 }}*)data + offset + {{ .FromByte }});
         {{ end -}}
@@ -2174,12 +2174,12 @@ var fieldDecoderTemplate = `
     {
         uint64_t {{ .TempName }} = 0;
         {{ .TyUint8 }} shift = 0;
-        while ((({{ .TyUint8 }}*)data)[offset + {{ .FromByte }}] & {{ .SetMask }}) {{ .TempName }} |= ((({{ .TyUint8 }}*)data)[offset + {{ .FromByte }}] & {{ .GetMask }}) << shift, shift += {{ .Shift }}, offset++;
-        {{ .TempName }} |= ((({{ .TyUint8 }}*)data)[offset + {{ .FromByte }}] & {{ .GetMask }}) << shift, offset++;
+        while (((const {{ .TyUint8 }}*)data)[offset + {{ .FromByte }}] & {{ .SetMask }}) {{ .TempName }} |= (((const {{ .TyUint8 }}*)data)[offset + {{ .FromByte }}] & {{ .GetMask }}) << shift, shift += {{ .Shift }}, offset++;
+        {{ .TempName }} |= (((const {{ .TyUint8 }}*)data)[offset + {{ .FromByte }}] & {{ .GetMask }}) << shift, offset++;
         {{ .FieldName }}.length = {{ .TempName }};
         {{ if .MemoryCopy -}}
         {{ .FieldName }}.data = ({{ .TyUint8 }}*)malloc({{ .TempName }});
-        memcpy({{ .FieldName }}.data, ({{ .TyUint8 }}*)data + offset + {{ .FromByte }}, {{ .TempName }});
+        memcpy({{ .FieldName }}.data, (const {{ .TyUint8 }}*)data + offset + {{ .FromByte }}, {{ .TempName }});
         {{ else -}}
         {{ .FieldName }}.data = ({{ .TyUint8 }}*)data + offset + {{ .FromByte }};
         {{ end -}}
@@ -2188,7 +2188,7 @@ var fieldDecoderTemplate = `
 {{- end -}}
 
 {{- define "decodeData" -}}
-    (({{ .TyUint8 }}*)data)[{{ if .Dynamic }}offset + {{ end }}{{ .BytePos }}]
+    ((const {{ .TyUint8 }}*)data)[{{ if .Dynamic }}offset + {{ end }}{{ .BytePos }}]
 {{- end -}}
 
 {{- define "signExtendShift" -}}

@@ -70,10 +70,38 @@ variant_cpp() {
     local name="$1"
     shift
     local out="$TMPDIR_BASE/variants/cpp/$name"
+    local -a bubbler_flags=("$@")
+    local -a cxx_flags=()
+    local is_single=0
+    local is_compat=0
+
+    for arg in "${bubbler_flags[@]}"; do
+        if [[ "$arg" == "-single" ]]; then
+            is_single=1
+        fi
+        if [[ "$arg" == "-compat" ]]; then
+            is_compat=1
+        fi
+    done
+
+    if [[ "$is_single" -eq 1 ]]; then
+        cxx_flags+=("-DBUBBLER_CPP_SINGLE")
+    fi
+    if [[ "$is_compat" -eq 1 ]]; then
+        cxx_flags+=("-DBUBBLER_CPP_COMPAT")
+    fi
+
     mkdir -p "$out/gen"
-    "$BUBBLER" -t cpp "$@" -o "$out/gen/" testcase.bb
-    "$BUBBLER" -t cpp "$@" -o "$out/gen/" features/bitwid.bb
-    g++ -std=c++17 -I"$out" -I"$out/gen" -o "$out/run_test" tests/cpp/main.cpp "$out/gen/testpkg.bb.cpp" "$out/gen/bitwid.bb.cpp" -lm
+    cp tests/cpp/main.cpp "$out/main.cpp"
+    if [[ "$is_single" -eq 1 ]]; then
+        "$BUBBLER" -t cpp "${bubbler_flags[@]}" -o "$out/gen/testpkg.bb.cpp" testcase.bb
+        "$BUBBLER" -t cpp "${bubbler_flags[@]}" -o "$out/gen/bitwid.bb.cpp" features/bitwid.bb
+        g++ -std=c++20 "${cxx_flags[@]}" -I"$out" -I"$out/gen" -o "$out/run_test" "$out/main.cpp" -lm
+    else
+        "$BUBBLER" -t cpp "${bubbler_flags[@]}" -o "$out/gen/" testcase.bb
+        "$BUBBLER" -t cpp "${bubbler_flags[@]}" -o "$out/gen/" features/bitwid.bb
+        g++ -std=c++20 "${cxx_flags[@]}" -I"$out" -I"$out/gen" -o "$out/run_test" "$out/main.cpp" "$out/gen/testpkg.bb.cpp" "$out/gen/bitwid.bb.cpp" -lm
+    fi
     "$out/run_test" > /dev/null
 }
 
@@ -317,6 +345,10 @@ if command -v g++ >/dev/null 2>&1; then
     run_variant "C++ runtime: -minimal"         variant_cpp minimal -minimal
     run_variant "C++ runtime: -decnum"          variant_cpp decnum -decnum
     run_variant "C++ runtime: -signext arith"   variant_cpp signext_arith -signext arith
+    run_variant "C++ runtime combo: multi non-compat"   variant_cpp combo_multi_nocompat
+    run_variant "C++ runtime combo: multi compat"       variant_cpp combo_multi_compat -compat
+    run_variant "C++ runtime combo: single non-compat"  variant_cpp combo_single_nocompat -single
+    run_variant "C++ runtime combo: single compat"      variant_cpp combo_single_compat -single -compat
 else
     ok "C++ runtime matrix skipped (g++ not found)"
 fi

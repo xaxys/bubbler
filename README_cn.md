@@ -490,29 +490,47 @@ struct SensorTemperatureData {
 uint64_t <StructName>_encode(struct <StructName>* ptr, void* data);
 
 // 从缓冲区解码结构体。返回读取的字节数，错误时返回 -1。
-int64_t <StructName>_decode(void* data, struct <StructName>* ptr);
+int64_t <StructName>_decode(const void* data, struct <StructName>* ptr);
 
 // 估算编码后的字节大小。
 uint64_t <StructName>_encode_size(struct <StructName>* ptr);
 
 // 返回编码帧大小（>0）；若数据不足，返回负的最小所需长度（<0）。
-int64_t <StructName>_decode_size(const uint8_t* data, uint64_t size);
+int64_t <StructName>_decode_size(const void* data, uint64_t size);
 ```
 
 ### C++
 
 ```cpp
 // 编码到缓冲区。返回写入的字节数。
+// 不使用 -compat（C++20）：
+uint64_t encode(::std::span<uint8_t> buf) const;
+// 不使用 -compat：保留兼容代理（已弃用）
+[[deprecated("Use encode(::std::span<uint8_t>) instead")]]
+uint64_t encode(void* data) const;
+// 使用 -compat：
 uint64_t encode(void* data) const;
 
 // 从缓冲区解码。返回读取的字节数，错误时返回 -1。
-int64_t decode(void* data);
+// 不使用 -compat（C++20）：
+int64_t decode(::std::span<const uint8_t> data);
+// 不使用 -compat：保留兼容代理（已弃用）
+[[deprecated("Use decode(::std::span<const uint8_t>) instead")]]
+int64_t decode(const void* data);
+// 使用 -compat：
+int64_t decode(const void* data);
 
 // 估算编码后的字节大小。
 uint64_t encode_size() const;
 
 // 返回编码帧大小（>0）；若数据不足，返回负的最小所需长度（<0）。
-static int64_t decode_size(const uint8_t* data, uint64_t size);
+// 不使用 -compat（C++20）：
+static int64_t decode_size(::std::span<const uint8_t> buf);
+// 不使用 -compat：保留兼容代理（已弃用）
+[[deprecated("Use decode_size(::std::span<const uint8_t>) instead")]]
+static int64_t decode_size(const void* data, uint64_t size);
+// 使用 -compat：
+static int64_t decode_size(const void* data, uint64_t size);
 ```
 
 ### Go

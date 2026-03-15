@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ##############################################################################
-# Bubbler E2E — Master Test Runner
+# Bubbler E2E - Master Test Runner
 #
 # Generates code for all language targets, runs all language tests, and runs
 # the compiler option + error tests.
@@ -10,16 +10,16 @@
 #   bash run_tests.sh               # from e2e/ directory
 #
 # Environment:
-#   BUBBLER   — Path to the bubbler binary (default: auto-detected)
-#   SKIP_C    — Set to 1 to skip C tests
-#   SKIP_CPP  — Set to 1 to skip C++ tests
-#   SKIP_GO   — Set to 1 to skip Go tests
-#   SKIP_PY   — Set to 1 to skip Python tests
-#   SKIP_JAVA — Set to 1 to skip Java tests
-#   SKIP_CS   — Set to 1 to skip C# tests
-#   SKIP_CJS  — Set to 1 to skip CommonJS tests
-#   SKIP_JS   — Deprecated alias of SKIP_CJS
-#   SKIP_ESM  — Set to 1 to skip ESModule tests
+#   BUBBLER   - Path to the bubbler binary (default: auto-detected)
+#   SKIP_C    - Set to 1 to skip C tests
+#   SKIP_CPP  - Set to 1 to skip C++ tests
+#   SKIP_GO   - Set to 1 to skip Go tests
+#   SKIP_PY   - Set to 1 to skip Python tests
+#   SKIP_JAVA - Set to 1 to skip Java tests
+#   SKIP_CS   - Set to 1 to skip C# tests
+#   SKIP_CJS  - Set to 1 to skip CommonJS tests
+#   SKIP_JS   - Deprecated alias of SKIP_CJS
+#   SKIP_ESM  - Set to 1 to skip ESModule tests
 ##############################################################################
 set -euo pipefail
 
@@ -95,8 +95,7 @@ echo "════════════════════════�
 echo " Code Generation"
 echo "════════════════════════════════════════════"
 
-# — testcase.bb for all targets —
-echo "[gen] testcase.bb"
+# - testcase.bb for all targets - echo "[gen] testcase.bb"
 "$BUBBLER" -t c   -o "$C_DIR/gen/"                              testcase.bb
 "$BUBBLER" -t cpp -o "$CPP_DIR/gen/"                            testcase.bb
 "$BUBBLER" -t go  -o "tests/go/"                                 testcase.bb
@@ -106,8 +105,7 @@ echo "[gen] testcase.bb"
 "$BUBBLER" -t cjs -single -o "tests/cjs/gen/testcase.bb.js"      testcase.bb
 "$BUBBLER" -t mjs -single -o "tests/esm/gen/testcase.bb.js"    testcase.bb
 
-# — bitwid.bb (narrow array feature) for all targets —
-echo "[gen] bitwid.bb"
+# - bitwid.bb (narrow array feature) for all targets - echo "[gen] bitwid.bb"
 "$BUBBLER" -t c   -o "$C_DIR/gen/"                              features/bitwid.bb
 "$BUBBLER" -t cpp -o "$CPP_DIR/gen/"                            features/bitwid.bb
 "$BUBBLER" -t go  -o "tests/go/"                                 features/bitwid.bb
@@ -147,7 +145,7 @@ if [[ "${SKIP_CPP:-0}" != "1" ]]; then
     echo "--- C++ ---"
     (
         cd "$CPP_DIR"
-        g++ -std=c++17 -Igen -o run_test main.cpp gen/testpkg.bb.cpp gen/bitwid.bb.cpp -lm
+        g++ -std=c++20 -Igen -o run_test main.cpp gen/testpkg.bb.cpp gen/bitwid.bb.cpp -lm
         ./run_test
     )
     section_pass "C++" "$?"

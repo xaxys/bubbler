@@ -122,6 +122,7 @@ func (g *CppGenerator) Generate(ctx *gen.GenCtx) (retErr error, retWarnings erro
 			"UseStringH":   g.GenState.UseStringH,
 			"UseStdLibH":   g.GenState.UseStdLibH,
 			"UseBytesType": g.GenState.UseBytesType,
+			"GenOptions":   g.GenCtx.GenOptions,
 		}
 
 		singleStr := util.ExecuteTemplate(fileTemplate, "singleFile", nil, singleData)
@@ -159,6 +160,9 @@ var fileTemplate = `
 {{- end }}
 {{- if .UseStringH }}
 #include <string>
+{{- end }}
+{{- if not .GenOptions.CompatibleMode }}
+#include <span>
 {{- end }}
 
 {{ if .UseBytesType -}}
@@ -277,6 +281,9 @@ namespace {{ .Unit.Package.ToPath "::" "" }}
 {{- end }}
 {{- if .UseStringH }}
 #include <string>
+{{- end }}
+{{- if not .GenOptions.CompatibleMode }}
+#include <span>
 {{- end }}
 
 {{ if .UseBytesType -}}
@@ -1299,7 +1306,14 @@ var encoderDeclTemplate = `
         {{ if not .StructDef.StructDynamic -}}constexpr {{ end -}}
         uint64_t encode_size() const;
         // EncoderDecl: encode
+{{- if not .GenOptions.CompatibleMode }}
+        uint64_t encode(::std::span<uint8_t> buf) const;
+        // EncoderDecl: encode (deprecated)
+        [[deprecated("Use encode(::std::span<uint8_t>) instead")]]
         uint64_t encode(void* data) const;
+{{- else }}
+        uint64_t encode(void* data) const;
+{{- end }}
 {{- end -}}
 `
 
@@ -1318,12 +1332,27 @@ var decoderDeclTemplate = `
 {{- define "decoderDecl" -}}
 {{- $structName := .StructDef.StructName -}}
         // DecoderSizeDecl: decode_size
-        // Returns the encoded size (> 0) if successful, 
+        // Returns the encoded size (> 0) if successful,
         // or the negative minimum required size (< 0) if data is insufficient.
         // The required size may change as more data is provided.
-        static int64_t decode_size(const uint8_t* data, uint64_t size);
+{{- if .GenOptions.CompatibleMode }}
+        static int64_t decode_size(const void* data, uint64_t size);
         // DecoderDecl: decode
-        int64_t decode(void* data);
+        int64_t decode(const void* data);
+{{- else }}
+        static int64_t decode_size(::std::span<const uint8_t> buf);
+        // DecoderSizeDecl: decode_size (deprecated)
+        // Returns the encoded size (> 0) if successful,
+        // or the negative minimum required size (< 0) if data is insufficient.
+        // The required size may change as more data is provided.
+        [[deprecated("Use decode_size(::std::span<const uint8_t>) instead")]]
+        static int64_t decode_size(const void* data, uint64_t size);
+        // DecoderDecl: decode
+        int64_t decode(::std::span<const uint8_t> data);
+        // DecoderDecl: decode (deprecated)
+        [[deprecated("Use decode(::std::span<const uint8_t>) instead")]]
+        int64_t decode(const void* data);
+{{- end }}
 {{- end -}}
 `
 
@@ -1419,6 +1448,23 @@ var encoderTemplate = `
     }
 
     // Encoder: {{ $structName }}::encode
+{{- if not .GenOptions.CompatibleMode }}
+    uint64_t {{ if not .GenOptions.SingleFile }}{{ $structName }}::{{ end }}encode(::std::span<uint8_t> buf) const {
+        auto* data = buf.data();
+        {{- if .Dynamic }}
+        uint64_t offset = 0;
+        {{- end }}
+        {{- range $encodeStr := .EncodeStrs }}
+        {{ $encodeStr }}
+        {{- end }}
+        return {{ if .Dynamic }}offset + {{ end }}{{ calc .StructDef.StructBitSize "/" 8 }};
+    }
+
+    [[deprecated("Use encode(::std::span<uint8_t>) instead")]]
+    uint64_t {{ if not .GenOptions.SingleFile }}{{ $structName }}::{{ end }}encode(void* data) const {
+        return encode(::std::span<uint8_t>(static_cast<uint8_t*>(data), encode_size()));
+    }
+{{- else }}
     uint64_t {{ if not .GenOptions.SingleFile }}{{ $structName }}::{{ end }}encode(void* data) const {
         {{- if .Dynamic }}
         uint64_t offset = 0;
@@ -1428,6 +1474,7 @@ var encoderTemplate = `
         {{- end }}
         return {{ if .Dynamic }}offset + {{ end }}{{ calc .StructDef.StructBitSize "/" 8 }};
     }
+{{- end }}
 {{- end -}}
 `
 
@@ -1502,7 +1549,11 @@ var fieldEncoderTemplate = `
 {{- end -}}
 
 {{- define "encodeNormalFieldStruct" -}}
+{{- if .CompatibleMode }}
     {{ if .FieldStruct.GetTypeDynamic }}offset += {{ end }}{{ .FieldName }}.encode(static_cast<{{ .TyUint8 }}*>(data) + {{ if .Dynamic }}offset + {{ end }}{{ .FromByte }});
+{{- else }}
+    {{ if .FieldStruct.GetTypeDynamic }}offset += {{ end }}{{ .FieldName }}.encode(buf.subspan({{ if .Dynamic }}offset + {{ end }}{{ .FromByte }}));
+{{- end }}
 {{- end -}}
 
 {{- define "encodeNormalFieldTempVarDecl" -}}
@@ -1712,11 +1763,12 @@ func (g CppGenerator) generateEncodeNormalFieldImpl(fieldNameStr string, fieldTy
 	switch ty := fieldType.(type) {
 	case *definition.Struct:
 		encodeNormalFieldStructData := map[string]any{
-			"TyUint8":     typeMap[definition.TypeID_Uint8],
-			"FieldStruct": ty,
-			"FieldName":   fieldNameStr,
-			"FromByte":    from / 8,
-			"Dynamic":     structDynamic,
+			"TyUint8":        typeMap[definition.TypeID_Uint8],
+			"FieldStruct":    ty,
+			"FieldName":      fieldNameStr,
+			"FromByte":       from / 8,
+			"Dynamic":        structDynamic,
+			"CompatibleMode": g.GenCtx.GenOptions.CompatibleMode,
 		}
 
 		stmt := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldStruct", nil, encodeNormalFieldStructData)
@@ -1972,7 +2024,8 @@ var decoderTemplate = `
 {{- $structName := .StructDef.StructName -}}
 {{- $structBytes := calc .StructDef.StructBitSize "/" 8 -}}
     // Decoder: {{ $structName }}::decode
-    int64_t {{ if not .GenOptions.SingleFile }}{{ $structName }}::{{ end }}decode(void* data) {
+{{- if .GenOptions.CompatibleMode }}
+    int64_t {{ if not .GenOptions.SingleFile }}{{ $structName }}::{{ end }}decode(const void* data) {
         {{- if .Dynamic }}
         uint64_t offset = 0;
         {{- end }}
@@ -1981,6 +2034,23 @@ var decoderTemplate = `
         {{- end }}
         return {{ if .Dynamic }}static_cast<int64_t>(offset) + {{ end }}{{ $structBytes }};
     }
+{{- else }}
+    int64_t {{ if not .GenOptions.SingleFile }}{{ $structName }}::{{ end }}decode(::std::span<const uint8_t> data) {
+        {{- if .Dynamic }}
+        uint64_t offset = 0;
+        {{- end }}
+        {{- range $decodeStr := .DecodeStrs }}
+        {{ $decodeStr }}
+        {{- end }}
+        return {{ if .Dynamic }}static_cast<int64_t>(offset) + {{ end }}{{ $structBytes }};
+    }
+
+    // Decoder: {{ $structName }}::decode (deprecated)
+    [[deprecated("Use decode(::std::span<const uint8_t>) instead")]]
+    int64_t {{ if not .GenOptions.SingleFile }}{{ $structName }}::{{ end }}decode(const void* data) {
+        return decode(::std::span<const uint8_t>(static_cast<const uint8_t*>(data), static_cast<uint64_t>(-1)));
+    }
+{{- end }}
 {{- end -}}
 
 {{- define "decoder" -}}
@@ -2032,7 +2102,11 @@ var decoderTemplate = `
     {   // struct[{{ $i }}]: {{ Tosnake_case $f.FieldName }}[{{ $i }}]
         uint64_t sub_offset = offset + {{ $fromByte }};
         uint64_t remaining = size > sub_offset ? size - sub_offset : 0;
+{{- if $.CompatibleMode }}
         int64_t sub_size = {{ $structType.StructBelongs.Package.ToPath "::" "" }}::{{ $structType.StructName }}::decode_size(static_cast<const uint8_t*>(data) + sub_offset, remaining);
+{{- else }}
+        int64_t sub_size = {{ $structType.StructBelongs.Package.ToPath "::" "" }}::{{ $structType.StructName }}::decode_size(::std::span<const uint8_t>(static_cast<const uint8_t*>(data) + sub_offset, remaining));
+{{- end }}
         if (sub_size < 0) return -(int64_t)sub_offset + sub_size;
         offset += (uint64_t)sub_size;
     }
@@ -2073,7 +2147,11 @@ var decoderTemplate = `
     {   // struct: {{ Tosnake_case $f.FieldName }}
         uint64_t sub_offset = offset + {{ $fromByte }};
         uint64_t remaining = size > sub_offset ? size - sub_offset : 0;
+{{- if $.CompatibleMode }}
         int64_t sub_size = {{ $structType.StructBelongs.Package.ToPath "::" "" }}::{{ $structType.StructName }}::decode_size(static_cast<const uint8_t*>(data) + sub_offset, remaining);
+{{- else }}
+        int64_t sub_size = {{ $structType.StructBelongs.Package.ToPath "::" "" }}::{{ $structType.StructName }}::decode_size(::std::span<const uint8_t>(static_cast<const uint8_t*>(data) + sub_offset, remaining));
+{{- end }}
         if (sub_size < 0) return -(int64_t)sub_offset + sub_size;
         offset += (uint64_t)sub_size;
     }
@@ -2085,16 +2163,19 @@ var decoderTemplate = `
 {{- $structName := .StructDef.StructName -}}
 {{- $structBytes := calc .StructDef.StructBitSize "/" 8 -}}
     // DecoderSize: {{ $structName }}::decode_size
-    // Returns the encoded size (> 0) if successful, 
+    // Returns the encoded size (> 0) if successful,
     // or the negative minimum required size (< 0) if data is insufficient.
     // The required size may change as more data is provided.
-    {{ if .GenOptions.SingleFile }}static {{ end }}int64_t {{ if not .GenOptions.SingleFile }}{{ $structName }}::{{ end }}decode_size(const uint8_t* data, uint64_t size) {
+{{- if not .GenOptions.CompatibleMode }}
+    {{ if .GenOptions.SingleFile }}static {{ end }}int64_t {{ if not .GenOptions.SingleFile }}{{ $structName }}::{{ end }}decode_size(::std::span<const uint8_t> buf) {
+        const void* data = buf.data();
+        uint64_t size = buf.size();
         {{- if .StructDef.StructDynamic }}
         uint64_t offset = 0;
         {{- $fixedStart := 0 }}
         {{- range $field := .StructDef.StructFields.Values }}
             {{- if and $field.GetFieldKind.IsNormal (lt $field.GetFieldBitSize 0) }}
-        {{- template "decoderSizeField" (dict "Field" $field "FromByte" (calc $fixedStart "/" 8)) }}
+		{{- template "decoderSizeField" (dict "Field" $field "FromByte" (calc $fixedStart "/" 8) "CompatibleMode" $.GenOptions.CompatibleMode) }}
             {{- end }}
             {{- if ne $field.GetFieldBitSize -1 }}
         {{- $fixedStart = calc $fixedStart "+" $field.GetFieldBitSize }}
@@ -2107,6 +2188,36 @@ var decoderTemplate = `
         return {{ $structBytes }};
         {{- end }}
     }
+
+    // DecoderSize: {{ $structName }}::decode_size (deprecated)
+    // Returns the encoded size (> 0) if successful,
+    // or the negative minimum required size (< 0) if data is insufficient.
+    // The required size may change as more data is provided.
+    [[deprecated("Use decode_size(::std::span<const uint8_t>) instead")]]
+    {{ if .GenOptions.SingleFile }}static {{ end }}int64_t {{ if not .GenOptions.SingleFile }}{{ $structName }}::{{ end }}decode_size(const void* data, uint64_t size) {
+        return decode_size(::std::span<const uint8_t>(static_cast<const uint8_t*>(data), size));
+    }
+{{- else }}
+    {{ if .GenOptions.SingleFile }}static {{ end }}int64_t {{ if not .GenOptions.SingleFile }}{{ $structName }}::{{ end }}decode_size(const void* data, uint64_t size) {
+        {{- if .StructDef.StructDynamic }}
+        uint64_t offset = 0;
+        {{- $fixedStart := 0 }}
+        {{- range $field := .StructDef.StructFields.Values }}
+            {{- if and $field.GetFieldKind.IsNormal (lt $field.GetFieldBitSize 0) }}
+        {{- template "decoderSizeField" (dict "Field" $field "FromByte" (calc $fixedStart "/" 8) "CompatibleMode" $.GenOptions.CompatibleMode) }}
+            {{- end }}
+            {{- if ne $field.GetFieldBitSize -1 }}
+        {{- $fixedStart = calc $fixedStart "+" $field.GetFieldBitSize }}
+            {{- end }}
+        {{- end }}
+        if (size < offset + {{ $structBytes }}) return -(int64_t)(offset + {{ $structBytes }});
+        return (int64_t)(offset + {{ $structBytes }});
+        {{- else }}
+        if (size < {{ $structBytes }}) return -(int64_t){{ $structBytes }};
+        return {{ $structBytes }};
+        {{- end }}
+    }
+{{- end }}
 {{- end -}}
 `
 
@@ -2185,12 +2296,20 @@ var fieldDecoderTemplate = `
 {{- define "decodeNormalFieldStruct" -}}
 {{- if .FieldStruct.GetTypeDynamic -}}
         {
-            {{ .TyInt64 }} {{ .TempName }} = {{ .FieldName }}.decode(static_cast<{{ .TyUint8 }}*>(data) + offset + {{ .FromByte }});
+{{- if .CompatibleMode }}
+            {{ .TyInt64 }} {{ .TempName }} = {{ .FieldName }}.decode(static_cast<const {{ .TyUint8 }}*>(data) + offset + {{ .FromByte }});
+{{- else }}
+            {{ .TyInt64 }} {{ .TempName }} = {{ .FieldName }}.decode(data.subspan(offset + {{ .FromByte }}));
+{{- end }}
             if ({{ .TempName }} < 0) return -1;
             offset += static_cast<uint64_t>({{ .TempName }});
         }
 {{- else -}}
-        if ({{ .FieldName }}.decode(static_cast<{{ .TyUint8 }}*>(data) + {{ if .Dynamic }}offset + {{ end }}{{ .FromByte }}) < 0) return -1;
+{{- if .CompatibleMode }}
+        if ({{ .FieldName }}.decode(static_cast<const {{ .TyUint8 }}*>(data) + {{ if .Dynamic }}offset + {{ end }}{{ .FromByte }}) < 0) return -1;
+{{- else }}
+        if ({{ .FieldName }}.decode(data.subspan({{ if .Dynamic }}offset + {{ end }}{{ .FromByte }})) < 0) return -1;
+{{- end }}
 {{- end -}}
 {{- end -}}
 
@@ -2216,8 +2335,13 @@ var fieldDecoderTemplate = `
 
 {{- define "decodeNormalFieldString" -}}
         {
-            uint64_t {{ .TempName }} = strlen(reinterpret_cast<char*>(static_cast<{{ .TyUint8 }}*>(data) + offset + {{ .FromByte }}));
-            {{ .FieldName }} = {{ .TyString }}(static_cast<char*>(data) + offset + {{ .FromByte }}, {{ .TempName }});
+{{- if .CompatibleMode }}
+            uint64_t {{ .TempName }} = strlen(reinterpret_cast<const char*>(static_cast<const {{ .TyUint8 }}*>(data) + offset + {{ .FromByte }}));
+            {{ .FieldName }} = {{ .TyString }}(reinterpret_cast<const char*>(static_cast<const {{ .TyUint8 }}*>(data) + offset + {{ .FromByte }}), {{ .TempName }});
+{{- else }}
+            uint64_t {{ .TempName }} = strlen(reinterpret_cast<const char*>(data.data() + offset + {{ .FromByte }}));
+            {{ .FieldName }} = {{ .TyString }}(reinterpret_cast<const char*>(data.data() + offset + {{ .FromByte }}), {{ .TempName }});
+{{- end }}
             offset += {{ .TempName }} + 1;
         }
 {{- end -}}
@@ -2228,21 +2352,38 @@ var fieldDecoderTemplate = `
         {
             uint64_t {{ .TempName }} = 0;
             {{ .TyUint8 }} shift = 0;
-            while (static_cast<{{ .TyUint8 }}*>(data)[offset + {{ .FromByte }}] & {{ .SetMask }}) {{ .TempName }} |= (static_cast<{{ .TyUint8 }}*>(data)[offset + {{ .FromByte }}] & {{ .GetMask }}) << shift, shift += {{ .Shift }}, offset++;
-            {{ .TempName }} |= (static_cast<{{ .TyUint8 }}*>(data)[offset + {{ .FromByte }}] & {{ .GetMask }}) << shift, offset++;
+{{- if .CompatibleMode }}
+            while (static_cast<const {{ .TyUint8 }}*>(data)[offset + {{ .FromByte }}] & {{ .SetMask }}) {{ .TempName }} |= (static_cast<const {{ .TyUint8 }}*>(data)[offset + {{ .FromByte }}] & {{ .GetMask }}) << shift, shift += {{ .Shift }}, offset++;
+            {{ .TempName }} |= (static_cast<const {{ .TyUint8 }}*>(data)[offset + {{ .FromByte }}] & {{ .GetMask }}) << shift, offset++;
+{{- else }}
+            while (data[offset + {{ .FromByte }}] & {{ .SetMask }}) {{ .TempName }} |= (data[offset + {{ .FromByte }}] & {{ .GetMask }}) << shift, shift += {{ .Shift }}, offset++;
+            {{ .TempName }} |= (data[offset + {{ .FromByte }}] & {{ .GetMask }}) << shift, offset++;
+{{- end }}
             {{ .FieldName }}.length = {{ .TempName }};
             {{ if .MemoryCopy -}}
             {{ .FieldName }}.data = ::std::shared_ptr<{{ .TyUint8 }}[]>(new {{ .TyUint8 }}[{{ .TempName }}]);
-            memcpy({{ .FieldName }}.data.get(), static_cast<{{ .TyUint8 }}*>(data) + offset + {{ .FromByte }}, {{ .TempName }});
+{{- if .CompatibleMode }}
+            memcpy({{ .FieldName }}.data.get(), static_cast<const {{ .TyUint8 }}*>(data) + offset + {{ .FromByte }}, {{ .TempName }});
+{{- else }}
+            memcpy({{ .FieldName }}.data.get(), data.data() + offset + {{ .FromByte }}, {{ .TempName }});
+{{- end }}
             {{ else -}}
-            {{ .FieldName }}.data = ::std::shared_ptr<{{ .TyUint8 }}[]>(static_cast<{{ .TyUint8 }}*>(data) + offset + {{ .FromByte }}, []({{ .TyUint8 }}[]){});
+{{- if .CompatibleMode }}
+            {{ .FieldName }}.data = ::std::shared_ptr<{{ .TyUint8 }}[]>(const_cast<{{ .TyUint8 }}*>(static_cast<const {{ .TyUint8 }}*>(data)) + offset + {{ .FromByte }}, []({{ .TyUint8 }}[]){});
+{{- else }}
+            {{ .FieldName }}.data = ::std::shared_ptr<{{ .TyUint8 }}[]>(const_cast<{{ .TyUint8 }}*>(data.data() + offset + {{ .FromByte }}), []({{ .TyUint8 }}[]){});
+{{- end }}
             {{ end -}}
             offset += {{ .TempName }};
         }
 {{- end -}}
 
 {{- define "decodeData" -}}
-    static_cast<{{ .TyUint8 }}*>(data)[{{ if .Dynamic }}offset + {{ end }}{{ .BytePos }}]
+{{- if .CompatibleMode -}}
+    static_cast<const {{ .TyUint8 }}*>(data)[{{ if .Dynamic }}offset + {{ end }}{{ .BytePos }}]
+{{- else -}}
+    data[{{ if .Dynamic }}offset + {{ end }}{{ .BytePos }}]
+{{- end -}}
 {{- end -}}
 
 {{- define "signExtendShift" -}}
@@ -2441,9 +2582,10 @@ func (g CppGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fieldTy
 
 	dataDataFunc := func(i int64) string {
 		decodeDataData := map[string]any{
-			"TyUint8": typeMap[definition.TypeID_Uint8],
-			"Dynamic": structDynamic,
-			"BytePos": i,
+			"TyUint8":        typeMap[definition.TypeID_Uint8],
+			"Dynamic":        structDynamic,
+			"BytePos":        i,
+			"CompatibleMode": g.GenCtx.GenOptions.CompatibleMode,
 		}
 		return util.ExecuteTemplate(fieldDecoderTemplate, "decodeData", nil, decodeDataData)
 	}
@@ -2451,14 +2593,15 @@ func (g CppGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fieldTy
 	switch ty := fieldType.(type) {
 	case *definition.Struct:
 		decodeNormalFieldStructData := map[string]any{
-			"FieldStruct": ty,
-			"FieldName":   fieldNameStr,
-			"FromByte":    from / 8,
-			"Dynamic":     structDynamic,
-			"TyUint8":     typeMap[definition.TypeID_Uint8],
-			"TyUint64":    typeMap[definition.TypeID_Uint64],
-			"TyInt64":     typeMap[definition.TypeID_Int64],
-			"TempName":    g.generateDecodeTempVarName(from),
+			"FieldStruct":    ty,
+			"FieldName":      fieldNameStr,
+			"FromByte":       from / 8,
+			"Dynamic":        structDynamic,
+			"TyUint8":        typeMap[definition.TypeID_Uint8],
+			"TyUint64":       typeMap[definition.TypeID_Uint64],
+			"TyInt64":        typeMap[definition.TypeID_Int64],
+			"TempName":       g.generateDecodeTempVarName(from),
+			"CompatibleMode": g.GenCtx.GenOptions.CompatibleMode,
 		}
 
 		stmt := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldStruct", nil, decodeNormalFieldStructData)
@@ -2474,12 +2617,13 @@ func (g CppGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fieldTy
 		}
 
 		decodeNormalFieldStringData := map[string]any{
-			"TyUint8":    typeMap[definition.TypeID_Uint8],
-			"FieldName":  fieldNameStr,
-			"FromByte":   from / 8,
-			"TyString":   tyString,
-			"MemoryCopy": g.GenCtx.GenOptions.MemoryCopy,
-			"TempName":   g.generateDecodeTempVarName(from),
+			"TyUint8":        typeMap[definition.TypeID_Uint8],
+			"FieldName":      fieldNameStr,
+			"FromByte":       from / 8,
+			"TyString":       tyString,
+			"MemoryCopy":     g.GenCtx.GenOptions.MemoryCopy,
+			"TempName":       g.generateDecodeTempVarName(from),
+			"CompatibleMode": g.GenCtx.GenOptions.CompatibleMode,
 		}
 
 		stmt := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldString", nil, decodeNormalFieldStringData)
@@ -2487,14 +2631,15 @@ func (g CppGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fieldTy
 
 	case *definition.Bytes:
 		decodeNormalFieldBytesData := map[string]any{
-			"TyUint8":    typeMap[definition.TypeID_Uint8],
-			"FieldName":  fieldNameStr,
-			"FromByte":   from / 8,
-			"GetMask":    g.generateHex((1 << 7) - 1),
-			"SetMask":    g.generateHex(1 << 7),
-			"Shift":      7,
-			"MemoryCopy": g.GenCtx.GenOptions.MemoryCopy,
-			"TempName":   g.generateDecodeTempVarName(from),
+			"TyUint8":        typeMap[definition.TypeID_Uint8],
+			"FieldName":      fieldNameStr,
+			"FromByte":       from / 8,
+			"GetMask":        g.generateHex((1 << 7) - 1),
+			"SetMask":        g.generateHex(1 << 7),
+			"Shift":          7,
+			"MemoryCopy":     g.GenCtx.GenOptions.MemoryCopy,
+			"TempName":       g.generateDecodeTempVarName(from),
+			"CompatibleMode": g.GenCtx.GenOptions.CompatibleMode,
 		}
 
 		stmt := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldBytes", nil, decodeNormalFieldBytesData)

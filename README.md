@@ -488,7 +488,7 @@ The generated code for each language provides a consistent API for encoding and 
 uint64_t <StructName>_encode(struct <StructName>* ptr, void* data);
 
 // Decode struct from buffer. Returns number of bytes read, or -1 on error.
-int64_t <StructName>_decode(void* data, struct <StructName>* ptr);
+int64_t <StructName>_decode(const void* data, struct <StructName>* ptr);
 
 // Estimate encoded size in bytes.
 uint64_t <StructName>_encode_size(struct <StructName>* ptr);
@@ -496,17 +496,29 @@ uint64_t <StructName>_encode_size(struct <StructName>* ptr);
 // Returns the encoded size (> 0) if successful, 
 // or the negative minimum required size (< 0) if data is insufficient.
 // The required size may change as more data is provided.
-int64_t <StructName>_decode_size(const uint8_t* data, uint64_t size);
+int64_t <StructName>_decode_size(const void* data, uint64_t size);
 ```
 
 ### C++
 
 ```cpp
 // Encode to buffer. Returns number of bytes written.
+// Without -compat (C++20):
+uint64_t encode(::std::span<uint8_t> buf) const;
+// Without -compat: compatibility proxy (deprecated)
+[[deprecated("Use encode(::std::span<uint8_t>) instead")]]
+uint64_t encode(void* data) const;
+// With -compat:
 uint64_t encode(void* data) const;
 
 // Decode from buffer. Returns number of bytes read, or -1 on error.
-int64_t decode(void* data);
+// Without -compat (C++20):
+int64_t decode(::std::span<const uint8_t> data);
+// Without -compat: compatibility proxy (deprecated)
+[[deprecated("Use decode(::std::span<const uint8_t>) instead")]]
+int64_t decode(const void* data);
+// With -compat:
+int64_t decode(const void* data);
 
 // Estimate encoded size in bytes.
 uint64_t encode_size() const;
@@ -514,7 +526,13 @@ uint64_t encode_size() const;
 // Returns the encoded size (> 0) if successful, 
 // or the negative minimum required size (< 0) if data is insufficient.
 // The required size may change as more data is provided.
-static int64_t decode_size(const uint8_t* data, uint64_t size);
+// Without -compat (C++20):
+static int64_t decode_size(::std::span<const uint8_t> buf);
+// Without -compat: compatibility proxy (deprecated)
+[[deprecated("Use decode_size(::std::span<const uint8_t>) instead")]]
+static int64_t decode_size(const void* data, uint64_t size);
+// With -compat:
+static int64_t decode_size(const void* data, uint64_t size);
 ```
 
 ### Go

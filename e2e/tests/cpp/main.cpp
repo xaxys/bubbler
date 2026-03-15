@@ -1,13 +1,18 @@
 /*
- * Bubbler E2E Test — C++ target
+ * Bubbler E2E Test - C++ target
  *
  * Build (from this directory, after code-gen step):
- *   g++ -std=c++17 -Igen -o run_test main.cpp gen/testpkg.bb.cpp gen/bitwid.bb.cpp -lm
+ *   g++ -std=c++20 -Igen -o run_test main.cpp gen/testpkg.bb.cpp gen/bitwid.bb.cpp -lm
  *
  * The run_tests.sh script generates gen/ then invokes this.
  */
+#if defined(BUBBLER_CPP_SINGLE)
+#include "gen/testpkg.bb.cpp"
+#include "gen/bitwid.bb.cpp"
+#else
 #include "gen/testpkg.bb.hpp"
 #include "gen/bitwid.bb.hpp"
+#endif
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -36,6 +41,42 @@ static void _check(bool cond, const char *expr, const char *file, int line) {
                                   #a " ~= " #b, __FILE__, __LINE__)
 
 using namespace testpkg;
+
+/* ------------------------------------------------------------------ */
+/* Decode helper for compat/span variants                              */
+/* ------------------------------------------------------------------ */
+template <typename T>
+static int64_t decode_from_vec(T& obj, const std::vector<uint8_t>& buf) {
+#if defined(BUBBLER_CPP_COMPAT)
+    return obj.decode(buf.data());
+#else
+    return obj.decode(buf);
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* Encode helper for compat/span variants                              */
+/* ------------------------------------------------------------------ */
+template <typename T>
+static uint64_t encode_to_vec(const T& obj, std::vector<uint8_t>& buf) {
+#if defined(BUBBLER_CPP_COMPAT)
+    return obj.encode(buf.data());
+#else
+    return obj.encode(buf);
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* decode_size helper for compat/span variants                         */
+/* ------------------------------------------------------------------ */
+template <typename T>
+static int64_t decode_size_helper(const void* ptr, uint64_t sz) {
+#if defined(BUBBLER_CPP_COMPAT)
+    return T::decode_size(ptr, sz);
+#else
+    return T::decode_size(::std::span<const uint8_t>(static_cast<const uint8_t*>(ptr), sz));
+#endif
+}
 
 /* ------------------------------------------------------------------ */
 /* Helper: null-deleter shared_ptr (no ownership)                      */
@@ -70,10 +111,10 @@ static void test_simple_scalars() {
     s.color   = Color::BLUE;
 
     std::vector<uint8_t> buf(SimpleScalars::size);
-    CHECK_EQ((int)s.encode(buf.data()), (int)SimpleScalars::size);
+    CHECK_EQ((int)encode_to_vec(s, buf), (int)SimpleScalars::size);
 
     SimpleScalars d{};
-    CHECK_EQ((int)d.decode(buf.data()), (int)SimpleScalars::size);
+    CHECK_EQ((int)decode_from_vec(d, buf), (int)SimpleScalars::size);
 
     CHECK_EQ((int)d.u8_zero,   0);
     CHECK_EQ((int)d.u8_max,    255);
@@ -110,10 +151,10 @@ static void test_bit_packed() {
     s.status = Status::BROKEN;
 
     std::vector<uint8_t> buf(BitPacked::size);
-    CHECK_EQ((int)s.encode(buf.data()), (int)BitPacked::size);
+    CHECK_EQ((int)encode_to_vec(s, buf), (int)BitPacked::size);
 
     BitPacked d{};
-    CHECK_EQ((int)d.decode(buf.data()), (int)BitPacked::size);
+    CHECK_EQ((int)decode_from_vec(d, buf), (int)BitPacked::size);
 
     CHECK_EQ(d.b0, true);
     CHECK_EQ(d.b1, false);
@@ -129,9 +170,9 @@ static void test_bit_packed() {
     s.i20 = -524288;
     s.i48 = -1LL;
     buf.assign(BitPacked::size, 0);
-    s.encode(buf.data());
+    encode_to_vec(s, buf);
     d = BitPacked{};
-    d.decode(buf.data());
+    decode_from_vec(d, buf);
     CHECK_EQ((int)d.i2,        -2);
     CHECK_EQ((long long)d.i20, -524288LL);
     CHECK_EQ((long long)d.i48, -1LL);
@@ -139,9 +180,9 @@ static void test_bit_packed() {
     /* Case 3: zeros */
     s = BitPacked{};
     buf.assign(BitPacked::size, 0);
-    s.encode(buf.data());
+    encode_to_vec(s, buf);
     d = BitPacked{};
-    d.decode(buf.data());
+    decode_from_vec(d, buf);
     CHECK_EQ((int)d.i2,  0);
     CHECK_EQ(d.status, Status::IDLE);
 }
@@ -159,7 +200,7 @@ static void test_big_endian_fields() {
     s.arr[2] = 300;  s.arr[3] = -400;
 
     std::vector<uint8_t> buf(BigEndianFields::size);
-    CHECK_EQ((int)s.encode(buf.data()), (int)BigEndianFields::size);
+    CHECK_EQ((int)encode_to_vec(s, buf), (int)BigEndianFields::size);
 
     /* Constant byte at position 0 */
     CHECK_EQ(buf[0], 0xBE);
@@ -168,7 +209,7 @@ static void test_big_endian_fields() {
     CHECK_EQ(buf[2], 0x34);
 
     BigEndianFields d{};
-    CHECK_EQ((int)d.decode(buf.data()), (int)BigEndianFields::size);
+    CHECK_EQ((int)decode_from_vec(d, buf), (int)BigEndianFields::size);
     CHECK_EQ((int)d.u16,   0x1234);
     CHECK_EQ((long long)d.i32, -1LL);
     CHECK_NEAR(d.f32, 3.14f, 1e-3f);
@@ -192,10 +233,10 @@ static void test_array_fields() {
     s.point_arr[1].x =  30000; s.point_arr[1].y = -30000;
 
     std::vector<uint8_t> buf(ArrayFields::size);
-    CHECK_EQ((int)s.encode(buf.data()), (int)ArrayFields::size);
+    CHECK_EQ((int)encode_to_vec(s, buf), (int)ArrayFields::size);
 
     ArrayFields d{};
-    CHECK_EQ((int)d.decode(buf.data()), (int)ArrayFields::size);
+    CHECK_EQ((int)decode_from_vec(d, buf), (int)ArrayFields::size);
 
     CHECK_EQ((int)d.u8_arr[0],   0);
     CHECK_EQ((int)d.u8_arr[3], 255);
@@ -223,10 +264,10 @@ static void test_embed_structs() {
     s.flags = 0xFF;
 
     std::vector<uint8_t> buf(EmbedStructs::size);
-    CHECK_EQ((int)s.encode(buf.data()), (int)EmbedStructs::size);
+    CHECK_EQ((int)encode_to_vec(s, buf), (int)EmbedStructs::size);
 
     EmbedStructs d{};
-    CHECK_EQ((int)d.decode(buf.data()), (int)EmbedStructs::size);
+    CHECK_EQ((int)decode_from_vec(d, buf), (int)EmbedStructs::size);
     CHECK_EQ((int)d.id,   42);
     CHECK_EQ((int)d.ax,   10);
     CHECK_EQ((int)d.ay,   20);
@@ -244,22 +285,22 @@ static void test_constant_fields() {
     s.length = 1024;
 
     std::vector<uint8_t> buf(ConstantFields::size);
-    CHECK_EQ((int)s.encode(buf.data()), (int)ConstantFields::size);
+    CHECK_EQ((int)encode_to_vec(s, buf), (int)ConstantFields::size);
 
     CHECK_EQ(buf[0], 0xAA);
     CHECK_EQ(buf[1], 0x02);
     CHECK_EQ(buf[4], 0x02);
 
     ConstantFields d{};
-    CHECK_EQ((int)d.decode(buf.data()), (int)ConstantFields::size);
+    CHECK_EQ((int)decode_from_vec(d, buf), (int)ConstantFields::size);
     CHECK_EQ((int)d.length, 1024);
 
     /* Corrupt and verify decode failure */
     buf[0] = 0xFF;
-    CHECK_EQ((int)d.decode(buf.data()), -1);
+    CHECK_EQ((int)decode_from_vec(d, buf), -1);
     buf[0] = 0xAA;
     buf[1] = 0x00;
-    CHECK_EQ((int)d.decode(buf.data()), -1);
+    CHECK_EQ((int)decode_from_vec(d, buf), -1);
 }
 
 /* ------------------------------------------------------------------ */
@@ -287,10 +328,10 @@ static void test_getter_setter() {
     s2.set_celsius(25.0);
 
     std::vector<uint8_t> buf(GetterSetter::size);
-    s2.encode(buf.data());
+    encode_to_vec(s2, buf);
 
     GetterSetter d{};
-    CHECK_EQ((int)d.decode(buf.data()), (int)GetterSetter::size);
+    CHECK_EQ((int)decode_from_vec(d, buf), (int)GetterSetter::size);
     CHECK_NEAR(d.get_voltage(), 1.65, 5e-3);
     CHECK_NEAR(d.get_celsius(), 25.0, 0.1);
 }
@@ -310,10 +351,10 @@ static void test_dynamic_fields() {
 
     uint64_t sz = s.encode_size();
     std::vector<uint8_t> buf(sz);
-    CHECK_EQ((long long)s.encode(buf.data()), (long long)sz);
+    CHECK_EQ((long long)encode_to_vec(s, buf), (long long)sz);
 
     DynamicFields d{};
-    int64_t dec = d.decode(buf.data());
+    int64_t dec = decode_from_vec(d, buf);
     CHECK(dec > 0);
     CHECK_EQ(d.id, 0xDEADBEEFU);
     CHECK(d.label == "hello, bubbler!");
@@ -327,10 +368,10 @@ static void test_dynamic_fields() {
     s2.data  = make_bytes_ref(nullptr, 0);
 
     std::vector<uint8_t> buf2(s2.encode_size());
-    s2.encode(buf2.data());
+    encode_to_vec(s2, buf2);
 
     DynamicFields d2{};
-    int64_t dec2 = d2.decode(buf2.data());
+    int64_t dec2 = decode_from_vec(d2, buf2);
     CHECK(dec2 > 0);
     CHECK_EQ((int)d2.id, 0);
     CHECK(d2.label.empty());
@@ -342,9 +383,9 @@ static void test_dynamic_fields() {
     s3.id    = 1;
     s3.label = std::string(utf8);
     std::vector<uint8_t> buf3(s3.encode_size());
-    s3.encode(buf3.data());
+    encode_to_vec(s3, buf3);
     DynamicFields d3{};
-    d3.decode(buf3.data());
+    decode_from_vec(d3, buf3);
     CHECK(d3.label == utf8);
 
     /* --- DecodeSize boundary checks --- */
@@ -353,29 +394,29 @@ static void test_dynamic_fields() {
     s4.label = "probe";
     s4.data = make_bytes_ref(blob, sizeof(blob));
     std::vector<uint8_t> full_buf(s4.encode_size());
-    s4.encode(full_buf.data());
+    encode_to_vec(s4, full_buf);
 
-    CHECK_EQ((long long)DynamicFields::decode_size(full_buf.data(), full_buf.size()), (long long)full_buf.size());
-    CHECK_EQ((long long)DynamicFields::decode_size(full_buf.data(), full_buf.size() - 1), -(long long)full_buf.size());
+    CHECK_EQ((long long)decode_size_helper<DynamicFields>(full_buf.data(), full_buf.size()), (long long)full_buf.size());
+    CHECK_EQ((long long)decode_size_helper<DynamicFields>(full_buf.data(), full_buf.size() - 1), -(long long)full_buf.size());
 
     {
         uint8_t malformed[] = {1, 0, 0, 0, 'A'};
-        CHECK_EQ((long long)DynamicFields::decode_size(malformed, sizeof(malformed)), -6LL);
+        CHECK_EQ((long long)decode_size_helper<DynamicFields>(malformed, sizeof(malformed)), -6LL);
     }
 
     {
         uint8_t malformed[] = {1, 0, 0, 0, 'A', 0, 0x80};
-        CHECK_EQ((long long)DynamicFields::decode_size(malformed, sizeof(malformed)), -8LL);
+        CHECK_EQ((long long)decode_size_helper<DynamicFields>(malformed, sizeof(malformed)), -8LL);
     }
 
     {
         uint8_t malformed[] = {1, 0, 0, 0, 'A', 0, 0x03, 0xAA, 0xBB};
-        CHECK_EQ((long long)DynamicFields::decode_size(malformed, sizeof(malformed)), -10LL);
+        CHECK_EQ((long long)decode_size_helper<DynamicFields>(malformed, sizeof(malformed)), -10LL);
     }
 
     {
         uint8_t malformed[] = {1, 0, 0, 0};
-        CHECK_EQ((long long)DynamicFields::decode_size(malformed, sizeof(malformed)), -5LL);
+        CHECK_EQ((long long)decode_size_helper<DynamicFields>(malformed, sizeof(malformed)), -5LL);
     }
 }
 
@@ -407,10 +448,10 @@ static void test_narrow_bw() {
 
     CHECK_EQ((int)bitwid::NarrowBWTest::size, 21);
     std::vector<uint8_t> buf(bitwid::NarrowBWTest::size);
-    CHECK_EQ((int)s.encode(buf.data()), 21);
+    CHECK_EQ((int)encode_to_vec(s, buf), 21);
 
     bitwid::NarrowBWTest d{};
-    CHECK_EQ((int)d.decode(buf.data()), 21);
+    CHECK_EQ((int)decode_from_vec(d, buf), 21);
 
     CHECK_EQ((int)d.narrow12[0],  2047);
     CHECK_EQ((int)d.narrow12[1], -2048);
@@ -432,9 +473,9 @@ static void test_narrow_bw() {
     /* Zero round-trip */
     bitwid::NarrowBWTest z{};
     std::vector<uint8_t> zbuf(bitwid::NarrowBWTest::size, 0);
-    z.encode(zbuf.data());
+    encode_to_vec(z, zbuf);
     bitwid::NarrowBWTest dz{};
-    dz.decode(zbuf.data());
+    decode_from_vec(dz, zbuf);
     CHECK_EQ((int)dz.narrow12[0], 0);
     CHECK_EQ((int)dz.narrow6[3],  0);
 }
@@ -443,7 +484,7 @@ static void test_narrow_bw() {
 /* Entry point                                                         */
 /* ------------------------------------------------------------------ */
 int main() {
-    printf("=== Bubbler E2E Test — C++ ===\n\n");
+    printf("=== Bubbler E2E Test - C++ ===\n\n");
     test_simple_scalars();
     test_bit_packed();
     test_big_endian_fields();
