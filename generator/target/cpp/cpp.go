@@ -1471,7 +1471,7 @@ var encoderTemplate = `
 
     [[deprecated("Use encode(::std::span<uint8_t>) instead")]]
     uint64_t {{ if not .GenOptions.SingleFile }}{{ $structName }}::{{ end }}encode(void* data) const {
-        return encode(::std::span<uint8_t>(static_cast<uint8_t*>(data), encode_size()));
+        return encode(::std::span<uint8_t>(static_cast<uint8_t*>(data), static_cast<uint64_t>(-1)));
     }
 {{- else }}
     uint64_t {{ if not .GenOptions.SingleFile }}{{ $structName }}::{{ end }}encode(void* data) const {
