@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/xaxys/bubbler/compiler"
 	"github.com/xaxys/bubbler/definition"
@@ -50,6 +51,7 @@ Options:
   -memcpy                  Allocate Memory and Copy Data for Variable-Size Type
   -signext <method>        Sign Extension Method (shift, arith)
   -compat                  Generate Compatible Code
+  -v                       Print Verbose Info
 
 Targets:
 {{ range .Generators }}  {{ . }}
@@ -76,6 +78,20 @@ func printBanner() {
 	fmt.Println(tmpl)
 }
 
+func verbosef(enabled bool, format string, a ...any) {
+	if !enabled {
+		return
+	}
+	fmt.Fprintf(os.Stdout, "[bubbler:v] "+format+"\n", a...)
+}
+
+func printCompiledUnits(enabled bool, units []*definition.CompilationUnit) {
+	verbosef(enabled, "compiled units count: %d", len(units))
+	for _, unit := range units {
+		verbosef(enabled, "  source: %s", unit.UnitName.Path)
+	}
+}
+
 func main() {
 	if len(os.Args) == 1 {
 		printBanner()
@@ -92,6 +108,7 @@ func main() {
 	decnum := false
 	memcpy := false
 	compat := false
+	verbose := false
 	signext := ""
 	flag.StringVar(&target, "t", "", "Target Language")
 	flag.StringVar(&output, "o", "", "Output Path")
@@ -103,6 +120,7 @@ func main() {
 	flag.BoolVar(&decnum, "decnum", false, "Force Generate Decimal Format for Constant Value")
 	flag.BoolVar(&memcpy, "memcpy", false, "Allocate Memory and Copy Data for Variable-Size Type")
 	flag.BoolVar(&compat, "compat", false, "Generate Compatible Code")
+	flag.BoolVar(&verbose, "v", false, "Print Verbose Info")
 	flag.StringVar(&signext, "signext", "", "Sign Extension Method (shift, arith)")
 	flag.Parse()
 
@@ -137,18 +155,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// compile
-	input := files[0]
-	units, err, warning := compiler.Compile(input)
-	if warning != nil {
-		fmt.Fprintln(os.Stderr, warning)
-	}
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-
-	// generate
 	options := gen.NewGenOptions(
 		gen.RemovePath(rmpath),
 		gen.RelativePath(relpath),
@@ -160,6 +166,29 @@ func main() {
 		gen.CompatibleMode(compat),
 		signextOpt,
 	)
+
+	verbosef(verbose, "args: %s", strings.Join(os.Args[1:], " "))
+	verbosef(verbose, "input: %s", files[0])
+	verbosef(verbose, "target: %s", target)
+	verbosef(verbose, "options:")
+	for _, opt := range strings.Split(options.String(), "\n") {
+		verbosef(verbose, "  %s", opt)
+	}
+
+	// compile
+	input := files[0]
+	units, err, warning := compiler.Compile(input)
+	if warning != nil {
+		fmt.Fprintln(os.Stderr, warning)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	printCompiledUnits(verbose, units)
+
+	// generate
 	ctx := &gen.GenCtx{
 		Units:      units,
 		GenOptions: options,

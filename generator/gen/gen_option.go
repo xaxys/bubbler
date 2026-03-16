@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/xaxys/bubbler/definition"
+	"github.com/xaxys/bubbler/util"
 )
 
 type GenOptionSetter func(*GenOptions)
@@ -16,6 +17,16 @@ const (
 	SignExtMethodArith
 )
 
+var SignExtMethodNames = map[SignExtMethodID]string{
+	SignExtMethodDefault: "default",
+	SignExtMethodShift:   "shift",
+	SignExtMethodArith:   "arith",
+}
+
+func (id SignExtMethodID) String() string {
+	return SignExtMethodNames[id]
+}
+
 type GenOptions struct {
 	RemovePath     []string
 	RelativePath   bool
@@ -26,6 +37,10 @@ type GenOptions struct {
 	MemoryCopy     bool
 	CompatibleMode bool
 	SignExtMethod  SignExtMethodID
+}
+
+func (o *GenOptions) String() string {
+	return util.ToString(*o)
 }
 
 func NewGenOptions(setter ...GenOptionSetter) *GenOptions {
