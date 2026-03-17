@@ -230,6 +230,8 @@ Bubbler supports `string` and `bytes` types for variable-sized data.
 
 `string` type is used for text strings. In binary form, the text encoding of a string field is UTF-8. Since a string shouldn't contain any EOF character, the end of a string is defined by `\0` in data stream. So the size of a string field is `str.utf8_length + 1`.
 
+**Warning**: UTF-8 encoding is a convention. In C and C++ target, UTF-8 encoding is NOT handled by the generated code. It is user's responsibility to ENSURE that the string value is UTF-8 encoded. But in other modern languages such as Go, Java, Python, JS, UTF-8 encoding is handled by the generated code. (But if you are only using C/C++, you can ignore the convention and use any encoding you want, as long as the end of the string is denoted by `\0`.)
+
 #### Bytes
 
 `bytes` type is used for store binary data in any form. In binary form, bytes data is store in `length` + `data` two part.
