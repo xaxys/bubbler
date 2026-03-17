@@ -1558,11 +1558,11 @@ var fieldEncoderTemplate = `
 {{- end -}}
 
 {{- define "encodeNormalFieldStruct" -}}
-{{- if .CompatibleMode }}
+{{- if .CompatibleMode -}}
     {{ if .FieldStruct.GetTypeDynamic }}offset += {{ end }}{{ .FieldName }}.encode(static_cast<{{ .TyUint8 }}*>(data) + {{ if .Dynamic }}offset + {{ end }}{{ .FromByte }});
-{{- else }}
+{{- else -}}
     {{ if .FieldStruct.GetTypeDynamic }}offset += {{ end }}{{ .FieldName }}.encode(buf.subspan({{ if .Dynamic }}offset + {{ end }}{{ .FromByte }}));
-{{- end }}
+{{- end -}}
 {{- end -}}
 
 {{- define "encodeNormalFieldTempVarDecl" -}}
@@ -2074,96 +2074,96 @@ var decoderTemplate = `
 {{- if $f.FieldType.GetTypeID.IsArray -}}
     {{- if $f.FieldType.ElementType.GetTypeID.IsString -}}
         {{- range $i := iterate 0 $f.FieldType.Length }}
-    {   // string[{{ $i }}]: {{ Tosnake_case $f.FieldName }}
-        uint64_t pos = offset + {{ $fromByte }};
-        if (size <= pos) return -(int64_t)(pos + 1);
-        uint64_t len = 0;
-        while (static_cast<const uint8_t*>(data)[pos + len] != 0) {
-            len++;
-            if (pos + len >= size) return -(int64_t)(pos + len + 1);
+        {   // string[{{ $i }}]: {{ Tosnake_case $f.FieldName }}
+            uint64_t pos = offset + {{ $fromByte }};
+            if (size <= pos) return -(int64_t)(pos + 1);
+            uint64_t len = 0;
+            while (static_cast<const uint8_t*>(data)[pos + len] != 0) {
+                len++;
+                if (pos + len >= size) return -(int64_t)(pos + len + 1);
+            }
+            offset += len + 1;
         }
-        offset += len + 1;
-    }
         {{- end -}}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsBytes -}}
         {{- range $i := iterate 0 $f.FieldType.Length }}
-    {   // bytes[{{ $i }}]: {{ Tosnake_case $f.FieldName }}
-        uint64_t pos = offset + {{ $fromByte }};
-        if (size <= pos) return -(int64_t)(pos + 1);
-        uint64_t len = 0;
-        uint8_t shift = 0;
-        while (static_cast<const uint8_t*>(data)[pos] & 0x80) {
+        {   // bytes[{{ $i }}]: {{ Tosnake_case $f.FieldName }}
+            uint64_t pos = offset + {{ $fromByte }};
+            if (size <= pos) return -(int64_t)(pos + 1);
+            uint64_t len = 0;
+            uint8_t shift = 0;
+            while (static_cast<const uint8_t*>(data)[pos] & 0x80) {
+                len |= (uint64_t)(static_cast<const uint8_t*>(data)[pos] & 0x7F) << shift;
+                shift += 7;
+                pos++;
+                if (pos >= size) return -(int64_t)(pos + 1);
+            }
             len |= (uint64_t)(static_cast<const uint8_t*>(data)[pos] & 0x7F) << shift;
-            shift += 7;
             pos++;
-            if (pos >= size) return -(int64_t)(pos + 1);
+            if (size < pos + len) return -(int64_t)(pos + len);
+            offset += pos - (offset + {{ $fromByte }}) + len;
         }
-        len |= (uint64_t)(static_cast<const uint8_t*>(data)[pos] & 0x7F) << shift;
-        pos++;
-        if (size < pos + len) return -(int64_t)(pos + len);
-        offset += pos - (offset + {{ $fromByte }}) + len;
-    }
         {{- end -}}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsStruct -}}
         {{- $structType := $f.FieldType.ElementType -}}
         {{- if $structType.GetTypeDynamic -}}
             {{- range $i := iterate 0 $f.FieldType.Length }}
-    {   // struct[{{ $i }}]: {{ Tosnake_case $f.FieldName }}[{{ $i }}]
-        uint64_t sub_offset = offset + {{ $fromByte }};
-        uint64_t remaining = size > sub_offset ? size - sub_offset : 0;
-{{- if $.CompatibleMode }}
-        int64_t sub_size = {{ $structType.StructBelongs.Package.ToPath "::" "" }}::{{ $structType.StructName }}::decode_size(static_cast<const uint8_t*>(data) + sub_offset, remaining);
-{{- else }}
-        int64_t sub_size = {{ $structType.StructBelongs.Package.ToPath "::" "" }}::{{ $structType.StructName }}::decode_size(::std::span<const uint8_t>(static_cast<const uint8_t*>(data) + sub_offset, remaining));
-{{- end }}
-        if (sub_size < 0) return -(int64_t)sub_offset + sub_size;
-        offset += (uint64_t)sub_size;
-    }
+        {   // struct[{{ $i }}]: {{ Tosnake_case $f.FieldName }}[{{ $i }}]
+            uint64_t sub_offset = offset + {{ $fromByte }};
+            uint64_t remaining = size > sub_offset ? size - sub_offset : 0;
+            {{- if $.CompatibleMode }}
+            int64_t sub_size = {{ $structType.StructBelongs.Package.ToPath "::" "" }}::{{ $structType.StructName }}::decode_size(static_cast<const uint8_t*>(data) + sub_offset, remaining);
+            {{- else }}
+            int64_t sub_size = {{ $structType.StructBelongs.Package.ToPath "::" "" }}::{{ $structType.StructName }}::decode_size(::std::span<const uint8_t>(static_cast<const uint8_t*>(data) + sub_offset, remaining));
+            {{- end }}
+            if (sub_size < 0) return -(int64_t)sub_offset + sub_size;
+            offset += (uint64_t)sub_size;
+        }
             {{- end -}}
         {{- end -}}
     {{- end -}}
 {{- else if $f.FieldType.GetTypeID.IsString }}
-    {   // string: {{ Tosnake_case $f.FieldName }}
-        uint64_t pos = offset + {{ $fromByte }};
-        if (size <= pos) return -(int64_t)(pos + 1);
-        uint64_t len = 0;
-        while (static_cast<const uint8_t*>(data)[pos + len] != 0) {
-            len++;
-            if (pos + len >= size) return -(int64_t)(pos + len + 1);
+        {   // string: {{ Tosnake_case $f.FieldName }}
+            uint64_t pos = offset + {{ $fromByte }};
+            if (size <= pos) return -(int64_t)(pos + 1);
+            uint64_t len = 0;
+            while (static_cast<const uint8_t*>(data)[pos + len] != 0) {
+                len++;
+                if (pos + len >= size) return -(int64_t)(pos + len + 1);
+            }
+            offset += len + 1;
         }
-        offset += len + 1;
-    }
 {{- else if $f.FieldType.GetTypeID.IsBytes }}
-    {   // bytes: {{ Tosnake_case $f.FieldName }}
-        uint64_t pos = offset + {{ $fromByte }};
-        if (size <= pos) return -(int64_t)(pos + 1);
-        uint64_t len = 0;
-        uint8_t shift = 0;
-        while (static_cast<const uint8_t*>(data)[pos] & 0x80) {
+        {   // bytes: {{ Tosnake_case $f.FieldName }}
+            uint64_t pos = offset + {{ $fromByte }};
+            if (size <= pos) return -(int64_t)(pos + 1);
+            uint64_t len = 0;
+            uint8_t shift = 0;
+            while (static_cast<const uint8_t*>(data)[pos] & 0x80) {
+                len |= (uint64_t)(static_cast<const uint8_t*>(data)[pos] & 0x7F) << shift;
+                shift += 7;
+                pos++;
+                if (pos >= size) return -(int64_t)(pos + 1);
+            }
             len |= (uint64_t)(static_cast<const uint8_t*>(data)[pos] & 0x7F) << shift;
-            shift += 7;
             pos++;
-            if (pos >= size) return -(int64_t)(pos + 1);
+            if (size < pos + len) return -(int64_t)(pos + len);
+            offset += pos - (offset + {{ $fromByte }}) + len;
         }
-        len |= (uint64_t)(static_cast<const uint8_t*>(data)[pos] & 0x7F) << shift;
-        pos++;
-        if (size < pos + len) return -(int64_t)(pos + len);
-        offset += pos - (offset + {{ $fromByte }}) + len;
-    }
 {{- else if $f.FieldType.GetTypeID.IsStruct -}}
     {{- $structType := $f.FieldType.ElementType -}}
     {{- if $structType.GetTypeDynamic }}
-    {   // struct: {{ Tosnake_case $f.FieldName }}
-        uint64_t sub_offset = offset + {{ $fromByte }};
-        uint64_t remaining = size > sub_offset ? size - sub_offset : 0;
-{{- if $.CompatibleMode }}
-        int64_t sub_size = {{ $structType.StructBelongs.Package.ToPath "::" "" }}::{{ $structType.StructName }}::decode_size(static_cast<const uint8_t*>(data) + sub_offset, remaining);
-{{- else }}
-        int64_t sub_size = {{ $structType.StructBelongs.Package.ToPath "::" "" }}::{{ $structType.StructName }}::decode_size(::std::span<const uint8_t>(static_cast<const uint8_t*>(data) + sub_offset, remaining));
-{{- end }}
-        if (sub_size < 0) return -(int64_t)sub_offset + sub_size;
-        offset += (uint64_t)sub_size;
-    }
+        {   // struct: {{ Tosnake_case $f.FieldName }}
+            uint64_t sub_offset = offset + {{ $fromByte }};
+            uint64_t remaining = size > sub_offset ? size - sub_offset : 0;
+            {{- if $.CompatibleMode }}
+            int64_t sub_size = {{ $structType.StructBelongs.Package.ToPath "::" "" }}::{{ $structType.StructName }}::decode_size(static_cast<const uint8_t*>(data) + sub_offset, remaining);
+            {{- else }}
+            int64_t sub_size = {{ $structType.StructBelongs.Package.ToPath "::" "" }}::{{ $structType.StructName }}::decode_size(::std::span<const uint8_t>(static_cast<const uint8_t*>(data) + sub_offset, remaining));
+            {{- end }}
+            if (sub_size < 0) return -(int64_t)sub_offset + sub_size;
+            offset += (uint64_t)sub_size;
+        }
     {{- end -}}
 {{- end -}}
 {{- end -}}
@@ -2184,7 +2184,7 @@ var decoderTemplate = `
         {{- $fixedStart := 0 }}
         {{- range $field := .StructDef.StructFields.Values }}
             {{- if and $field.GetFieldKind.IsNormal (lt $field.GetFieldBitSize 0) }}
-		{{- template "decoderSizeField" (dict "Field" $field "FromByte" (calc $fixedStart "/" 8) "CompatibleMode" $.GenOptions.CompatibleMode) }}
+        {{- template "decoderSizeField" (dict "Field" $field "FromByte" (calc $fixedStart "/" 8) "CompatibleMode" $.GenOptions.CompatibleMode) }}
             {{- end }}
             {{- if ne $field.GetFieldBitSize -1 }}
         {{- $fixedStart = calc $fixedStart "+" $field.GetFieldBitSize }}
