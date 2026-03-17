@@ -1712,40 +1712,38 @@ func (this *{{ $structName }}) Decode(data []byte) int {
 {{- if $f.FieldType.GetTypeID.IsArray -}}
     {{- if $f.FieldType.ElementType.GetTypeID.IsString -}}
         {{- range $i := iterate 0 $f.FieldType.Length }}
-    {   // string[{{ $i }}]: {{ ToPascalCase $f.FieldName }}
-        pos := offset + {{ $fromByte }}
-        if len(data) <= pos { return -(pos + 1) }
+    {   // {{ $f }}: [{{ $i }}]
+        if len(data) <= offset + {{ $fromByte }} { return -(offset + {{ $fromByte }} + 1) }
         length := 0
-        for data[pos+length] != 0 {
+        for data[offset + {{ $fromByte }} + length] != 0 {
             length++
-            if pos+length >= len(data) { return -(pos + length + 1) }
+            if len(data) <= offset + {{ $fromByte }} + length { return -(offset + {{ $fromByte }} + length + 1) }
         }
         offset += length + 1
     }
         {{- end -}}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsBytes -}}
         {{- range $i := iterate 0 $f.FieldType.Length }}
-    {   // bytes[{{ $i }}]: {{ ToPascalCase $f.FieldName }}
-        pos := offset + {{ $fromByte }}
-        if len(data) <= pos { return -(pos + 1) }
+    {   // {{ $f }}: [{{ $i }}]
+        if len(data) <= offset + {{ $fromByte }} { return -(offset + {{ $fromByte }} + 1) }
         length := 0
         shift := uint(0)
-        for data[pos] & 0x80 != 0 {
-            length |= int(data[pos]&0x7F) << shift
+        for data[offset + {{ $fromByte }}] & 0x80 != 0 {
+            length |= int(data[offset + {{ $fromByte }}]&0x7F) << shift
             shift += 7
-            pos++
-            if pos >= len(data) { return -(pos + 1) }
+            offset++
+            if len(data) <= offset + {{ $fromByte }} { return -(offset + {{ $fromByte }} + 1) }
         }
-        length |= int(data[pos]&0x7F) << shift
-        pos++
-        if len(data) < pos+length { return -(pos + length) }
-        offset += pos - (offset + {{ $fromByte }}) + length
+        length |= int(data[offset + {{ $fromByte }}]&0x7F) << shift
+        offset++
+        if len(data) < offset + {{ $fromByte }} + length { return -(offset + {{ $fromByte }} + length) }
+        offset += length
     }
         {{- end -}}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsStruct -}}
         {{- if $f.FieldType.ElementType.GetTypeDynamic -}}
             {{- range $i := iterate 0 $f.FieldType.Length }}
-    {   // struct[{{ $i }}]: {{ ToPascalCase $f.FieldName }}[{{ $i }}]
+    {   // {{ $f }}: [{{ $i }}]
         subOffset := offset + {{ $fromByte }}
         var subData []byte
         if len(data) > subOffset { subData = data[subOffset:] }
@@ -1757,36 +1755,34 @@ func (this *{{ $structName }}) Decode(data []byte) int {
         {{- end -}}
     {{- end -}}
 {{- else if $f.FieldType.GetTypeID.IsString }}
-    {   // string: {{ ToPascalCase $f.FieldName }}
-        pos := offset + {{ $fromByte }}
-        if len(data) <= pos { return -(pos + 1) }
+    {   // {{ $f }}
+        if len(data) <= offset + {{ $fromByte }} { return -(offset + {{ $fromByte }} + 1) }
         length := 0
-        for data[pos+length] != 0 {
+        for data[offset + {{ $fromByte }} + length] != 0 {
             length++
-            if pos+length >= len(data) { return -(pos + length + 1) }
+            if len(data) <= offset + {{ $fromByte }} + length { return -(offset + {{ $fromByte }} + length + 1) }
         }
         offset += length + 1
     }
 {{- else if $f.FieldType.GetTypeID.IsBytes }}
-    {   // bytes: {{ ToPascalCase $f.FieldName }}
-        pos := offset + {{ $fromByte }}
-        if len(data) <= pos { return -(pos + 1) }
+    {   // {{ $f }}
+        if len(data) <= offset + {{ $fromByte }} { return -(offset + {{ $fromByte }} + 1) }
         length := 0
         shift := uint(0)
-        for data[pos] & 0x80 != 0 {
-            length |= int(data[pos]&0x7F) << shift
+        for data[offset + {{ $fromByte }}] & 0x80 != 0 {
+            length |= int(data[offset + {{ $fromByte }}]&0x7F) << shift
             shift += 7
-            pos++
-            if pos >= len(data) { return -(pos + 1) }
+            offset++
+            if len(data) <= offset + {{ $fromByte }} { return -(offset + {{ $fromByte }} + 1) }
         }
-        length |= int(data[pos]&0x7F) << shift
-        pos++
-        if len(data) < pos+length { return -(pos + length) }
-        offset += pos - (offset + {{ $fromByte }}) + length
+        length |= int(data[offset + {{ $fromByte }}]&0x7F) << shift
+        offset++
+        if len(data) < offset + {{ $fromByte }} + length { return -(offset + {{ $fromByte }} + length) }
+        offset += length
     }
 {{- else if $f.FieldType.GetTypeID.IsStruct -}}
     {{- if $f.FieldType.GetTypeDynamic }}
-    {   // struct: {{ ToPascalCase $f.FieldName }}
+    {   // {{ $f }}
         subOffset := offset + {{ $fromByte }}
         var subData []byte
         if len(data) > subOffset { subData = data[subOffset:] }

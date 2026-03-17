@@ -1834,21 +1834,20 @@ var decoderTemplate = `
 {{- if $f.FieldType.GetTypeID.IsArray -}}
     {{- if $f.FieldType.ElementType.GetTypeID.IsString -}}
         {{- range $i := iterate 0 $f.FieldType.Length }}
-            {   // string[{{ $i }}]: {{ TocamelCase $f.FieldName }}
-                int _pos = offset + {{ $fromByte }};
+            {   // {{ $f }}: [{{ $i }}]
                 {{- if $memcpy }}
-                if (data.Length - start <= _pos) return -(_pos + 1);
+                if (data.Length - start <= offset + {{ $fromByte }}) return -(offset + {{ $fromByte }} + 1);
                 int _length = 0;
-                while (data[_pos + start + _length] != 0) {
+                while (data[offset + start + {{ $fromByte }} + _length] != 0) {
                     _length++;
-                    if (_pos + _length >= data.Length - start) return -(_pos + _length + 1);
+                    if (data.Length - start <= offset + {{ $fromByte }} + _length) return -(offset + {{ $fromByte }} + _length + 1);
                 }
                 {{- else }}
-                if (data.Length <= _pos) return -(_pos + 1);
+                if (data.Length <= offset + {{ $fromByte }}) return -(offset + {{ $fromByte }} + 1);
                 int _length = 0;
-                while (data[_pos + _length] != 0) {
+                while (data[offset + {{ $fromByte }} + _length] != 0) {
                     _length++;
-                    if (_pos + _length >= data.Length) return -(_pos + _length + 1);
+                    if (data.Length <= offset + {{ $fromByte }} + _length) return -(offset + {{ $fromByte }} + _length + 1);
                 }
                 {{- end }}
                 offset += _length + 1;
@@ -1856,42 +1855,41 @@ var decoderTemplate = `
         {{- end -}}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsBytes -}}
         {{- range $i := iterate 0 $f.FieldType.Length }}
-            {   // bytes[{{ $i }}]: {{ TocamelCase $f.FieldName }}
-                int _pos = offset + {{ $fromByte }};
+            {   // {{ $f }}: [{{ $i }}]
                 {{- if $memcpy }}
-                if (data.Length - start <= _pos) return -(_pos + 1);
+                if (data.Length - start <= offset + {{ $fromByte }}) return -(offset + {{ $fromByte }} + 1);
                 int _length = 0;
                 byte _shift = 0;
-                while ((data[_pos + start] & 0x80) != 0) {
-                    _length |= (data[_pos + start] & 0x7F) << _shift;
+                while ((data[offset + start + {{ $fromByte }}] & 0x80) != 0) {
+                    _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
                     _shift += 7;
-                    _pos++;
-                    if (_pos >= data.Length - start) return -(_pos + 1);
+                    offset++;
+                    if (data.Length - start <= offset + {{ $fromByte }}) return -(offset + {{ $fromByte }} + 1);
                 }
-                _length |= (data[_pos + start] & 0x7F) << _shift;
-                _pos++;
-                if (data.Length - start < _pos + _length) return -(_pos + _length);
+                _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
+                offset++;
+                if (data.Length - start < offset + {{ $fromByte }} + _length) return -(offset + {{ $fromByte }} + _length);
                 {{- else }}
-                if (data.Length <= _pos) return -(_pos + 1);
+                if (data.Length <= offset + {{ $fromByte }}) return -(offset + {{ $fromByte }} + 1);
                 int _length = 0;
                 byte _shift = 0;
-                while ((data[_pos] & 0x80) != 0) {
-                    _length |= (data[_pos] & 0x7F) << _shift;
+                while ((data[offset + {{ $fromByte }}] & 0x80) != 0) {
+                    _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift;
                     _shift += 7;
-                    _pos++;
-                    if (_pos >= data.Length) return -(_pos + 1);
+                    offset++;
+                    if (data.Length <= offset + {{ $fromByte }}) return -(offset + {{ $fromByte }} + 1);
                 }
-                _length |= (data[_pos] & 0x7F) << _shift;
-                _pos++;
-                if (data.Length < _pos + _length) return -(_pos + _length);
+                _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift;
+                offset++;
+                if (data.Length < offset + {{ $fromByte }} + _length) return -(offset + {{ $fromByte }} + _length);
                 {{- end }}
-                offset += _pos - (offset + {{ $fromByte }}) + _length;
+                offset += _length;
             }
         {{- end -}}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsStruct -}}
         {{- if $f.FieldType.ElementType.GetTypeDynamic -}}
             {{- range $i := iterate 0 $f.FieldType.Length }}
-            {   // struct[{{ $i }}]: {{ TocamelCase $f.FieldName }}[{{ $i }}]
+            {   // {{ $f }}: [{{ $i }}]
                 {{- if $memcpy }}
                 int _subSize = this.{{ TocamelCase $f.FieldName }}[{{ $i }}].DecodeSize(data, offset + start + {{ $fromByte }});
                 {{- else }}
@@ -1904,60 +1902,58 @@ var decoderTemplate = `
         {{- end -}}
     {{- end -}}
 {{- else if $f.FieldType.GetTypeID.IsString }}
-            {   // string: {{ TocamelCase $f.FieldName }}
-                int _pos = offset + {{ $fromByte }};
+            {   // {{ $f }}
                 {{- if $memcpy }}
-                if (data.Length - start <= _pos) return -(_pos + 1);
+                if (data.Length - start <= offset + {{ $fromByte }}) return -(offset + {{ $fromByte }} + 1);
                 int _length = 0;
-                while (data[_pos + start + _length] != 0) {
+                while (data[offset + start + {{ $fromByte }} + _length] != 0) {
                     _length++;
-                    if (_pos + _length >= data.Length - start) return -(_pos + _length + 1);
+                    if (data.Length - start <= offset + {{ $fromByte }} + _length) return -(offset + {{ $fromByte }} + _length + 1);
                 }
                 {{- else }}
-                if (data.Length <= _pos) return -(_pos + 1);
+                if (data.Length <= offset + {{ $fromByte }}) return -(offset + {{ $fromByte }} + 1);
                 int _length = 0;
-                while (data[_pos + _length] != 0) {
+                while (data[offset + {{ $fromByte }} + _length] != 0) {
                     _length++;
-                    if (_pos + _length >= data.Length) return -(_pos + _length + 1);
+                    if (data.Length <= offset + {{ $fromByte }} + _length) return -(offset + {{ $fromByte }} + _length + 1);
                 }
                 {{- end }}
                 offset += _length + 1;
             }
 {{- else if $f.FieldType.GetTypeID.IsBytes }}
-            {   // bytes: {{ TocamelCase $f.FieldName }}
-                int _pos = offset + {{ $fromByte }};
+            {   // {{ $f }}
                 {{- if $memcpy }}
-                if (data.Length - start <= _pos) return -(_pos + 1);
+                if (data.Length - start <= offset + {{ $fromByte }}) return -(offset + {{ $fromByte }} + 1);
                 int _length = 0;
                 byte _shift = 0;
-                while ((data[_pos + start] & 0x80) != 0) {
-                    _length |= (data[_pos + start] & 0x7F) << _shift;
+                while ((data[offset + start + {{ $fromByte }}] & 0x80) != 0) {
+                    _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
                     _shift += 7;
-                    _pos++;
-                    if (_pos >= data.Length - start) return -(_pos + 1);
+                    offset++;
+                    if (data.Length - start <= offset + {{ $fromByte }}) return -(offset + {{ $fromByte }} + 1);
                 }
-                _length |= (data[_pos + start] & 0x7F) << _shift;
-                _pos++;
-                if (data.Length - start < _pos + _length) return -(_pos + _length);
+                _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
+                offset++;
+                if (data.Length - start < offset + {{ $fromByte }} + _length) return -(offset + {{ $fromByte }} + _length);
                 {{- else }}
-                if (data.Length <= _pos) return -(_pos + 1);
+                if (data.Length <= offset + {{ $fromByte }}) return -(offset + {{ $fromByte }} + 1);
                 int _length = 0;
                 byte _shift = 0;
-                while ((data[_pos] & 0x80) != 0) {
-                    _length |= (data[_pos] & 0x7F) << _shift;
+                while ((data[offset + {{ $fromByte }}] & 0x80) != 0) {
+                    _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift;
                     _shift += 7;
-                    _pos++;
-                    if (_pos >= data.Length) return -(_pos + 1);
+                    offset++;
+                    if (data.Length <= offset + {{ $fromByte }}) return -(offset + {{ $fromByte }} + 1);
                 }
-                _length |= (data[_pos] & 0x7F) << _shift;
-                _pos++;
-                if (data.Length < _pos + _length) return -(_pos + _length);
+                _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift;
+                offset++;
+                if (data.Length < offset + {{ $fromByte }} + _length) return -(offset + {{ $fromByte }} + _length);
                 {{- end }}
-                offset += _pos - (offset + {{ $fromByte }}) + _length;
+                offset += _length;
             }
 {{- else if $f.FieldType.GetTypeID.IsStruct -}}
     {{- if $f.FieldType.GetTypeDynamic }}
-            {   // struct: {{ TocamelCase $f.FieldName }}
+            {   // {{ $f }}
                 {{- if $memcpy }}
                 int _subSize = this.{{ TocamelCase $f.FieldName }}.DecodeSize(data, offset + start + {{ $fromByte }});
                 {{- else }}

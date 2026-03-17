@@ -1944,40 +1944,36 @@ int64_t {{ $structName }}_decode(const void* data, struct {{ $structName }}* ptr
 {{- if $f.FieldType.GetTypeID.IsArray -}}
     {{- if $f.FieldType.ElementType.GetTypeID.IsString -}}
         {{- range $i := iterate 0 $f.FieldType.Length }}
-    {   // string[{{ $i }}]: {{ $f.FieldName }}
-        uint64_t pos = offset + {{ $fromByte }};
-        if (size <= pos) return -(int64_t)(pos + 1);
-        uint64_t len = 0;
-        while (((const uint8_t*)data)[pos + len] != 0) {
-            len++;
-            if (pos + len >= size) return -(int64_t)(pos + len + 1);
-        }
-        offset += len + 1;
+    {   // {{ $f }}: [{{ $i }}]
+        if (size <= offset + {{ $fromByte }}) return -(int64_t)(offset + {{ $fromByte }} + 1);
+        const uint8_t* p = (const uint8_t*)data + offset + {{ $fromByte }};
+        const void* res = memchr(p, '\0', size - offset - {{ $fromByte }});
+        if (res == NULL) return -(int64_t)(size + 1);
+        offset += (uint64_t)((const uint8_t*)res - p + 1);
     }
         {{- end -}}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsBytes -}}
         {{- range $i := iterate 0 $f.FieldType.Length }}
-    {   // bytes[{{ $i }}]: {{ $f.FieldName }}
-        uint64_t pos = offset + {{ $fromByte }};
-        if (size <= pos) return -(int64_t)(pos + 1);
+    {   // {{ $f }}: [{{ $i }}]
+        if (size <= offset + {{ $fromByte }}) return -(int64_t)(offset + {{ $fromByte }} + 1);
         uint64_t len = 0;
         uint8_t shift = 0;
-        while (((const uint8_t*)data)[pos] & 0x80) {
-            len |= (uint64_t)(((const uint8_t*)data)[pos] & 0x7F) << shift;
+        while (((const uint8_t*)data)[offset + {{ $fromByte }}] & 0x80) {
+            len |= (uint64_t)(((const uint8_t*)data)[offset + {{ $fromByte }}] & 0x7F) << shift;
             shift += 7;
-            pos++;
-            if (pos >= size) return -(int64_t)(pos + 1);
+            offset++;
+            if (size <= offset + {{ $fromByte }}) return -(int64_t)(offset + {{ $fromByte }} + 1);
         }
-        len |= (uint64_t)(((const uint8_t*)data)[pos] & 0x7F) << shift;
-        pos++;
-        if (size < pos + len) return -(int64_t)(pos + len);
-        offset += pos - (offset + {{ $fromByte }}) + len;
+        len |= (uint64_t)(((const uint8_t*)data)[offset + {{ $fromByte }}] & 0x7F) << shift;
+        offset++;
+        if (size < offset + {{ $fromByte }} + len) return -(int64_t)(offset + {{ $fromByte }} + len);
+        offset += len;
     }
         {{- end -}}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsStruct -}}
         {{- if $f.FieldType.ElementType.GetTypeDynamic -}}
             {{- range $i := iterate 0 $f.FieldType.Length }}
-    {   // struct[{{ $i }}]: {{ $f.FieldName }}
+    {   // {{ $f }}: [{{ $i }}]
         uint64_t sub_offset = offset + {{ $fromByte }};
         uint64_t remaining = size > sub_offset ? size - sub_offset : 0;
         int64_t sub_size = {{ $f.FieldType.ElementType.GetTypeName }}_decode_size(((const uint8_t*)data) + sub_offset, remaining);
@@ -1988,36 +1984,32 @@ int64_t {{ $structName }}_decode(const void* data, struct {{ $structName }}* ptr
         {{- end -}}
     {{- end -}}
 {{- else if $f.FieldType.GetTypeID.IsString }}
-    {   // string: {{ $f.FieldName }}
-        uint64_t pos = offset + {{ $fromByte }};
-        if (size <= pos) return -(int64_t)(pos + 1);
-        uint64_t len = 0;
-        while (((const uint8_t*)data)[pos + len] != 0) {
-            len++;
-            if (pos + len >= size) return -(int64_t)(pos + len + 1);
-        }
-        offset += len + 1;
+    {   // {{ $f }}
+        if (size <= offset + {{ $fromByte }}) return -(int64_t)(offset + {{ $fromByte }} + 1);
+        const uint8_t* p = (const uint8_t*)data + offset + {{ $fromByte }};
+        const void* res = memchr(p, '\0', size - offset - {{ $fromByte }});
+        if (res == NULL) return -(int64_t)(size + 1);
+        offset += (uint64_t)((const uint8_t*)res - p + 1);
     }
 {{- else if $f.FieldType.GetTypeID.IsBytes }}
-    {   // bytes: {{ $f.FieldName }}
-        uint64_t pos = offset + {{ $fromByte }};
-        if (size <= pos) return -(int64_t)(pos + 1);
+    {   // {{ $f }}
+        if (size <= offset + {{ $fromByte }}) return -(int64_t)(offset + {{ $fromByte }} + 1);
         uint64_t len = 0;
         uint8_t shift = 0;
-        while (((const uint8_t*)data)[pos] & 0x80) {
-            len |= (uint64_t)(((const uint8_t*)data)[pos] & 0x7F) << shift;
+        while (((const uint8_t*)data)[offset + {{ $fromByte }}] & 0x80) {
+            len |= (uint64_t)(((const uint8_t*)data)[offset + {{ $fromByte }}] & 0x7F) << shift;
             shift += 7;
-            pos++;
-            if (pos >= size) return -(int64_t)(pos + 1);
+            offset++;
+            if (size <= offset + {{ $fromByte }}) return -(int64_t)(offset + {{ $fromByte }} + 1);
         }
-        len |= (uint64_t)(((const uint8_t*)data)[pos] & 0x7F) << shift;
-        pos++;
-        if (size < pos + len) return -(int64_t)(pos + len);
-        offset += pos - (offset + {{ $fromByte }}) + len;
+        len |= (uint64_t)(((const uint8_t*)data)[offset + {{ $fromByte }}] & 0x7F) << shift;
+        offset++;
+        if (size < offset + {{ $fromByte }} + len) return -(int64_t)(offset + {{ $fromByte }} + len);
+        offset += len;
     }
 {{- else if $f.FieldType.GetTypeID.IsStruct -}}
     {{- if $f.FieldType.GetTypeDynamic }}
-    {   // struct: {{ $f.FieldName }}
+    {   // {{ $f }}
         uint64_t sub_offset = offset + {{ $fromByte }};
         uint64_t remaining = size > sub_offset ? size - sub_offset : 0;
         int64_t sub_size = {{ $f.FieldType.GetTypeName }}_decode_size(((const uint8_t*)data) + sub_offset, remaining);

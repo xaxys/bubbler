@@ -1482,36 +1482,34 @@ var decoderTemplate = `
 {{- if $f.FieldType.GetTypeID.IsArray -}}
     {{- if $f.FieldType.ElementType.GetTypeID.IsString -}}
         {{- range $i := iterate 0 $f.FieldType.Length }}
-        # string[{{ $i }}]: {{ Tosnake_case $f.FieldName }}
-        _pos = offset + {{ $fromByte }}
-        if len(data) <= _pos: return -(_pos + 1)
+        # {{ $f }}: [{{ $i }}]
+        if len(data) <= offset + {{ $fromByte }}: return -(offset + {{ $fromByte }} + 1)
         _length = 0
-        while data[_pos + _length] != 0:
+        while data[offset + {{ $fromByte }} + _length] != 0:
             _length += 1
-            if _pos + _length >= len(data): return -(_pos + _length + 1)
+            if len(data) <= offset + {{ $fromByte }} + _length: return -(offset + {{ $fromByte }} + _length + 1)
         offset += _length + 1
         {{- end -}}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsBytes -}}
         {{- range $i := iterate 0 $f.FieldType.Length }}
-        # bytes[{{ $i }}]: {{ Tosnake_case $f.FieldName }}
-        _pos = offset + {{ $fromByte }}
-        if len(data) <= _pos: return -(_pos + 1)
+        # {{ $f }}: [{{ $i }}]
+        if len(data) <= offset + {{ $fromByte }}: return -(offset + {{ $fromByte }} + 1)
         _length = 0
         _shift = 0
-        while data[_pos] & 0x80:
-            _length |= (data[_pos] & 0x7F) << _shift
+        while data[offset + {{ $fromByte }}] & 0x80:
+            _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift
             _shift += 7
-            _pos += 1
-            if _pos >= len(data): return -(_pos + 1)
-        _length |= (data[_pos] & 0x7F) << _shift
-        _pos += 1
-        if len(data) < _pos + _length: return -(_pos + _length)
-        offset += _pos - (offset + {{ $fromByte }}) + _length
+            offset += 1
+            if len(data) <= offset + {{ $fromByte }}: return -(offset + {{ $fromByte }} + 1)
+        _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift
+        offset += 1
+        if len(data) < offset + {{ $fromByte }} + _length: return -(offset + {{ $fromByte }} + _length)
+        offset += _length
         {{- end -}}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsStruct -}}
         {{- if $f.FieldType.ElementType.GetTypeDynamic -}}
             {{- range $i := iterate 0 $f.FieldType.Length }}
-        # struct[{{ $i }}]: {{ Tosnake_case $f.FieldName }}[{{ $i }}]
+        # {{ $f }}: [{{ $i }}]
         _sub_size = self._{{ Tosnake_case $f.FieldName }}[{{ $i }}].decode_size(data[offset + {{ $fromByte }}:])
         if _sub_size < 0: return -(offset + {{ $fromByte }}) + _sub_size
         offset += _sub_size
@@ -1519,32 +1517,30 @@ var decoderTemplate = `
         {{- end -}}
     {{- end -}}
 {{- else if $f.FieldType.GetTypeID.IsString }}
-        # string: {{ Tosnake_case $f.FieldName }}
-        _pos = offset + {{ $fromByte }}
-        if len(data) <= _pos: return -(_pos + 1)
+        # {{ $f }}
+        if len(data) <= offset + {{ $fromByte }}: return -(offset + {{ $fromByte }} + 1)
         _length = 0
-        while data[_pos + _length] != 0:
+        while data[offset + {{ $fromByte }} + _length] != 0:
             _length += 1
-            if _pos + _length >= len(data): return -(_pos + _length + 1)
+            if len(data) <= offset + {{ $fromByte }} + _length: return -(offset + {{ $fromByte }} + _length + 1)
         offset += _length + 1
 {{- else if $f.FieldType.GetTypeID.IsBytes }}
-        # bytes: {{ Tosnake_case $f.FieldName }}
-        _pos = offset + {{ $fromByte }}
-        if len(data) <= _pos: return -(_pos + 1)
+        # {{ $f }}
+        if len(data) <= offset + {{ $fromByte }}: return -(offset + {{ $fromByte }} + 1)
         _length = 0
         _shift = 0
-        while data[_pos] & 0x80:
-            _length |= (data[_pos] & 0x7F) << _shift
+        while data[offset + {{ $fromByte }}] & 0x80:
+            _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift
             _shift += 7
-            _pos += 1
-            if _pos >= len(data): return -(_pos + 1)
-        _length |= (data[_pos] & 0x7F) << _shift
-        _pos += 1
-        if len(data) < _pos + _length: return -(_pos + _length)
-        offset += _pos - (offset + {{ $fromByte }}) + _length
+            offset += 1
+            if len(data) <= offset + {{ $fromByte }}: return -(offset + {{ $fromByte }} + 1)
+        _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift
+        offset += 1
+        if len(data) < offset + {{ $fromByte }} + _length: return -(offset + {{ $fromByte }} + _length)
+        offset += _length
 {{- else if $f.FieldType.GetTypeID.IsStruct -}}
     {{- if $f.FieldType.GetTypeDynamic }}
-        # struct: {{ Tosnake_case $f.FieldName }}
+        # {{ $f }}
         _sub_size = self._{{ Tosnake_case $f.FieldName }}.decode_size(data[offset + {{ $fromByte }}:])
         if _sub_size < 0: return -(offset + {{ $fromByte }}) + _sub_size
         offset += _sub_size
