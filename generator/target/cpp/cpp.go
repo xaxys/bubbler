@@ -2361,28 +2361,28 @@ var fieldDecoderTemplate = `
         {
             uint64_t {{ .TempName }} = 0;
             {{ .TyUint8 }} shift = 0;
-{{- if .CompatibleMode }}
+        {{- if .CompatibleMode }}
             while (static_cast<const {{ .TyUint8 }}*>(data)[offset + {{ .FromByte }}] & {{ .SetMask }}) {{ .TempName }} |= (static_cast<const {{ .TyUint8 }}*>(data)[offset + {{ .FromByte }}] & {{ .GetMask }}) << shift, shift += {{ .Shift }}, offset++;
             {{ .TempName }} |= (static_cast<const {{ .TyUint8 }}*>(data)[offset + {{ .FromByte }}] & {{ .GetMask }}) << shift, offset++;
-{{- else }}
+        {{- else }}
             while (data[offset + {{ .FromByte }}] & {{ .SetMask }}) {{ .TempName }} |= (data[offset + {{ .FromByte }}] & {{ .GetMask }}) << shift, shift += {{ .Shift }}, offset++;
             {{ .TempName }} |= (data[offset + {{ .FromByte }}] & {{ .GetMask }}) << shift, offset++;
-{{- end }}
+        {{- end }}
             {{ .FieldName }}.length = {{ .TempName }};
-            {{ if .MemoryCopy -}}
+    {{- if .MemoryCopy }}
             {{ .FieldName }}.data = ::std::shared_ptr<{{ .TyUint8 }}[]>(new {{ .TyUint8 }}[{{ .TempName }}]);
-{{- if .CompatibleMode }}
+        {{- if .CompatibleMode }}
             memcpy({{ .FieldName }}.data.get(), static_cast<const {{ .TyUint8 }}*>(data) + offset + {{ .FromByte }}, {{ .TempName }});
-{{- else }}
+        {{- else }}
             memcpy({{ .FieldName }}.data.get(), data.data() + offset + {{ .FromByte }}, {{ .TempName }});
-{{- end }}
-            {{ else -}}
-{{- if .CompatibleMode }}
+        {{- end }}
+    {{- else }}
+        {{- if .CompatibleMode }}
             {{ .FieldName }}.data = ::std::shared_ptr<{{ .TyUint8 }}[]>(const_cast<{{ .TyUint8 }}*>(static_cast<const {{ .TyUint8 }}*>(data)) + offset + {{ .FromByte }}, []({{ .TyUint8 }}[]){});
-{{- else }}
+        {{- else }}
             {{ .FieldName }}.data = ::std::shared_ptr<{{ .TyUint8 }}[]>(const_cast<{{ .TyUint8 }}*>(data.data() + offset + {{ .FromByte }}), []({{ .TyUint8 }}[]){});
-{{- end }}
-            {{ end -}}
+        {{- end }}
+    {{- end }}
             offset += {{ .TempName }};
         }
 {{- end -}}
