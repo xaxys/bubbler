@@ -85,12 +85,20 @@ test-short: clean
 
 clean:
 	@echo Cleaning $(PACKAGE_NAME) ...
-	@$(RM_CMD_1) $(TARGET)    $(RM_CMD_2)
-	@$(RM_CMD_1) coverage.out $(RM_CMD_2)
-	@$(RM_CMD_1) "*.db"       $(RM_CMD_2)
-	@$(RM_CMD_1) "*.exe"      $(RM_CMD_2)
-	@$(RM_CMD_1) "*.out"      $(RM_CMD_2)
-	@$(RM_CMD_1) "*.yaml"     $(RM_CMD_2)
+	-@$(RM_CMD_1) $(TARGET)    $(RM_CMD_2)
+	-@$(RM_CMD_1) coverage.out $(RM_CMD_2)
+	-@$(RM_CMD_1) "*.db"       $(RM_CMD_2)
+	-@$(RM_CMD_1) "*.exe"      $(RM_CMD_2)
+	-@$(RM_CMD_1) "*.out"      $(RM_CMD_2)
+	-@$(RM_CMD_1) "*.yaml"     $(RM_CMD_2)
+ifeq ($(OS),Windows_NT)
+	-@for /r e2e\tests %%f in (*.bb.go) do @del /q "%%f" >nul 2>&1 || ver >nul
+	-@for /f "delims=" %%f in ('dir /s /b /a-d e2e\tests\* 2^>nul') do @echo %%~dpf | findstr /i "\\gen\\" >nul && del /q "%%f" >nul 2>&1 || ver >nul
+	-@for /f "delims=" %%d in ('dir /s /b /ad e2e\tests 2^>nul ^| sort /R') do @rd "%%d" 2>nul || ver >nul
+else
+	@find e2e/tests -type f \( -path "*/gen/*" -o -name "*.bb.go" \) -delete
+	@find e2e/tests -type d -empty -delete
+endif
 
 e2e: $(TARGET)
 ifeq ($(OS),Windows_NT)
