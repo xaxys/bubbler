@@ -1,4 +1,4 @@
-﻿package commonjs
+package commonjs
 
 import (
 	"bytes"
@@ -1429,20 +1429,41 @@ var encoderTemplate = `
                         {{- if $field.GetFieldKind.IsNormal }}
                         {{- $fieldName := TocamelCase $field.FieldName }}
                             {{- if $field.FieldType.GetTypeID.IsArray }}
+                                {{- $loopUnroll := $.GenOptions.LoopUnroll }}
+                                {{- $shouldUseLoop := and (ge $loopUnroll 0) (gt $field.FieldType.Length $loopUnroll) }}
                                 {{- if $field.FieldType.ElementType.GetTypeID.IsStruct }}
                                     {{- if $field.FieldType.ElementType.GetTypeDynamic }}
+                                        {{- if $shouldUseLoop }}
+                    for (let _i = 0; _i < {{ $field.FieldType.Length }}; _i++) {
+                        size += obj.{{ $fieldName }}[_i].encode_size();
+                    }
+                                        {{- else }}
                                         {{- range $i := iterate 0 $field.FieldType.Length }}
                     size += obj.{{ $fieldName }}[{{ $i }}].encode_size();
                                         {{- end }}
+                                        {{- end }}
                                     {{- end }}
                                 {{- else if $field.FieldType.ElementType.GetTypeID.IsString }}
+                                    {{- if $shouldUseLoop }}
+                    for (let _i = 0; _i < {{ $field.FieldType.Length }}; _i++) {
+                        size += stringToUTF8BytesCount(obj.{{ $fieldName }}[_i]) + 1;
+                    }
+                                    {{- else }}
                                     {{- range $i := iterate 0 $field.FieldType.Length }}
                     size += stringToUTF8BytesCount(obj.{{ $fieldName }}[{{ $i }}]) + 1;
                                     {{- end }}
+                                    {{- end }}
                                 {{- else if $field.FieldType.ElementType.GetTypeID.IsBytes }}
+                                    {{- if $shouldUseLoop }}
+                    for (let _i = 0; _i < {{ $field.FieldType.Length }}; _i++) {
+                        size += obj.{{ $fieldName }}[_i].length;
+                        size += 1{{ range $j := iterate 1 5 }} + Boolean(obj.{{ $fieldName }}[_i].length >> {{ calc $j "*" 7 }}){{ end }};
+                    }
+                                    {{- else }}
                                     {{- range $i := iterate 0 $field.FieldType.Length }}
                     size += obj.{{ $fieldName }}[{{ $i }}].length;
                     size += 1{{ range $j := iterate 1 5 }} + Boolean(obj.{{ $fieldName }}[{{ $i }}].length >> {{ calc $j "*" 7 }}){{ end }};
+                                    {{- end }}
                                     {{- end }}
                                 {{- end }}
                             {{- else if $field.FieldType.GetTypeID.IsStruct }}
@@ -1768,20 +1789,139 @@ func (g CommonJSGenerator) generateEncodeNormalField(field *definition.NormalFie
 
 		name := g.generateEncodeStructFieldName(field.FieldName)
 
-		// temp variable declaration
-		var nameIndex func(int64) string
-		switch ty.ElementType.(type) {
-		case *definition.Struct, *definition.String, *definition.Bytes:
-			nameIndex = func(index int64) string {
-				return fmt.Sprintf("%s[%d]", name, index)
+		// Check if we need to generate a loop or unroll the array
+		loopUnroll := g.GenCtx.GenOptions.LoopUnroll
+		canUseLoop := false
+		switch elemTyLoop := ty.ElementType.(type) {
+		case *definition.String, *definition.Bytes:
+			canUseLoop = true
+		case *definition.Struct:
+			canUseLoop = elemTyLoop.GetTypeDynamic()
+		}
+		shouldUseLoop := loopUnroll >= 0 && ty.Length > int64(loopUnroll) && canUseLoop
+
+		if shouldUseLoop {
+			// Generate loop code
+			loopStmts := []string{}
+
+			// temp variable declaration for special types
+			switch ty.ElementType.(type) {
+			case *definition.BasicType:
+				if ty.ElementType.GetTypeID().IsFloat() {
+					tempName := g.generateEncodeTempVarName(startBits)
+
+					encodeNormalFieldTempVarDeclOnlyData := map[string]any{
+						"TempName": tempName,
+					}
+					declStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarDeclOnly", nil, encodeNormalFieldTempVarDeclOnlyData)
+					loopStmts = append(loopStmts, declStr)
+
+					// change elemTy to 32 or 64 bit integer type
+					switch ty.ElementType.GetTypeID() {
+					case definition.TypeID_Float32:
+						elemTy = &definition.Uint32
+					case definition.TypeID_Float64:
+						elemTy = &definition.Uint64
+					}
+				}
+			case *definition.Enum:
+				tempName := g.generateEncodeTempVarName(startBits)
+
+				encodeNormalFieldTempVarDeclOnlyData := map[string]any{
+					"TempName": tempName,
+				}
+				declStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarDeclOnly", nil, encodeNormalFieldTempVarDeclOnlyData)
+				loopStmts = append(loopStmts, declStr)
+
+				// change elemTy to any integer type (except 64-bit)
+				elemTy = &definition.Uint32
+			default:
 			}
 
-		case *definition.BasicType:
-			nameIndex = func(index int64) string {
-				return fmt.Sprintf("%s[%d]", name, index)
+			loopStmts = append(loopStmts, fmt.Sprintf("for (let _i = 0; _i < %d; _i++) {", ty.Length))
+
+			// Generate loop body
+			subFrom := from
+			subTo := from + elemBitSize
+			subName := fmt.Sprintf("%s[_i]", name)
+
+			switch ty.ElementType.(type) {
+			case *definition.BasicType:
+				if ty.ElementType.GetTypeID().IsFloat() {
+					tempName := g.generateEncodeTempVarName(startBits)
+					encodeNormalFieldTempVarAssignFloatCastData := map[string]any{
+						"TempName":  tempName,
+						"FieldName": fmt.Sprintf("%s[_i]", name),
+						"IsFloat32": ty.ElementType.GetTypeID() == definition.TypeID_Float32,
+					}
+					assignStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarAssignFloatCast", nil, encodeNormalFieldTempVarAssignFloatCastData)
+					loopStmts = append(loopStmts, util.IndentSpace(assignStr, 4))
+					subName = tempName
+				}
+			case *definition.Enum:
+				tempName := g.generateEncodeTempVarName(startBits)
+				encodeNormalFieldTempVarAssignData := map[string]any{
+					"EnumDef":   ty.ElementType,
+					"TempName":  tempName,
+					"FieldName": fmt.Sprintf("%s[_i]", name),
+					"FieldDef":  field,
+				}
+				assignStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarAssignEnum", nil, encodeNormalFieldTempVarAssignData)
+				loopStmts = append(loopStmts, util.IndentSpace(assignStr, 4))
+				subName = tempName
+			default:
 			}
-			// same as enum
-			if ty.ElementType.GetTypeID().IsFloat() {
+
+			stmts, err := g.generateEncodeNormalFieldImpl(subName, elemTy, field.FieldOptions, structDynamic, subFrom, subTo)
+			if err != nil {
+				return nil, err
+			}
+
+			for _, stmt := range stmts {
+				loopStmts = append(loopStmts, util.IndentSpace(stmt, 4))
+			}
+
+			loopStmts = append(loopStmts, "}")
+
+			encodeStmts = append(encodeStmts, loopStmts...)
+		} else {
+			// Unroll the array
+			// temp variable declaration
+			var nameIndex func(int64) string
+			switch ty.ElementType.(type) {
+			case *definition.Struct, *definition.String, *definition.Bytes:
+				nameIndex = func(index int64) string {
+					return fmt.Sprintf("%s[%d]", name, index)
+				}
+
+			case *definition.BasicType:
+				nameIndex = func(index int64) string {
+					return fmt.Sprintf("%s[%d]", name, index)
+				}
+				// same as enum
+				if ty.ElementType.GetTypeID().IsFloat() {
+					tempName := g.generateEncodeTempVarName(startBits)
+
+					encodeNormalFieldTempVarDeclOnlyData := map[string]any{
+						"TempName": tempName,
+					}
+					declStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarDeclOnly", nil, encodeNormalFieldTempVarDeclOnlyData)
+					encodeStmts = append(encodeStmts, declStr)
+
+					nameIndex = func(_ int64) string {
+						return tempName
+					}
+
+					// change elemTy to 32 or 64 bit integer type
+					switch ty.ElementType.GetTypeID() {
+					case definition.TypeID_Float32:
+						elemTy = &definition.Uint32
+					case definition.TypeID_Float64:
+						elemTy = &definition.Uint64
+					}
+				}
+
+			case *definition.Enum:
 				tempName := g.generateEncodeTempVarName(startBits)
 
 				encodeNormalFieldTempVarDeclOnlyData := map[string]any{
@@ -1794,69 +1934,48 @@ func (g CommonJSGenerator) generateEncodeNormalField(field *definition.NormalFie
 					return tempName
 				}
 
-				// change elemTy to 32 or 64 bit integer type
-				switch ty.ElementType.GetTypeID() {
-				case definition.TypeID_Float32:
-					elemTy = &definition.Uint32
-				case definition.TypeID_Float64:
-					elemTy = &definition.Uint64
-				}
+				// change elemTy to any integer type (except 64-bit)
+				elemTy = &definition.Uint32
+			default:
+				return nil, fmt.Errorf("internal error: unsupported array element type %T", ty.ElementType)
 			}
 
-		case *definition.Enum:
-			tempName := g.generateEncodeTempVarName(startBits)
+			for i := int64(0); i < ty.Length; i++ {
+				subFrom := from + i*elemBitSize
+				subTo := from + (i+1)*elemBitSize
 
-			encodeNormalFieldTempVarDeclOnlyData := map[string]any{
-				"TempName": tempName,
-			}
-			declStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarDeclOnly", nil, encodeNormalFieldTempVarDeclOnlyData)
-			encodeStmts = append(encodeStmts, declStr)
+				subName := nameIndex(i)
 
-			nameIndex = func(_ int64) string {
-				return tempName
-			}
-
-			// change elemTy to any integer type (except 64-bit)
-			elemTy = &definition.Uint32
-		default:
-			return nil, fmt.Errorf("internal error: unsupported array element type %T", ty.ElementType)
-		}
-
-		for i := int64(0); i < ty.Length; i++ {
-			subFrom := from + i*elemBitSize
-			subTo := from + (i+1)*elemBitSize
-
-			subName := nameIndex(i)
-
-			switch ty.ElementType.(type) {
-			case *definition.BasicType:
-				if ty.ElementType.GetTypeID().IsFloat() {
-					encodeNormalFieldTempVarAssignFloatCastData := map[string]any{
+				switch ty.ElementType.(type) {
+				case *definition.BasicType:
+					if ty.ElementType.GetTypeID().IsFloat() {
+						encodeNormalFieldTempVarAssignFloatCastData := map[string]any{
+							"TempName":  subName,
+							"FieldName": fmt.Sprintf("%s[%d]", name, i),
+							"IsFloat32": ty.ElementType.GetTypeID() == definition.TypeID_Float32,
+						}
+						assignStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarAssignFloatCast", nil, encodeNormalFieldTempVarAssignFloatCastData)
+						encodeStmts = append(encodeStmts, assignStr)
+					}
+				case *definition.Enum:
+					encodeNormalFieldTempVarAssignData := map[string]any{
+						"EnumDef":   ty.ElementType,
 						"TempName":  subName,
 						"FieldName": fmt.Sprintf("%s[%d]", name, i),
-						"IsFloat32": ty.ElementType.GetTypeID() == definition.TypeID_Float32,
+						"FieldDef":  field,
 					}
-					assignStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarAssignFloatCast", nil, encodeNormalFieldTempVarAssignFloatCastData)
+					assignStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarAssignEnum", nil, encodeNormalFieldTempVarAssignData)
 					encodeStmts = append(encodeStmts, assignStr)
+				default:
 				}
-			case *definition.Enum:
-				encodeNormalFieldTempVarAssignData := map[string]any{
-					"EnumDef":   ty.ElementType,
-					"TempName":  subName,
-					"FieldName": fmt.Sprintf("%s[%d]", name, i),
-					"FieldDef":  field,
+
+				stmts, err := g.generateEncodeNormalFieldImpl(subName, elemTy, field.FieldOptions, structDynamic, subFrom, subTo)
+				if err != nil {
+					return nil, err
 				}
-				assignStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarAssignEnum", nil, encodeNormalFieldTempVarAssignData)
-				encodeStmts = append(encodeStmts, assignStr)
-			default:
-			}
 
-			stmts, err := g.generateEncodeNormalFieldImpl(subName, elemTy, field.FieldOptions, structDynamic, subFrom, subTo)
-			if err != nil {
-				return nil, err
+				encodeStmts = append(encodeStmts, stmts...)
 			}
-
-			encodeStmts = append(encodeStmts, stmts...)
 		}
 
 	default:
@@ -2180,8 +2299,21 @@ var decoderTemplate = `
 {{- define "decoderSizeField" -}}
 {{- $fromByte := .FromByte -}}
 {{- $f := .Field -}}
+{{- $loopUnroll := .GenOptions.LoopUnroll -}}
 {{- if $f.FieldType.GetTypeID.IsArray -}}
+{{- $shouldUseLoop := and (ge $loopUnroll 0) (gt $f.FieldType.Length $loopUnroll) -}}
     {{- if $f.FieldType.ElementType.GetTypeID.IsString -}}
+        {{- if $shouldUseLoop -}}
+                    for (let _i = 0; _i < {{ $f.FieldType.Length }}; _i++) {
+                        if (data.length - start <= offset + {{ $fromByte }}) return -(offset + {{ $fromByte }} + 1);
+                        let _length = 0;
+                        while (data[offset + start + {{ $fromByte }} + _length] !== 0) {
+                            _length++;
+                            if (data.length - start <= offset + {{ $fromByte }} + _length) { return -(offset + {{ $fromByte }} + _length + 1); }
+                        }
+                        offset += _length + 1;
+                    }
+        {{- else -}}
         {{- range $i := iterate 0 $f.FieldType.Length }}
                     {   // {{ $f }}: [{{ $i }}]
                         if (data.length - start <= offset + {{ $fromByte }}) return -(offset + {{ $fromByte }} + 1);
@@ -2193,7 +2325,25 @@ var decoderTemplate = `
                         offset += _length + 1;
                     }
         {{- end -}}
+        {{- end -}}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsBytes -}}
+        {{- if $shouldUseLoop -}}
+                    for (let _i = 0; _i < {{ $f.FieldType.Length }}; _i++) {
+                        if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
+                        let _length = 0;
+                        let _shift = 0;
+                        while ((data[offset + start + {{ $fromByte }}] & 0x80) !== 0) {
+                            _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
+                            _shift += 7;
+                            offset++;
+                            if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
+                        }
+                        _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
+                        offset++;
+                        if (data.length - start < offset + {{ $fromByte }} + _length) return -(offset + {{ $fromByte }} + _length);
+                        offset += _length;
+                    }
+        {{- else -}}
         {{- range $i := iterate 0 $f.FieldType.Length }}
                     {   // {{ $f }}: [{{ $i }}]
                         if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
@@ -2211,15 +2361,24 @@ var decoderTemplate = `
                         offset += _length;
                     }
         {{- end -}}
+        {{- end -}}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsStruct -}}
         {{- if $f.FieldType.ElementType.GetTypeDynamic -}}
             {{- $pkgPrefix := FieldStructPkgPrefix $f -}}
+            {{- if $shouldUseLoop -}}
+                    for (let _i = 0; _i < {{ $f.FieldType.Length }}; _i++) {
+                        let _subSize = {{ $pkgPrefix }}.decode_size(data, offset + start + {{ $fromByte }});
+                        if (_subSize < 0) { return -(offset + {{ $fromByte }}) + _subSize; }
+                        offset += _subSize;
+                    }
+            {{- else -}}
             {{- range $i := iterate 0 $f.FieldType.Length }}
                     {   // {{ $f }}: [{{ $i }}]
                         let _subSize = {{ $pkgPrefix }}.decode_size(data, offset + start + {{ $fromByte }});
                         if (_subSize < 0) { return -(offset + {{ $fromByte }}) + _subSize; }
                         offset += _subSize;
                     }
+            {{- end -}}
             {{- end -}}
         {{- end -}}
     {{- end -}}
@@ -2284,7 +2443,7 @@ var decoderTemplate = `
                     {{- $fixedStart := 0 }}
                     {{- range $field := .StructDef.StructFields.Values }}
                         {{- if and $field.GetFieldKind.IsNormal (lt $field.GetFieldBitSize 0) }}
-                    {{- template "decoderSizeField" (dict "Field" $field "FromByte" (calc $fixedStart "/" 8)) }}
+                    {{- template "decoderSizeField" (dict "Field" $field "FromByte" (calc $fixedStart "/" 8) "GenOptions" $.GenOptions) }}
                         {{- end }}
                         {{- if ne $field.GetFieldBitSize -1 }}
                     {{- $fixedStart = calc $fixedStart "+" $field.GetFieldBitSize }}
@@ -2618,90 +2777,185 @@ func (g CommonJSGenerator) generateDecodeNormalField(field *definition.NormalFie
 
 		name := g.generateDecodeStructFieldName(field.FieldName)
 
-		// temp variable declaration
-		var nameIndex func(int64) string
-		switch ty.ElementType.(type) {
-		case *definition.Struct, *definition.String, *definition.Bytes:
-			nameIndex = func(index int64) string {
-				return fmt.Sprintf("%s[%d]", name, index)
-			}
-		case *definition.BasicType:
-			nameIndex = func(index int64) string {
-				return fmt.Sprintf("%s[%d]", name, index)
-			}
-			// same as enum
-			if ty.ElementType.GetTypeID().IsFloat() {
+		// Check if we need to generate a loop or unroll the array
+		loopUnroll := g.GenCtx.GenOptions.LoopUnroll
+		canUseLoop := false
+		switch elemTyLoop := ty.ElementType.(type) {
+		case *definition.String, *definition.Bytes:
+			canUseLoop = true
+		case *definition.Struct:
+			canUseLoop = elemTyLoop.GetTypeDynamic()
+		}
+		shouldUseLoop := loopUnroll >= 0 && ty.Length > int64(loopUnroll) && canUseLoop
+
+		if shouldUseLoop {
+			// Generate loop code
+			loopStmts := []string{}
+
+			// temp variable declaration for special types
+			switch ty.ElementType.(type) {
+			case *definition.BasicType:
+				if ty.ElementType.GetTypeID().IsFloat() {
+					tempName := g.generateDecodeTempVarName(startBits)
+
+					decodeNormalFieldTempVarDeclOnlyData := map[string]any{
+						"TempName": tempName,
+					}
+					declStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, decodeNormalFieldTempVarDeclOnlyData)
+					loopStmts = append(loopStmts, declStr)
+
+					// change elemTy to 32 or 64 bit integer type
+					switch ty.ElementType.GetTypeID() {
+					case definition.TypeID_Float32:
+						elemTy = &definition.Uint32
+					case definition.TypeID_Float64:
+						elemTy = &definition.Uint64
+					}
+				}
+			case *definition.Enum:
 				tempName := g.generateDecodeTempVarName(startBits)
 
-				decodeNormalFieldTempVarDeclOnlyData := map[string]any{
+				decodeNormalFieldTempVarDeclOnly := map[string]any{
 					"TempName": tempName,
 				}
-				declStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, decodeNormalFieldTempVarDeclOnlyData)
+				declStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, decodeNormalFieldTempVarDeclOnly)
+				loopStmts = append(loopStmts, declStr)
+
+				// change elemTy to any integer type (except 64-bit)
+				elemTy = &definition.Uint32
+			default:
+			}
+
+			loopStmts = append(loopStmts, fmt.Sprintf("for (let _i = 0; _i < %d; _i++) {", ty.Length))
+
+			// Generate loop body
+			subFrom := from
+			subTo := from + elemBitSize
+			subName := fmt.Sprintf("%s[_i]", name)
+
+			stmts, err := g.generateDecodeNormalFieldImpl(subName, elemTy, field.FieldOptions, structDynamic, subFrom, subTo)
+			if err != nil {
+				return nil, err
+			}
+
+			for _, stmt := range stmts {
+				loopStmts = append(loopStmts, util.IndentSpace(stmt, 4))
+			}
+
+			// Handle special type casting inside loop
+			switch ty.ElementType.(type) {
+			case *definition.BasicType:
+				if ty.ElementType.GetTypeID().IsFloat() {
+					decodeNormalFieldTempVarAssignFloatCastData := map[string]any{
+						"TempName":  subName,
+						"FieldName": fmt.Sprintf("%s[_i]", name),
+						"IsFloat32": ty.ElementType.GetTypeID() == definition.TypeID_Float32,
+					}
+					assignStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignFloatCast", nil, decodeNormalFieldTempVarAssignFloatCastData)
+					loopStmts = append(loopStmts, util.IndentSpace(assignStr, 4))
+				}
+			case *definition.Enum:
+				decodeNormalFieldTempVarAssignEnumData := map[string]any{
+					"TempName":  subName,
+					"EnumDef":   ty.ElementType,
+					"FieldName": fmt.Sprintf("%s[_i]", name),
+					"FieldDef":  field,
+				}
+				assignStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignEnum", nil, decodeNormalFieldTempVarAssignEnumData)
+				loopStmts = append(loopStmts, util.IndentSpace(assignStr, 4))
+			default:
+			}
+
+			loopStmts = append(loopStmts, "}")
+
+			decodeStmts = append(decodeStmts, loopStmts...)
+		} else {
+			// Unroll the array
+			// temp variable declaration
+			var nameIndex func(int64) string
+			switch ty.ElementType.(type) {
+			case *definition.Struct, *definition.String, *definition.Bytes:
+				nameIndex = func(index int64) string {
+					return fmt.Sprintf("%s[%d]", name, index)
+				}
+			case *definition.BasicType:
+				nameIndex = func(index int64) string {
+					return fmt.Sprintf("%s[%d]", name, index)
+				}
+				// same as enum
+				if ty.ElementType.GetTypeID().IsFloat() {
+					tempName := g.generateDecodeTempVarName(startBits)
+
+					decodeNormalFieldTempVarDeclOnlyData := map[string]any{
+						"TempName": tempName,
+					}
+					declStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, decodeNormalFieldTempVarDeclOnlyData)
+					decodeStmts = append(decodeStmts, declStr)
+
+					nameIndex = func(_ int64) string {
+						return tempName
+					}
+
+					// change elemTy to 32 or 64 bit integer type
+					switch ty.ElementType.GetTypeID() {
+					case definition.TypeID_Float32:
+						elemTy = &definition.Uint32
+					case definition.TypeID_Float64:
+						elemTy = &definition.Uint64
+					}
+				}
+			case *definition.Enum:
+				tempName := g.generateDecodeTempVarName(startBits)
+
+				decodeNormalFieldTempVarDeclOnly := map[string]any{
+					"TempName": tempName,
+				}
+				declStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, decodeNormalFieldTempVarDeclOnly)
 				decodeStmts = append(decodeStmts, declStr)
 
 				nameIndex = func(_ int64) string {
 					return tempName
 				}
 
-				// change elemTy to 32 or 64 bit integer type
-				switch ty.ElementType.GetTypeID() {
-				case definition.TypeID_Float32:
-					elemTy = &definition.Uint32
-				case definition.TypeID_Float64:
-					elemTy = &definition.Uint64
-				}
-			}
-		case *definition.Enum:
-			tempName := g.generateDecodeTempVarName(startBits)
-
-			decodeNormalFieldTempVarDeclOnly := map[string]any{
-				"TempName": tempName,
-			}
-			declStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, decodeNormalFieldTempVarDeclOnly)
-			decodeStmts = append(decodeStmts, declStr)
-
-			nameIndex = func(_ int64) string {
-				return tempName
-			}
-
-			// change elemTy to any integer type (except 64-bit)
-			elemTy = &definition.Uint32
-		default:
-			return nil, fmt.Errorf("internal error: unsupported array element type %T", ty.ElementType)
-		}
-
-		for i := int64(0); i < ty.Length; i++ {
-			subFrom := from + i*elemBitSize
-			subTo := from + (i+1)*elemBitSize
-			subName := nameIndex(i)
-
-			stmts, err := g.generateDecodeNormalFieldImpl(subName, elemTy, field.FieldOptions, structDynamic, subFrom, subTo)
-			if err != nil {
-				return nil, err
-			}
-			decodeStmts = append(decodeStmts, stmts...)
-
-			switch elemTy := ty.ElementType.(type) {
-			case *definition.BasicType:
-				if elemTy.GetTypeID().IsFloat() {
-					decodeNormalFieldTempVarAssignFloatCastData := map[string]any{
-						"TempName":  subName,
-						"FieldName": fmt.Sprintf("%s[%d]", name, i),
-						"IsFloat32": elemTy.GetTypeID() == definition.TypeID_Float32,
-					}
-					assignStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignFloatCast", nil, decodeNormalFieldTempVarAssignFloatCastData)
-					decodeStmts = append(decodeStmts, assignStr)
-				}
-			case *definition.Enum:
-				decodeNormalFieldTempVarAssignEnumData := map[string]any{
-					"TempName":  subName,
-					"EnumDef":   elemTy,
-					"FieldName": fmt.Sprintf("%s[%d]", name, i),
-					"FieldDef":  field,
-				}
-				assignStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignEnum", nil, decodeNormalFieldTempVarAssignEnumData)
-				decodeStmts = append(decodeStmts, assignStr)
+				// change elemTy to any integer type (except 64-bit)
+				elemTy = &definition.Uint32
 			default:
+				return nil, fmt.Errorf("internal error: unsupported array element type %T", ty.ElementType)
+			}
+
+			for i := int64(0); i < ty.Length; i++ {
+				subFrom := from + i*elemBitSize
+				subTo := from + (i+1)*elemBitSize
+				subName := nameIndex(i)
+
+				stmts, err := g.generateDecodeNormalFieldImpl(subName, elemTy, field.FieldOptions, structDynamic, subFrom, subTo)
+				if err != nil {
+					return nil, err
+				}
+				decodeStmts = append(decodeStmts, stmts...)
+
+				switch elemTy := ty.ElementType.(type) {
+				case *definition.BasicType:
+					if elemTy.GetTypeID().IsFloat() {
+						decodeNormalFieldTempVarAssignFloatCastData := map[string]any{
+							"TempName":  subName,
+							"FieldName": fmt.Sprintf("%s[%d]", name, i),
+							"IsFloat32": elemTy.GetTypeID() == definition.TypeID_Float32,
+						}
+						assignStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignFloatCast", nil, decodeNormalFieldTempVarAssignFloatCastData)
+						decodeStmts = append(decodeStmts, assignStr)
+					}
+				case *definition.Enum:
+					decodeNormalFieldTempVarAssignEnumData := map[string]any{
+						"TempName":  subName,
+						"EnumDef":   elemTy,
+						"FieldName": fmt.Sprintf("%s[%d]", name, i),
+						"FieldDef":  field,
+					}
+					assignStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignEnum", nil, decodeNormalFieldTempVarAssignEnumData)
+					decodeStmts = append(decodeStmts, assignStr)
+				default:
+				}
 			}
 		}
 

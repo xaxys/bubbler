@@ -172,6 +172,16 @@ g_current = "ArrayFields";
     const p0 = new pkg.Point(); p0.x = -100; p0.y = 200;
     const p1 = new pkg.Point(); p1.x = 30000; p1.y = -30000;
     s.pointArr.push(p0); s.pointArr.push(p1);
+    s.i64Arr = [-1n, 0n, 1n, -0x123456789an, 0x123456789an];
+    s.u64Arr = [0n, 1n, 0xffffffffn, 0x123456789abcdef0n, 0x8000000000000000n, 0xffffffffffffffffn];
+    s.largeEnumArr = [pkg.Color.RED, pkg.Color.GREEN, pkg.Color.BLUE, pkg.Color.RED, pkg.Color.GREEN, pkg.Color.BLUE, pkg.Color.RED];
+    s.largeStructArr = [];
+    for (let i = 0; i < 8; i++) {
+        const p = new pkg.Point();
+        p.x = -(i + 1) * 1000;
+        p.y = (i + 1) * 1000;
+        s.largeStructArr.push(p);
+    }
 
     const buf = pkg.ArrayFields.encode(s);
     const d = new pkg.ArrayFields();
@@ -190,6 +200,28 @@ g_current = "ArrayFields";
     checkEq(d.pointArr[0].y,     200, "pt[0].y");
     checkEq(d.pointArr[1].x,  30000, "pt[1].x");
     checkEq(d.pointArr[1].y, -30000, "pt[1].y");
+    checkEq(d.i64Arr[0], -1n, "i64Arr[0]");
+    checkEq(d.i64Arr[1], 0n, "i64Arr[1]");
+    checkEq(d.i64Arr[2], 1n, "i64Arr[2]");
+    checkEq(d.i64Arr[3], -0x123456789an, "i64Arr[3]");
+    checkEq(d.i64Arr[4],  0x123456789an, "i64Arr[4]");
+    checkEq(d.u64Arr[0], 0n, "u64Arr[0]");
+    checkEq(d.u64Arr[1], 1n, "u64Arr[1]");
+    checkEq(d.u64Arr[2], 0xffffffffn, "u64Arr[2]");
+    checkEq(d.u64Arr[3], 0x123456789abcdef0n, "u64Arr[3]");
+    checkEq(d.u64Arr[4], 0x8000000000000000n, "u64Arr[4]");
+    checkEq(d.u64Arr[5], 0xffffffffffffffffn, "u64Arr[5]");
+    checkEq(d.largeEnumArr[0], "RED", "largeEnumArr[0]");
+    checkEq(d.largeEnumArr[1], "GREEN", "largeEnumArr[1]");
+    checkEq(d.largeEnumArr[2], "BLUE", "largeEnumArr[2]");
+    checkEq(d.largeEnumArr[3], "RED", "largeEnumArr[3]");
+    checkEq(d.largeEnumArr[4], "GREEN", "largeEnumArr[4]");
+    checkEq(d.largeEnumArr[5], "BLUE", "largeEnumArr[5]");
+    checkEq(d.largeEnumArr[6], "RED", "largeEnumArr[6]");
+    checkEq(d.largeStructArr[0].x, -1000, "largePt[0].x");
+    checkEq(d.largeStructArr[0].y, 1000, "largePt[0].y");
+    checkEq(d.largeStructArr[7].x, -8000, "largePt[7].x");
+    checkEq(d.largeStructArr[7].y, 8000, "largePt[7].y");
 }
 
 /* ------------------------------------------------------------------ */

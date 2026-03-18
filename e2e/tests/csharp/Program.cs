@@ -198,6 +198,19 @@ current = "ArrayFields";
             new Point { X = -100, Y = 200 },
             new Point { X = 30000, Y = -30000 },
         },
+        I64Arr = new long[] { -1L, 0L, 1L, -0x123456789AL, 0x123456789AL },
+        U64Arr = new ulong[] { 0UL, 1UL, 0xFFFFFFFFUL, 0x123456789ABCDEF0UL, 0x8000000000000000UL, 0xFFFFFFFFFFFFFFFFUL },
+        LargeEnumArr = new Color[] { Color.RED, Color.GREEN, Color.BLUE, Color.RED, Color.GREEN, Color.BLUE, Color.RED },
+        LargeStructArr = new Point[] {
+            new Point { X = -1000, Y = 1000 },
+            new Point { X = -2000, Y = 2000 },
+            new Point { X = -3000, Y = 3000 },
+            new Point { X = -4000, Y = 4000 },
+            new Point { X = -5000, Y = 5000 },
+            new Point { X = -6000, Y = 6000 },
+            new Point { X = -7000, Y = 7000 },
+            new Point { X = -8000, Y = 8000 },
+        },
     };
     byte[] buf = s.Encode();
     var d = new ArrayFields();
@@ -216,6 +229,28 @@ current = "ArrayFields";
     CheckEq(d.PointArr[0].Y, (short)200,   "pt[0].y");
     CheckEq(d.PointArr[1].X, (short)30000, "pt[1].x");
     CheckEq(d.PointArr[1].Y, (short)-30000,"pt[1].y");
+    CheckEq(d.I64Arr[0], -1L, "i64[0]");
+    CheckEq(d.I64Arr[1], 0L, "i64[1]");
+    CheckEq(d.I64Arr[2], 1L, "i64[2]");
+    CheckEq(d.I64Arr[3], -0x123456789AL, "i64[3]");
+    CheckEq(d.I64Arr[4], 0x123456789AL, "i64[4]");
+    CheckEq(d.U64Arr[0], 0UL, "u64[0]");
+    CheckEq(d.U64Arr[1], 1UL, "u64[1]");
+    CheckEq(d.U64Arr[2], 0xFFFFFFFFUL, "u64[2]");
+    CheckEq(d.U64Arr[3], 0x123456789ABCDEF0UL, "u64[3]");
+    CheckEq(d.U64Arr[4], 0x8000000000000000UL, "u64[4]");
+    CheckEq(d.U64Arr[5], 0xFFFFFFFFFFFFFFFFUL, "u64[5]");
+    CheckEq(d.LargeEnumArr[0], Color.RED, "large_enum[0]");
+    CheckEq(d.LargeEnumArr[1], Color.GREEN, "large_enum[1]");
+    CheckEq(d.LargeEnumArr[2], Color.BLUE, "large_enum[2]");
+    CheckEq(d.LargeEnumArr[3], Color.RED, "large_enum[3]");
+    CheckEq(d.LargeEnumArr[4], Color.GREEN, "large_enum[4]");
+    CheckEq(d.LargeEnumArr[5], Color.BLUE, "large_enum[5]");
+    CheckEq(d.LargeEnumArr[6], Color.RED, "large_enum[6]");
+    CheckEq(d.LargeStructArr[0].X, (short)-1000, "large_pt[0].x");
+    CheckEq(d.LargeStructArr[0].Y, (short)1000, "large_pt[0].y");
+    CheckEq(d.LargeStructArr[7].X, (short)-8000, "large_pt[7].x");
+    CheckEq(d.LargeStructArr[7].Y, (short)8000, "large_pt[7].y");
 }
 
 /* ------------------------------------------------------------------ */

@@ -208,6 +208,19 @@ func TestArrayFields(t *testing.T) {
 			{X: -100, Y: 200},
 			{X: 30000, Y: -30000},
 		},
+		I64Arr:       [5]int64{-1, 0, 1, -0x123456789A, 0x123456789A},
+		U64Arr:       [6]uint64{0, 1, 0xFFFFFFFF, 0x123456789ABCDEF0, 0x8000000000000000, 0xFFFFFFFFFFFFFFFF},
+		LargeEnumArr: [7]Color{RED, GREEN, BLUE, RED, GREEN, BLUE, RED},
+		LargeStructArr: [8]Point{
+			{X: -1000, Y: 1000},
+			{X: -2000, Y: 2000},
+			{X: -3000, Y: 3000},
+			{X: -4000, Y: 4000},
+			{X: -5000, Y: 5000},
+			{X: -6000, Y: 6000},
+			{X: -7000, Y: 7000},
+			{X: -8000, Y: 8000},
+		},
 	}
 	buf := s.Encode()
 	var d ArrayFields
@@ -225,6 +238,18 @@ func TestArrayFields(t *testing.T) {
 	}
 	if d.PointArr != s.PointArr {
 		t.Errorf("PointArr: got %v", d.PointArr)
+	}
+	if d.I64Arr != s.I64Arr {
+		t.Errorf("I64Arr: got %v", d.I64Arr)
+	}
+	if d.U64Arr != s.U64Arr {
+		t.Errorf("U64Arr: got %v", d.U64Arr)
+	}
+	if d.LargeEnumArr != s.LargeEnumArr {
+		t.Errorf("LargeEnumArr: got %v", d.LargeEnumArr)
+	}
+	if d.LargeStructArr != s.LargeStructArr {
+		t.Errorf("LargeStructArr: got %v", d.LargeStructArr)
 	}
 }
 

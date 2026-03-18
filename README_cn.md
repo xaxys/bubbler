@@ -44,6 +44,7 @@ bubbler [options] <input file>
 - `-memcpy`: 启用字段的内存复制（解码时复制 `string` 和 `bytes` 字段的内容，而不是直接引用原始解码缓冲区）
 - `-signext <method>`: 用于整数字段的符号扩展方法（选项: `shift`, `arith`）
 - `-compat`: 生成兼容性代码（在 CommonJS 目标中使用 `Array` 代替 `Uint8Array` 等 typed array 作为缓冲區和 `bytes` 字段的类型。默认使用 `Uint8Array` 以提高性能）
+- `-unroll <threshold>`: 数组编解码代码的循环展开阈值（默认值: `4`）。当数组长度超过此阈值时（不含本数），生成的 `encode`/`decode` 与 `encode_size`/`decode_size` 代码将使用循环。设置为 `-1` 以始终展开数组（无论大小如何）。例如，`-unroll=1` 将对所有长度超过 1 的数组使用循环，而 `-unroll=8` 仅对长度超过 8 的数组使用循环。
 
 ### 示例
 

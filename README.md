@@ -44,6 +44,7 @@ bubbler [options] <input file>
 - `-memcpy`: Enable memory copy for fields (Duplicate content of `string` and `bytes` fields when decoding, instead of directly referencing the original buffer)
 - `-signext <method>`: Sign Extension Method used for Integer Field (Options: `shift`, `arith`)
 - `-compat`: Generate Compatible Code (Use `Array` instead of typed arrays like `Uint8Array` for buffers and `bytes` fields in CommonJS target. By default, `Uint8Array` is used for better performance.)
+- `-unroll <threshold>`: Loop Unroll Threshold for Array Codec (Default: `4`). When an array length exceeds this threshold, the generated `encode`/`decode` and `encode_size`/`decode_size` code will use loops. Set to `-1` to always unroll arrays regardless of size. For example, `-unroll=1` will use loops for all arrays with more than 1 element, while `-unroll=8` will only use loops for arrays with more than 8 elements.
 
 ### Examples
 

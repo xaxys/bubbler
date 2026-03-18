@@ -47,10 +47,11 @@ Options:
   -inner                   Generate Inner Class
   -single                  Generate Single File
   -minimal                 Generate Minimal Code
+  -compat                  Generate Compatible Code
   -decnum                  Force Generate Decimal Format for Constant Value
   -memcpy                  Allocate Memory and Copy Data for Variable-Size Type
   -signext <method>        Sign Extension Method (shift, arith)
-  -compat                  Generate Compatible Code
+  -unroll <threshold>      Loop Unroll Threshold (default: 4)
   -v                       Print Verbose Info
 
 Targets:
@@ -110,6 +111,7 @@ func main() {
 	compat := false
 	verbose := false
 	signext := ""
+	unroll := 4
 	flag.StringVar(&target, "t", "", "Target Language")
 	flag.StringVar(&output, "o", "", "Output Path")
 	flag.StringVar(&rmpath, "rmpath", "", "Remove Path Prefix for Output")
@@ -122,6 +124,7 @@ func main() {
 	flag.BoolVar(&compat, "compat", false, "Generate Compatible Code")
 	flag.BoolVar(&verbose, "v", false, "Print Verbose Info")
 	flag.StringVar(&signext, "signext", "", "Sign Extension Method (shift, arith)")
+	flag.IntVar(&unroll, "unroll", 4, "Loop Unroll Threshold for Array Codec")
 	flag.Parse()
 
 	// check input file
@@ -155,6 +158,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	unrollOpt, err := gen.LoopUnroll(unroll)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
 	options := gen.NewGenOptions(
 		gen.RemovePath(rmpath),
 		gen.RelativePath(relpath),
@@ -165,6 +174,7 @@ func main() {
 		gen.MemoryCopy(memcpy),
 		gen.CompatibleMode(compat),
 		signextOpt,
+		unrollOpt,
 	)
 
 	verbosef(verbose, "args: %s", strings.Join(os.Args[1:], " "))

@@ -197,6 +197,32 @@ static void test_array_fields(void) {
     s.color_arr[0] = RED;  s.color_arr[1] = BLUE;
     s.point_arr[0].x = -100; s.point_arr[0].y =  200;
     s.point_arr[1].x =  30000; s.point_arr[1].y = -30000;
+    s.i64_arr[0] = -1LL;
+    s.i64_arr[1] = 0LL;
+    s.i64_arr[2] = 1LL;
+    s.i64_arr[3] = -0x123456789ALL;
+    s.i64_arr[4] =  0x123456789ALL;
+    s.u64_arr[0] = 0ULL;
+    s.u64_arr[1] = 1ULL;
+    s.u64_arr[2] = 0xFFFFFFFFULL;
+    s.u64_arr[3] = 0x123456789ABCDEF0ULL;
+    s.u64_arr[4] = 0x8000000000000000ULL;
+    s.u64_arr[5] = 0xFFFFFFFFFFFFFFFFULL;
+    s.large_enum_arr[0] = RED;
+    s.large_enum_arr[1] = GREEN;
+    s.large_enum_arr[2] = BLUE;
+    s.large_enum_arr[3] = RED;
+    s.large_enum_arr[4] = GREEN;
+    s.large_enum_arr[5] = BLUE;
+    s.large_enum_arr[6] = RED;
+    s.large_struct_arr[0].x = -1000; s.large_struct_arr[0].y =  1000;
+    s.large_struct_arr[1].x = -2000; s.large_struct_arr[1].y =  2000;
+    s.large_struct_arr[2].x = -3000; s.large_struct_arr[2].y =  3000;
+    s.large_struct_arr[3].x = -4000; s.large_struct_arr[3].y =  4000;
+    s.large_struct_arr[4].x = -5000; s.large_struct_arr[4].y =  5000;
+    s.large_struct_arr[5].x = -6000; s.large_struct_arr[5].y =  6000;
+    s.large_struct_arr[6].x = -7000; s.large_struct_arr[6].y =  7000;
+    s.large_struct_arr[7].x = -8000; s.large_struct_arr[7].y =  8000;
 
     uint8_t buf[ArrayFields_size];
     memset(buf, 0, sizeof(buf));
@@ -218,6 +244,28 @@ static void test_array_fields(void) {
     CHECK_EQ((int)d.point_arr[0].y,    200);
     CHECK_EQ((int)d.point_arr[1].x,  30000);
     CHECK_EQ((int)d.point_arr[1].y, -30000);
+    CHECK_EQ((long long)d.i64_arr[0], -1LL);
+    CHECK_EQ((long long)d.i64_arr[1], 0LL);
+    CHECK_EQ((long long)d.i64_arr[2], 1LL);
+    CHECK_EQ((long long)d.i64_arr[3], -0x123456789ALL);
+    CHECK_EQ((long long)d.i64_arr[4],  0x123456789ALL);
+    CHECK_EQ(d.u64_arr[0], 0ULL);
+    CHECK_EQ(d.u64_arr[1], 1ULL);
+    CHECK_EQ(d.u64_arr[2], 0xFFFFFFFFULL);
+    CHECK_EQ(d.u64_arr[3], 0x123456789ABCDEF0ULL);
+    CHECK_EQ(d.u64_arr[4], 0x8000000000000000ULL);
+    CHECK_EQ(d.u64_arr[5], 0xFFFFFFFFFFFFFFFFULL);
+    CHECK_EQ((int)d.large_enum_arr[0], (int)RED);
+    CHECK_EQ((int)d.large_enum_arr[1], (int)GREEN);
+    CHECK_EQ((int)d.large_enum_arr[2], (int)BLUE);
+    CHECK_EQ((int)d.large_enum_arr[3], (int)RED);
+    CHECK_EQ((int)d.large_enum_arr[4], (int)GREEN);
+    CHECK_EQ((int)d.large_enum_arr[5], (int)BLUE);
+    CHECK_EQ((int)d.large_enum_arr[6], (int)RED);
+    CHECK_EQ((int)d.large_struct_arr[0].x, -1000);
+    CHECK_EQ((int)d.large_struct_arr[0].y,  1000);
+    CHECK_EQ((int)d.large_struct_arr[7].x, -8000);
+    CHECK_EQ((int)d.large_struct_arr[7].y,  8000);
 }
 
 /* ------------------------------------------------------------------ */

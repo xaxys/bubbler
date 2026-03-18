@@ -37,6 +37,7 @@ type GenOptions struct {
 	MemoryCopy     bool
 	CompatibleMode bool
 	SignExtMethod  SignExtMethodID
+	LoopUnroll     int
 }
 
 func (o *GenOptions) String() string {
@@ -54,6 +55,7 @@ func NewGenOptions(setter ...GenOptionSetter) *GenOptions {
 		MemoryCopy:     false,
 		CompatibleMode: false,
 		SignExtMethod:  SignExtMethodDefault,
+		LoopUnroll:     4,
 	}
 	for _, s := range setter {
 		s(options)
@@ -136,5 +138,20 @@ func SignExtMethod(signext string) (GenOptionSetter, error) {
 	}
 	return func(options *GenOptions) {
 		options.SignExtMethod = signextID
+	}, nil
+}
+
+func LoopUnroll(unroll int) (GenOptionSetter, error) {
+	if unroll < -1 {
+		return nil, &definition.GeneralError{
+			Err: &definition.OptionValueError{
+				OptionName: "unroll",
+				Expect:     []any{"-1 (always)", "0 (never)", ">0 (unroll if iter <= value)"},
+				Got:        unroll,
+			},
+		}
+	}
+	return func(options *GenOptions) {
+		options.LoopUnroll = unroll
 	}, nil
 }

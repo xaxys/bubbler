@@ -326,16 +326,72 @@ check_contains     "$out_cjs_compat/testcase.bb.js" "if (data === undefined) dat
 check_not_contains "$out_cjs_compat/testcase.bb.js" "if (data === undefined) data = new Uint8Array(" "-compat: no Uint8Array alloc"
 
 ##############################################################################
-# 11. Runtime matrix — per-target CLI option variants must pass codec tests
+# 11. -unroll with different thresholds — full encode/decode tests
+#     Tests array handling with different unroll thresholds:
+#     - unroll=-1: always unroll (no loops)
+#     - unroll=0: use loops even for fixed-width arrays
+#     - unroll=1: use loops for arrays > 1 element
+#     - unroll=4: default (use loops for arrays > 4 elements)
+#     - unroll=8: use loops only for large arrays
 ##############################################################################
 echo
-echo "=== #11: per-target option variants runtime matrix ==="
+echo "=== #11: -unroll with various thresholds across all languages ==="
+echo "Testing Color<2>, uint8<4> and other arrays with different unroll values"
+
+for unroll_val in -1 0 1 2 4 6 8 16 32; do
+    echo ""
+    echo "  Testing -unroll=$unroll_val..."
+
+    if command -v gcc >/dev/null 2>&1; then
+        run_variant "C -unroll=$unroll_val: full encode/decode test" \
+            variant_c unroll_${unroll_val}_c -unroll "$unroll_val"
+    fi
+
+    if command -v g++ >/dev/null 2>&1; then
+        run_variant "C++ -unroll=$unroll_val: full encode/decode test" \
+            variant_cpp unroll_${unroll_val}_cpp -unroll "$unroll_val"
+    fi
+
+    if command -v go >/dev/null 2>&1; then
+        run_variant "Go -unroll=$unroll_val: full encode/decode test" \
+            variant_go unroll_${unroll_val}_go -unroll "$unroll_val"
+    fi
+
+    if command -v python3 >/dev/null 2>&1; then
+        run_variant "Python -unroll=$unroll_val: full encode/decode test" \
+            variant_python unroll_${unroll_val}_py -unroll "$unroll_val"
+    fi
+
+    if command -v javac >/dev/null 2>&1 && command -v java >/dev/null 2>&1; then
+        run_variant "Java -unroll=$unroll_val: full encode/decode test" \
+            variant_java unroll_${unroll_val}_java -unroll "$unroll_val"
+    fi
+
+    if command -v dotnet >/dev/null 2>&1; then
+        run_variant "C# -unroll=$unroll_val: full encode/decode test" \
+            variant_csharp unroll_${unroll_val}_csharp -unroll "$unroll_val"
+    fi
+
+    if command -v node >/dev/null 2>&1; then
+        run_variant "CommonJS -unroll=$unroll_val: full encode/decode test" \
+            variant_cjs unroll_${unroll_val}_cjs -unroll "$unroll_val"
+        run_variant "ESModule -unroll=$unroll_val: full encode/decode test" \
+            variant_esm unroll_${unroll_val}_esm -unroll "$unroll_val"
+    fi
+done
+
+##############################################################################
+# 12. Runtime matrix — per-target CLI option variants must pass codec tests
+##############################################################################
+echo
+echo "=== #12: per-target option variants runtime matrix ==="
 
 if command -v gcc >/dev/null 2>&1; then
     run_variant "C runtime: default"            variant_c default
     run_variant "C runtime: -minimal"           variant_c minimal -minimal
     run_variant "C runtime: -decnum"            variant_c decnum -decnum
     run_variant "C runtime: -signext arith"     variant_c signext_arith -signext arith
+    run_variant "C runtime: -unroll=0"          variant_c unroll_0 -unroll 0
 else
     ok "C runtime matrix skipped (gcc not found)"
 fi
@@ -345,6 +401,7 @@ if command -v g++ >/dev/null 2>&1; then
     run_variant "C++ runtime: -minimal"         variant_cpp minimal -minimal
     run_variant "C++ runtime: -decnum"          variant_cpp decnum -decnum
     run_variant "C++ runtime: -signext arith"   variant_cpp signext_arith -signext arith
+    run_variant "C++ runtime: -unroll=0"        variant_cpp unroll_0 -unroll 0
     run_variant "C++ runtime combo: multi non-compat"   variant_cpp combo_multi_nocompat
     run_variant "C++ runtime combo: multi compat"       variant_cpp combo_multi_compat -compat
     run_variant "C++ runtime combo: single non-compat"  variant_cpp combo_single_nocompat -single

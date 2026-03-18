@@ -142,6 +142,15 @@ class TestArrayFields(unittest.TestCase):
         p0.x, p0.y = -100, 200
         p1.x, p1.y = 30000, -30000
         s.point_arr = [p0, p1]
+        s.i64_arr = [-1, 0, 1, -0x123456789A, 0x123456789A]
+        s.u64_arr = [0, 1, 0xFFFFFFFF, 0x123456789ABCDEF0, 0x8000000000000000, 0xFFFFFFFFFFFFFFFF]
+        s.large_enum_arr = [Color.RED, Color.GREEN, Color.BLUE, Color.RED, Color.GREEN, Color.BLUE, Color.RED]
+        s.large_struct_arr = [None] * 8
+        for i in range(8):
+            p = Point()
+            p.x = -(i + 1) * 1000
+            p.y = (i + 1) * 1000
+            s.large_struct_arr[i] = p
 
         buf = s.encode()
         d = ArrayFields()
@@ -155,6 +164,13 @@ class TestArrayFields(unittest.TestCase):
         self.assertEqual(d.point_arr[0].y,  200)
         self.assertEqual(d.point_arr[1].x, 30000)
         self.assertEqual(d.point_arr[1].y, -30000)
+        self.assertEqual(list(d.i64_arr), [-1, 0, 1, -0x123456789A, 0x123456789A])
+        self.assertEqual(list(d.u64_arr), [0, 1, 0xFFFFFFFF, 0x123456789ABCDEF0, 0x8000000000000000, 0xFFFFFFFFFFFFFFFF])
+        self.assertEqual(list(d.large_enum_arr), [Color.RED, Color.GREEN, Color.BLUE, Color.RED, Color.GREEN, Color.BLUE, Color.RED])
+        self.assertEqual(d.large_struct_arr[0].x, -1000)
+        self.assertEqual(d.large_struct_arr[0].y,  1000)
+        self.assertEqual(d.large_struct_arr[7].x, -8000)
+        self.assertEqual(d.large_struct_arr[7].y,  8000)
 
 
 class TestEmbedStructs(unittest.TestCase):

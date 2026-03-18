@@ -106,6 +106,10 @@ struct ArrayFields {
     int16<3>  i16_arr;
     Color<2>  color_arr;
     Point<2>  point_arr;
+    int64<5>  i64_arr;
+    uint64<6> u64_arr;
+    Color<7>  large_enum_arr;
+    Point<8>  large_struct_arr;
 }
 
 // ============================================================

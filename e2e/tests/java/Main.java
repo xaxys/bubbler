@@ -182,6 +182,30 @@ public class Main {
         p1.setX((short) 30000); p1.setY((short) -30000);
         s.setPointArrAt(0, p0);
         s.setPointArrAt(1, p1);
+        s.setI64ArrAt(0, -1L);
+        s.setI64ArrAt(1, 0L);
+        s.setI64ArrAt(2, 1L);
+        s.setI64ArrAt(3, -0x123456789AL);
+        s.setI64ArrAt(4,  0x123456789AL);
+        s.setU64ArrAt(0, 0L);
+        s.setU64ArrAt(1, 1L);
+        s.setU64ArrAt(2, 0xFFFFFFFFL);
+        s.setU64ArrAt(3, 0x123456789ABCDEF0L);
+        s.setU64ArrAt(4, 0x8000000000000000L);
+        s.setU64ArrAt(5, 0xFFFFFFFFFFFFFFFFL);
+        s.setLargeEnumArrAt(0, Color.RED);
+        s.setLargeEnumArrAt(1, Color.GREEN);
+        s.setLargeEnumArrAt(2, Color.BLUE);
+        s.setLargeEnumArrAt(3, Color.RED);
+        s.setLargeEnumArrAt(4, Color.GREEN);
+        s.setLargeEnumArrAt(5, Color.BLUE);
+        s.setLargeEnumArrAt(6, Color.RED);
+        for (int i = 0; i < 8; i++) {
+            Point p = new Point();
+            p.setX((short) (-(i + 1) * 1000));
+            p.setY((short) ((i + 1) * 1000));
+            s.setLargeStructArrAt(i, p);
+        }
 
         byte[] buf = s.encode();
         ArrayFields d = new ArrayFields();
@@ -200,6 +224,28 @@ public class Main {
         checkEq(d.getPointArrAt(0).getY(),     200, "pt[0].y");
         checkEq(d.getPointArrAt(1).getX(),   30000, "pt[1].x");
         checkEq(d.getPointArrAt(1).getY(),  -30000, "pt[1].y");
+        checkEq(d.getI64ArrAt(0), -1L, "i64[0]");
+        checkEq(d.getI64ArrAt(1), 0L, "i64[1]");
+        checkEq(d.getI64ArrAt(2), 1L, "i64[2]");
+        checkEq(d.getI64ArrAt(3), -0x123456789AL, "i64[3]");
+        checkEq(d.getI64ArrAt(4),  0x123456789AL, "i64[4]");
+        check(Long.compareUnsigned(d.getU64ArrAt(0), 0L) == 0, "u64[0]");
+        check(Long.compareUnsigned(d.getU64ArrAt(1), 1L) == 0, "u64[1]");
+        check(Long.compareUnsigned(d.getU64ArrAt(2), 0xFFFFFFFFL) == 0, "u64[2]");
+        check(Long.compareUnsigned(d.getU64ArrAt(3), 0x123456789ABCDEF0L) == 0, "u64[3]");
+        check(Long.compareUnsigned(d.getU64ArrAt(4), 0x8000000000000000L) == 0, "u64[4]");
+        check(Long.compareUnsigned(d.getU64ArrAt(5), 0xFFFFFFFFFFFFFFFFL) == 0, "u64[5]");
+        check(d.getLargeEnumArrAt(0) == Color.RED, "large_enum[0]");
+        check(d.getLargeEnumArrAt(1) == Color.GREEN, "large_enum[1]");
+        check(d.getLargeEnumArrAt(2) == Color.BLUE, "large_enum[2]");
+        check(d.getLargeEnumArrAt(3) == Color.RED, "large_enum[3]");
+        check(d.getLargeEnumArrAt(4) == Color.GREEN, "large_enum[4]");
+        check(d.getLargeEnumArrAt(5) == Color.BLUE, "large_enum[5]");
+        check(d.getLargeEnumArrAt(6) == Color.RED, "large_enum[6]");
+        checkEq(d.getLargeStructArrAt(0).getX(), -1000, "large_pt[0].x");
+        checkEq(d.getLargeStructArrAt(0).getY(),  1000, "large_pt[0].y");
+        checkEq(d.getLargeStructArrAt(7).getX(), -8000, "large_pt[7].x");
+        checkEq(d.getLargeStructArrAt(7).getY(),  8000, "large_pt[7].y");
     }
 
     /* ------------------------------------------------------------------ */

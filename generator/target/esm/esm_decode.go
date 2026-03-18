@@ -1,4 +1,4 @@
-﻿package esm
+package esm
 
 import (
 	"fmt"
@@ -67,8 +67,21 @@ decode(data, start) {
 {{- define "decoderSizeField" -}}
 {{- $fromByte := .FromByte -}}
 {{- $f := .Field -}}
+{{- $loopUnroll := .GenOptions.LoopUnroll -}}
 {{- if $f.FieldType.GetTypeID.IsArray -}}
+{{- $shouldUseLoop := and (ge $loopUnroll 0) (gt $f.FieldType.Length $loopUnroll) -}}
     {{- if $f.FieldType.ElementType.GetTypeID.IsString -}}
+        {{- if $shouldUseLoop }}
+    for (let _i = 0; _i < {{ $f.FieldType.Length }}; _i++) {
+        if (data.length - start <= offset + {{ $fromByte }}) return -(offset + {{ $fromByte }} + 1);
+        let _length = 0;
+        while (data[offset + start + {{ $fromByte }} + _length] !== 0) {
+            _length++;
+            if (data.length - start <= offset + {{ $fromByte }} + _length) { return -(offset + {{ $fromByte }} + _length + 1); }
+        }
+        offset += _length + 1;
+    }
+        {{- else }}
         {{- range $i := iterate 0 $f.FieldType.Length }}
     {   // {{ $f }}: [{{ $i }}]
         if (data.length - start <= offset + {{ $fromByte }}) return -(offset + {{ $fromByte }} + 1);
@@ -79,8 +92,26 @@ decode(data, start) {
         }
         offset += _length + 1;
     }
-        {{- end -}}
+        {{- end }}
+        {{- end }}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsBytes -}}
+        {{- if $shouldUseLoop }}
+    for (let _i = 0; _i < {{ $f.FieldType.Length }}; _i++) {
+        if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
+        let _length = 0;
+        let _shift = 0;
+        while ((data[offset + start + {{ $fromByte }}] & 0x80) !== 0) {
+            _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
+            _shift += 7;
+            offset++;
+            if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
+        }
+        _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
+        offset++;
+        if (data.length - start < offset + {{ $fromByte }} + _length) return -(offset + {{ $fromByte }} + _length);
+        offset += _length;
+    }
+        {{- else }}
         {{- range $i := iterate 0 $f.FieldType.Length }}
     {   // {{ $f }}: [{{ $i }}]
         if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
@@ -97,17 +128,26 @@ decode(data, start) {
         if (data.length - start < offset + {{ $fromByte }} + _length) return -(offset + {{ $fromByte }} + _length);
         offset += _length;
     }
-        {{- end -}}
+        {{- end }}
+        {{- end }}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsStruct -}}
         {{- if $f.FieldType.ElementType.GetTypeDynamic -}}
             {{- $pkgPrefix := FieldStructPkgPrefix $f -}}
+            {{- if $shouldUseLoop }}
+    for (let _i = 0; _i < {{ $f.FieldType.Length }}; _i++) {
+        const _subSize = {{ $pkgPrefix }}.decode_size(data, offset + start + {{ $fromByte }});
+        if (_subSize < 0) { return -(offset + {{ $fromByte }}) + _subSize; }
+        offset += _subSize;
+    }
+            {{- else }}
             {{- range $i := iterate 0 $f.FieldType.Length }}
     {   // {{ $f }}: [{{ $i }}]
         const _subSize = {{ $pkgPrefix }}.decode_size(data, offset + start + {{ $fromByte }});
         if (_subSize < 0) { return -(offset + {{ $fromByte }}) + _subSize; }
         offset += _subSize;
     }
-            {{- end -}}
+            {{- end }}
+            {{- end }}
         {{- end -}}
     {{- end -}}
 {{- else if $f.FieldType.GetTypeID.IsString }}
@@ -169,7 +209,7 @@ static decode_size(data, start) {
     {{- $fixedStart := 0 }}
     {{- range $field := .StructDef.StructFields.Values }}
         {{- if and $field.GetFieldKind.IsNormal (lt $field.GetFieldBitSize 0) }}
-    {{- template "decoderSizeField" (dict "Field" $field "FromByte" (calc $fixedStart "/" 8)) }}
+    {{- template "decoderSizeField" (dict "Field" $field "FromByte" (calc $fixedStart "/" 8) "GenOptions" $.GenOptions) }}
         {{- end }}
         {{- if ne $field.GetFieldBitSize -1 }}
     {{- $fixedStart = calc $fixedStart "+" $field.GetFieldBitSize }}
@@ -445,53 +485,124 @@ func (g ESModuleGenerator) generateDecodeNormalField(field *definition.NormalFie
 		elemBitSize := field.FieldBitSize / ty.Length
 		name := g.generateDecodeStructFieldName(field.FieldName)
 
-		var nameIndex func(int64) string
-		switch ty.ElementType.(type) {
-		case *definition.Struct, *definition.String, *definition.Bytes:
-			nameIndex = func(index int64) string { return fmt.Sprintf("%s[%d]", name, index) }
-		case *definition.BasicType:
-			nameIndex = func(index int64) string { return fmt.Sprintf("%s[%d]", name, index) }
-			if ty.ElementType.GetTypeID().IsFloat() {
+		// Check if we need to generate a loop or unroll the array
+		loopUnroll := g.GenCtx.GenOptions.LoopUnroll
+		canUseLoop := false
+		switch elemTyLoop := ty.ElementType.(type) {
+		case *definition.String, *definition.Bytes:
+			canUseLoop = true
+		case *definition.Struct:
+			canUseLoop = elemTyLoop.GetTypeDynamic()
+		}
+		shouldUseLoop := loopUnroll >= 0 && ty.Length > int64(loopUnroll) && canUseLoop
+
+		if shouldUseLoop {
+			// Generate loop code
+			var nameIndex func(int64) string
+			switch ty.ElementType.(type) {
+			case *definition.Struct, *definition.String, *definition.Bytes:
+				nameIndex = func(index int64) string { return fmt.Sprintf("%s[_i]", name) }
+			case *definition.BasicType:
+				nameIndex = func(index int64) string { return fmt.Sprintf("%s[_i]", name) }
+				if ty.ElementType.GetTypeID().IsFloat() {
+					tempName := g.generateDecodeTempVarName(startBits)
+					decodeStmts = append(decodeStmts, util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, map[string]any{"TempName": tempName}))
+					nameIndex = func(_ int64) string { return tempName }
+					switch ty.ElementType.GetTypeID() {
+					case definition.TypeID_Float32:
+						elemTy = &definition.Uint32
+					case definition.TypeID_Float64:
+						elemTy = &definition.Uint64
+					}
+				}
+			case *definition.Enum:
 				tempName := g.generateDecodeTempVarName(startBits)
 				decodeStmts = append(decodeStmts, util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, map[string]any{"TempName": tempName}))
 				nameIndex = func(_ int64) string { return tempName }
-				switch ty.ElementType.GetTypeID() {
-				case definition.TypeID_Float32:
-					elemTy = &definition.Uint32
-				case definition.TypeID_Float64:
-					elemTy = &definition.Uint64
-				}
+				elemTy = &definition.Uint32
+			default:
+				return nil, fmt.Errorf("internal error: unsupported array element type %T", ty.ElementType)
 			}
-		case *definition.Enum:
-			tempName := g.generateDecodeTempVarName(startBits)
-			decodeStmts = append(decodeStmts, util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, map[string]any{"TempName": tempName}))
-			nameIndex = func(_ int64) string { return tempName }
-			elemTy = &definition.Uint32
-		default:
-			return nil, fmt.Errorf("internal error: unsupported array element type %T", ty.ElementType)
-		}
 
-		for i := int64(0); i < ty.Length; i++ {
-			subFrom := from + i*elemBitSize
-			subTo := from + (i+1)*elemBitSize
-			subName := nameIndex(i)
+			decodeStmts = append(decodeStmts, fmt.Sprintf("for (let _i = 0; _i < %d; _i++) {", ty.Length))
+
+			subFrom := from
+			subTo := from + elemBitSize
+			subName := nameIndex(0)
+
 			stmts, err := g.generateDecodeNormalFieldImpl(subName, elemTy, field.FieldOptions, structDynamic, subFrom, subTo)
 			if err != nil {
 				return nil, err
 			}
-			decodeStmts = append(decodeStmts, stmts...)
+			for _, stmt := range stmts {
+				decodeStmts = append(decodeStmts, util.IndentSpace(stmt, 4))
+			}
+
 			switch elemTy2 := ty.ElementType.(type) {
 			case *definition.BasicType:
 				if elemTy2.GetTypeID().IsFloat() {
-					decodeStmts = append(decodeStmts, util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignFloatCast", nil, map[string]any{
-						"TempName": subName, "FieldName": fmt.Sprintf("%s[%d]", name, i), "IsFloat32": elemTy2.GetTypeID() == definition.TypeID_Float32,
-					}))
+					decodeStmts = append(decodeStmts, util.IndentSpace(util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignFloatCast", nil, map[string]any{
+						"TempName": subName, "FieldName": fmt.Sprintf("%s[_i]", name), "IsFloat32": elemTy2.GetTypeID() == definition.TypeID_Float32,
+					}), 4))
 				}
 			case *definition.Enum:
-				decodeStmts = append(decodeStmts, util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignEnum", nil, map[string]any{
-					"TempName": subName, "EnumDef": elemTy2, "FieldName": fmt.Sprintf("%s[%d]", name, i), "FieldDef": field,
+				decodeStmts = append(decodeStmts, util.IndentSpace(util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignEnum", nil, map[string]any{
+					"TempName": subName, "EnumDef": elemTy2, "FieldName": fmt.Sprintf("%s[_i]", name), "FieldDef": field,
 					"SingleFile": g.GenCtx.GenOptions.SingleFile,
-				}))
+				}), 4))
+			}
+
+			decodeStmts = append(decodeStmts, "}")
+		} else {
+			// Unroll the array
+			var nameIndex func(int64) string
+			switch ty.ElementType.(type) {
+			case *definition.Struct, *definition.String, *definition.Bytes:
+				nameIndex = func(index int64) string { return fmt.Sprintf("%s[%d]", name, index) }
+			case *definition.BasicType:
+				nameIndex = func(index int64) string { return fmt.Sprintf("%s[%d]", name, index) }
+				if ty.ElementType.GetTypeID().IsFloat() {
+					tempName := g.generateDecodeTempVarName(startBits)
+					decodeStmts = append(decodeStmts, util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, map[string]any{"TempName": tempName}))
+					nameIndex = func(_ int64) string { return tempName }
+					switch ty.ElementType.GetTypeID() {
+					case definition.TypeID_Float32:
+						elemTy = &definition.Uint32
+					case definition.TypeID_Float64:
+						elemTy = &definition.Uint64
+					}
+				}
+			case *definition.Enum:
+				tempName := g.generateDecodeTempVarName(startBits)
+				decodeStmts = append(decodeStmts, util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, map[string]any{"TempName": tempName}))
+				nameIndex = func(_ int64) string { return tempName }
+				elemTy = &definition.Uint32
+			default:
+				return nil, fmt.Errorf("internal error: unsupported array element type %T", ty.ElementType)
+			}
+
+			for i := int64(0); i < ty.Length; i++ {
+				subFrom := from + i*elemBitSize
+				subTo := from + (i+1)*elemBitSize
+				subName := nameIndex(i)
+				stmts, err := g.generateDecodeNormalFieldImpl(subName, elemTy, field.FieldOptions, structDynamic, subFrom, subTo)
+				if err != nil {
+					return nil, err
+				}
+				decodeStmts = append(decodeStmts, stmts...)
+				switch elemTy2 := ty.ElementType.(type) {
+				case *definition.BasicType:
+					if elemTy2.GetTypeID().IsFloat() {
+						decodeStmts = append(decodeStmts, util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignFloatCast", nil, map[string]any{
+							"TempName": subName, "FieldName": fmt.Sprintf("%s[%d]", name, i), "IsFloat32": elemTy2.GetTypeID() == definition.TypeID_Float32,
+						}))
+					}
+				case *definition.Enum:
+					decodeStmts = append(decodeStmts, util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignEnum", nil, map[string]any{
+						"TempName": subName, "EnumDef": elemTy2, "FieldName": fmt.Sprintf("%s[%d]", name, i), "FieldDef": field,
+						"SingleFile": g.GenCtx.GenOptions.SingleFile,
+					}))
+				}
 			}
 		}
 

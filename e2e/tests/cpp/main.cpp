@@ -231,6 +231,32 @@ static void test_array_fields() {
     s.color_arr[0] = Color::RED;  s.color_arr[1] = Color::BLUE;
     s.point_arr[0].x = -100; s.point_arr[0].y =  200;
     s.point_arr[1].x =  30000; s.point_arr[1].y = -30000;
+    s.i64_arr[0] = -1LL;
+    s.i64_arr[1] = 0LL;
+    s.i64_arr[2] = 1LL;
+    s.i64_arr[3] = -0x123456789ALL;
+    s.i64_arr[4] =  0x123456789ALL;
+    s.u64_arr[0] = 0ULL;
+    s.u64_arr[1] = 1ULL;
+    s.u64_arr[2] = 0xFFFFFFFFULL;
+    s.u64_arr[3] = 0x123456789ABCDEF0ULL;
+    s.u64_arr[4] = 0x8000000000000000ULL;
+    s.u64_arr[5] = 0xFFFFFFFFFFFFFFFFULL;
+    s.large_enum_arr[0] = Color::RED;
+    s.large_enum_arr[1] = Color::GREEN;
+    s.large_enum_arr[2] = Color::BLUE;
+    s.large_enum_arr[3] = Color::RED;
+    s.large_enum_arr[4] = Color::GREEN;
+    s.large_enum_arr[5] = Color::BLUE;
+    s.large_enum_arr[6] = Color::RED;
+    s.large_struct_arr[0].x = -1000; s.large_struct_arr[0].y =  1000;
+    s.large_struct_arr[1].x = -2000; s.large_struct_arr[1].y =  2000;
+    s.large_struct_arr[2].x = -3000; s.large_struct_arr[2].y =  3000;
+    s.large_struct_arr[3].x = -4000; s.large_struct_arr[3].y =  4000;
+    s.large_struct_arr[4].x = -5000; s.large_struct_arr[4].y =  5000;
+    s.large_struct_arr[5].x = -6000; s.large_struct_arr[5].y =  6000;
+    s.large_struct_arr[6].x = -7000; s.large_struct_arr[6].y =  7000;
+    s.large_struct_arr[7].x = -8000; s.large_struct_arr[7].y =  8000;
 
     std::vector<uint8_t> buf(ArrayFields::size);
     CHECK_EQ((int)encode_to_vec(s, buf), (int)ArrayFields::size);
@@ -248,6 +274,28 @@ static void test_array_fields() {
     CHECK_EQ((int)d.point_arr[0].y,   200);
     CHECK_EQ((int)d.point_arr[1].x, 30000);
     CHECK_EQ((int)d.point_arr[1].y,-30000);
+    CHECK_EQ((long long)d.i64_arr[0], -1LL);
+    CHECK_EQ((long long)d.i64_arr[1], 0LL);
+    CHECK_EQ((long long)d.i64_arr[2], 1LL);
+    CHECK_EQ((long long)d.i64_arr[3], -0x123456789ALL);
+    CHECK_EQ((long long)d.i64_arr[4],  0x123456789ALL);
+    CHECK_EQ((unsigned long long)d.u64_arr[0], 0ULL);
+    CHECK_EQ((unsigned long long)d.u64_arr[1], 1ULL);
+    CHECK_EQ((unsigned long long)d.u64_arr[2], 0xFFFFFFFFULL);
+    CHECK_EQ((unsigned long long)d.u64_arr[3], 0x123456789ABCDEF0ULL);
+    CHECK_EQ((unsigned long long)d.u64_arr[4], 0x8000000000000000ULL);
+    CHECK_EQ((unsigned long long)d.u64_arr[5], 0xFFFFFFFFFFFFFFFFULL);
+    CHECK_EQ(d.large_enum_arr[0], Color::RED);
+    CHECK_EQ(d.large_enum_arr[1], Color::GREEN);
+    CHECK_EQ(d.large_enum_arr[2], Color::BLUE);
+    CHECK_EQ(d.large_enum_arr[3], Color::RED);
+    CHECK_EQ(d.large_enum_arr[4], Color::GREEN);
+    CHECK_EQ(d.large_enum_arr[5], Color::BLUE);
+    CHECK_EQ(d.large_enum_arr[6], Color::RED);
+    CHECK_EQ((int)d.large_struct_arr[0].x, -1000);
+    CHECK_EQ((int)d.large_struct_arr[0].y,  1000);
+    CHECK_EQ((int)d.large_struct_arr[7].x, -8000);
+    CHECK_EQ((int)d.large_struct_arr[7].y,  8000);
 }
 
 /* ------------------------------------------------------------------ */
