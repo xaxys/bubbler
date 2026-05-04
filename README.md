@@ -44,7 +44,18 @@ bubbler [options] <input file>
 - `-memcpy`: Enable memory copy for fields (Duplicate content of `string` and `bytes` fields when decoding, instead of directly referencing the original buffer)
 - `-signext <method>`: Sign Extension Method used for Integer Field (Options: `shift`, `arith`)
 - `-compat`: Generate Compatible Code (Use `Array` instead of typed arrays like `Uint8Array` for buffers and `bytes` fields in CommonJS target. By default, `Uint8Array` is used for better performance.)
-- `-unroll <threshold>`: Loop Unroll Threshold for Array Codec (Default: `4`). When an array length exceeds this threshold, the generated `encode`/`decode` and `encode_size`/`decode_size` code will use loops. Set to `-1` to always unroll arrays regardless of size. For example, `-unroll=1` will use loops for all arrays with more than 1 element, while `-unroll=8` will only use loops for arrays with more than 8 elements.
+- `-unroll <threshold>`: Loop Unroll Threshold for Array Codec (Default: `4`). When an array length is greater than this threshold, the generated `encode`/`decode` and `encode_size`/`decode_size` code will use a `for` loop instead of inlining each iteration. Set to `-1` to always unroll arrays regardless of size, or to `0` to always loop. For example, `-unroll=1` will use loops for all arrays with more than 1 element, while `-unroll=8` will only use loops for arrays with more than 8 elements.
+
+  Fully supported for every element type (basic, enum, fixed/dynamic struct, string, bytes) in all targets: `c`, `cpp`, `csharp`, `commonjs`, `esmodule`, `go`, `java`, `python`. For fixed-bit-width elements, a per-file (or per-class in Java/C#) bit-helper pair is emitted on demand to write/read elements at arbitrary bit offsets. Sub-byte arrays such as `int16<4> narrow12 [6]` (12-bit elements) are correctly handled.
+
+  Per-language helper names:
+  - `c` / `cpp`: `bb_write_field_bits` / `bb_read_field_bits` (file-private; in C++ they live in an anonymous namespace within the source file).
+  - `go`: `bbWriteFieldBits` / `bbReadFieldBits` (package-private).
+  - `python`: `_bb_write_field_bits` / `_bb_read_field_bits` (module-level).
+  - `java` / `csharp`: `bbWriteFieldBits` / `bbReadFieldBits` (private static methods on the generated class; emitted only on classes that actually use them).
+  - `commonjs` / `esmodule`: `bbWriteFieldBits` / `bbReadFieldBits` (BigInt-based; emitted at module top when needed).
+
+  Helpers are emitted only when at least one struct in the unit (or class, for Java / C#) actually rolls a fixed-bit-width array; files that exclusively unroll arrays do not pay the helper-size cost.
 
 ### Examples
 

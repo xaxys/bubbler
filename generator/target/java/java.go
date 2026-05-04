@@ -24,12 +24,19 @@ type GeneratedType struct {
 
 // ==================== Java Generator ====================
 
+// JavaGeneratorState holds per-struct codegen flags. The whole struct is
+// shared via pointer so value-receiver methods can mutate it.
+type JavaGeneratorState struct {
+	UseBitHelpers bool
+}
+
 type JavaGenerator struct {
 	*gen.GenDispatcher
 	GenCtx   *gen.GenCtx
 	GenUnits *util.OrderedMap[string, *GeneratedUnit]
 	GenTypes *util.OrderedMap[string, *GeneratedType]
 	GenStack *util.OrderedMap[string, any]
+	GenState *JavaGeneratorState
 	Warning  definition.TopLevelWarning
 }
 
@@ -39,6 +46,7 @@ func NewJavaGenerator() *JavaGenerator {
 		GenUnits:      util.NewOrderedMap[string, *GeneratedUnit](),
 		GenTypes:      util.NewOrderedMap[string, *GeneratedType](),
 		GenStack:      util.NewOrderedMap[string, any](),
+		GenState:      &JavaGeneratorState{},
 		Warning:       nil,
 	}
 	generator.GenDispatcher = gen.NewGenDispatcher(generator)
@@ -72,6 +80,58 @@ func (g *JavaGenerator) generateBin(value any) string {
 		return fmt.Sprintf("0b%bL", value)
 	}
 	return fmt.Sprintf("0b%b", value)
+}
+
+// generateBoolLiteral renders `true` / `false` via the Java literal generator.
+func (g *JavaGenerator) generateBoolLiteral(value bool) string {
+	s, _ := NewJavaLiteralGenerator().GenerateBoolLiteral(&definition.BoolLiteral{BoolValue: value})
+	return s
+}
+
+// generateCastExpr renders `(toType)expr` via the Java expression generator.
+func (g *JavaGenerator) generateCastExpr(toType *definition.BasicType, exprStr string) string {
+	exprGen := NewJavaExprGenerator(g.GenerateType, "")
+	s, _ := exprGen.GenerateCastExpr(&definition.CastExpr{
+		ToType: toType,
+		Expr1:  &definition.RawExpr{Expr: exprStr},
+	})
+	return s
+}
+
+// decodeBasicValueExpr returns the Java expression that converts the helper's
+// `_v` (long) into the field's element type. Sign-extension goes through the
+// intSignExt* templates so the conversion patterns are colocated.
+func (g *JavaGenerator) decodeBasicValueExpr(elemTy *definition.BasicType, elemTySize, elemBitSize int64) string {
+	tyID := elemTy.GetTypeID()
+	if tyID.IsBool() {
+		return "_v != 0"
+	}
+	if tyID.IsFloat() {
+		if elemTy.GetTypeBitSize() == 32 {
+			// `Float.intBitsToFloat(int)` is an API call; cast `(int)_v` is basic-type.
+			return "Float.intBitsToFloat(" + g.generateCastExpr(&definition.Int32, "_v") + ")"
+		}
+		return "Double.longBitsToDouble(_v)"
+	}
+	if tyID.IsInt() {
+		if elemBitSize >= elemTySize*8 {
+			return g.generateCastExpr(elemTy, "_v")
+		}
+		switch g.GenCtx.GenOptions.SignExtMethod {
+		case gen.SignExtMethodArith:
+			signMask := uint64(1) << uint(elemBitSize-1)
+			return util.ExecuteTemplate(fieldDecoderTemplate, "intSignExtArith", nil, map[string]any{
+				"IntType":  typeMap[elemTy.GetTypeID()],
+				"SignMask": g.generateHex(signMask),
+			})
+		default:
+			return util.ExecuteTemplate(fieldDecoderTemplate, "intSignExtShift", nil, map[string]any{
+				"IntType": typeMap[elemTy.GetTypeID()],
+				"Shift":   64 - elemBitSize,
+			})
+		}
+	}
+	return g.generateCastExpr(elemTy, "_v")
 }
 
 // ==================== Generate ====================
@@ -367,6 +427,104 @@ func (g JavaGenerator) GenerateArrayDefaultValue(array *definition.Array) (strin
 // ==================== GenerateStruct ====================
 
 var structTemplate = `
+{{- define "bitHelpers" -}}
+    private static void bbWriteFieldBits(byte[] data, long bitFrom, long bitSize, long value, boolean bigEndian) {
+        if (bitSize <= 0) return;
+        if (bitSize < 64) value &= (1L << bitSize) - 1L;
+        long bitTo = bitFrom + bitSize;
+        long i = bitFrom;
+        while (i < bitTo) {
+            long nextI = (i + 8) & ~7L;
+            if (nextI > bitTo) nextI = bitTo;
+            long dataMask = ((1L << (((nextI - 1) & 7) + 1)) - 1L) & ~((1L << (i & 7)) - 1L);
+            long begin = i - bitFrom;
+            long end = nextI - bitFrom;
+            long part = 0;
+            long j = begin;
+            if (j < end) {
+                long nextJ = (j + 8) & ~7L;
+                if (nextJ > end) nextJ = end;
+                long fieldMask = ((1L << (((nextJ - 1) & 7) + 1)) - 1L) & ~((1L << (j & 7)) - 1L);
+                int shiftRight = (int)(j & 7);
+                long srcByteIndex = j / 8;
+                long srcShift;
+                if (bigEndian) {
+                    srcShift = bitSize - 8 * (srcByteIndex + 1);
+                    if (srcShift < 0) srcShift = 0;
+                } else {
+                    srcShift = 8 * srcByteIndex;
+                }
+                long srcByte = (value >>> (int)srcShift) & 0xFFL;
+                part = (srcByte & fieldMask) >>> shiftRight;
+                j = nextJ;
+            }
+            if (j < end) {
+                long nextJ = (j + 8) & ~7L;
+                if (nextJ > end) nextJ = end;
+                long fieldMask = ((1L << (((nextJ - 1) & 7) + 1)) - 1L) & ~((1L << (j & 7)) - 1L);
+                int shiftLeft = (int)(8 - (nextJ & 7));
+                if ((nextJ & 7) == 0) shiftLeft = 8;
+                long srcByteIndex = j / 8;
+                long srcShift;
+                if (bigEndian) {
+                    srcShift = bitSize - 8 * (srcByteIndex + 1);
+                    if (srcShift < 0) srcShift = 0;
+                } else {
+                    srcShift = 8 * srcByteIndex;
+                }
+                long srcByte = (value >>> (int)srcShift) & 0xFFL;
+                part |= (srcByte & fieldMask) << shiftLeft;
+            }
+            int shiftLeftOuter = (int)(i & 7);
+            part = (part << shiftLeftOuter) & dataMask;
+            if (dataMask == 0xFF) {
+                data[(int)(i / 8)] = (byte)part;
+            } else {
+                data[(int)(i / 8)] |= (byte)part;
+            }
+            i = (i + 8) & ~7L;
+        }
+    }
+
+    private static long bbReadFieldBits(byte[] data, long bitFrom, long bitSize, boolean bigEndian) {
+        if (bitSize <= 0) return 0;
+        long bitTo = bitFrom + bitSize;
+        long out = 0;
+        long outByteIndex = 0;
+        long i = bitFrom;
+        while (i < bitTo) {
+            long begin = i;
+            long end = i + 8;
+            if (end > bitTo) end = bitTo;
+            long width = end - begin;
+            long sep = (begin + 8) & ~7L;
+            if (sep > end) sep = end;
+            long part = 0;
+            if (begin < sep) {
+                long fieldMask = ((1L << (((sep - 1) & 7) + 1)) - 1L) & ~((1L << (begin & 7)) - 1L);
+                int shiftRight = (int)(begin & 7);
+                part = ((data[(int)(begin / 8)] & 0xFFL) & fieldMask) >>> shiftRight;
+            }
+            if (sep < end) {
+                long fieldMask = ((1L << (((end - 1) & 7) + 1)) - 1L) & ~((1L << (sep & 7)) - 1L);
+                int shiftLeft = (int)(width - (end % 8));
+                part |= ((data[(int)(sep / 8)] & 0xFFL) & fieldMask) << shiftLeft;
+            }
+            long dstShift;
+            if (bigEndian) {
+                dstShift = bitSize - 8 * (outByteIndex + 1);
+                if (dstShift < 0) dstShift = 0;
+            } else {
+                dstShift = 8 * outByteIndex;
+            }
+            out |= part << (int)dstShift;
+            i += 8;
+            outByteIndex++;
+        }
+        return out;
+    }
+{{- end -}}
+
 {{- define "field" -}}
     // {{ .Pos }} {{ .Field.GetFieldKind }}: {{ .Field }}
     {{- $fieldStrLen := len .FieldStr -}}
@@ -401,6 +559,10 @@ public final class {{ $structDef.StructName }} {
     {{ .EncoderStr }}
 
     {{ .DecoderStr }}
+
+    {{- if .UseBitHelpers }}
+{{ template "bitHelpers" . }}
+    {{- end }}
 
     @Override
     public boolean equals(Object obj) {
@@ -538,6 +700,9 @@ func (g JavaGenerator) generateStruct(structDef *definition.Struct) (*GeneratedT
 	}
 	constStr := util.ExecuteTemplate(structTemplate, "structConst", nil, constData)
 
+	// Track whether this struct's encode/decode requires the bit helper pair.
+	g.GenState.UseBitHelpers = false
+
 	encoderStr, err := g.GenerateEncoder(structDef)
 	if err != nil {
 		return nil, err
@@ -555,6 +720,7 @@ func (g JavaGenerator) generateStruct(structDef *definition.Struct) (*GeneratedT
 		"MethodStrs":     methodStrs,
 		"EncoderStr":     encoderStr,
 		"DecoderStr":     decoderStr,
+		"UseBitHelpers":  g.GenState.UseBitHelpers,
 	}
 
 	defStr := util.ExecuteTemplate(structTemplate, "structDef", nil, defData)
@@ -1289,6 +1455,22 @@ var fieldEncoderTemplate = `
 {{- define "encodeImpl" -}}
     data[{{ if .Dynamic }}offset + {{ end }}start + {{ .BytePos }}] {{ .Operator }} (byte){{ .FieldData }};
 {{- end -}}
+
+{{- /* Encoder array bit-loops, one per element-type variant. Java's value
+       expressions all fit on a single line (Float.floatToRawIntBits etc.),
+       so one arrayBitLoopBasicSimple covers all numeric/enum cases. */ -}}
+
+{{- define "encodeArrayLoopStruct" -}}
+for (int _i = 0; _i < {{ .Length }}; _i++) {
+    {{ .ArrayName }}[_i].encode({{ .DataExpr }});
+}
+{{- end -}}
+
+{{- define "encodeArrayLoopBasicSimple" -}}
+for (int _i = 0; _i < {{ .Length }}; _i++) {
+    bbWriteFieldBits(data, {{ .BitBaseExpr }}, {{ .BitSize }}L, {{ .ValueExpr }}, {{ .BigEndian }});
+}
+{{- end -}}
 `
 
 func (g JavaGenerator) generateEncodeTempVarName(startBits int64) string {
@@ -1428,37 +1610,24 @@ func (g JavaGenerator) generateEncodeNormalField(field *definition.NormalField, 
 
 		name := g.generateEncodeStructFieldName(field.FieldName)
 
-		// Check if we need to generate a loop or unroll the array
+		// Decide loop vs unroll. See Go/C++ for full rationale.
 		loopUnroll := g.GenCtx.GenOptions.LoopUnroll
-		canUseLoop := false
+		shouldUseLoop := loopUnroll >= 0 && ty.Length > int64(loopUnroll)
+
+		useDynamicLoop := false
 		switch elemTyLoop := ty.ElementType.(type) {
 		case *definition.String, *definition.Bytes:
-			canUseLoop = true
+			useDynamicLoop = true
 		case *definition.Struct:
-			canUseLoop = elemTyLoop.GetTypeDynamic()
+			useDynamicLoop = elemTyLoop.GetTypeDynamic()
 		}
-		shouldUseLoop := loopUnroll >= 0 && ty.Length > int64(loopUnroll) && canUseLoop
 
-		if shouldUseLoop {
-			// Generate loop code
+		if shouldUseLoop && useDynamicLoop {
+			// Dynamic-element loop (existing path).
 			loopStmts := []string{}
 
-			// temp variable declaration for special types
+			// temp variable declaration for Enum
 			switch ty.ElementType.(type) {
-			case *definition.BasicType:
-				if ty.ElementType.GetTypeID().IsFloat() {
-					tempName := g.generateEncodeTempVarName(startBits)
-
-					encodeNormalFieldTempVarDeclOnlyData := map[string]any{
-						"TyUint":   tyUint,
-						"TempName": tempName,
-					}
-					declStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarDeclOnly", nil, encodeNormalFieldTempVarDeclOnlyData)
-					loopStmts = append(loopStmts, declStr)
-
-					// change elemTy to temp variable type
-					elemTy = definition.GetBasicType(tyUintID)
-				}
 			case *definition.Enum:
 				tempName := g.generateEncodeTempVarName(startBits)
 
@@ -1483,18 +1652,6 @@ func (g JavaGenerator) generateEncodeNormalField(field *definition.NormalField, 
 			subName := fmt.Sprintf("%s[_i]", name)
 
 			switch ty.ElementType.(type) {
-			case *definition.BasicType:
-				if ty.ElementType.GetTypeID().IsFloat() {
-					tempName := g.generateEncodeTempVarName(startBits)
-					encodeNormalFieldTempVarAssignFloatCastData := map[string]any{
-						"TempName":  tempName,
-						"FieldName": fmt.Sprintf("%s[_i]", name),
-						"IsFloat32": ty.ElementType.GetTypeID() == definition.TypeID_Float32,
-					}
-					assignStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarAssignFloatCast", nil, encodeNormalFieldTempVarAssignFloatCastData)
-					loopStmts = append(loopStmts, util.IndentSpace(assignStr, 4))
-					subName = tempName
-				}
 			case *definition.Enum:
 				tempName := g.generateEncodeTempVarName(startBits)
 				encodeNormalFieldTempVarAssignData := map[string]any{
@@ -1520,6 +1677,58 @@ func (g JavaGenerator) generateEncodeNormalField(field *definition.NormalField, 
 			loopStmts = append(loopStmts, "}")
 
 			encodeStmts = append(encodeStmts, loopStmts...)
+		} else if shouldUseLoop {
+			// Fixed-bit-width element loop using bbWriteFieldBits.
+			g.GenState.UseBitHelpers = true
+
+			bigEndianStr := g.generateBoolLiteral(gen.MatchOption(field.FieldOptions, "order", "big"))
+
+			bitBaseExpr := fmt.Sprintf("%d + _i * %dL", from, elemBitSize)
+			if structDynamic {
+				bitBaseExpr = g.generateCastExpr(&definition.Int64, "offset") + " * 8 + (" + bitBaseExpr + ")"
+			}
+
+			// Each branch picks one self-contained loop template.
+			common := map[string]any{
+				"Length":      ty.Length,
+				"ArrayName":   name,
+				"BitBaseExpr": bitBaseExpr,
+				"BitSize":     elemBitSize,
+				"BigEndian":   bigEndianStr,
+			}
+			var stmt string
+			switch elemTyT := ty.ElementType.(type) {
+			case *definition.Struct:
+				byteBase := from / 8
+				offsetExpr := fmt.Sprintf("%d + _i * %d", byteBase, elemBitSize/8)
+				if structDynamic {
+					offsetExpr = "offset + " + offsetExpr
+				}
+				_ = elemTyT
+				common["DataExpr"] = "data, " + offsetExpr
+				stmt = util.ExecuteTemplate(fieldEncoderTemplate, "encodeArrayLoopStruct", nil, common)
+			case *definition.BasicType:
+				switch elemTyT.GetTypeID() {
+				case definition.TypeID_Float32:
+					// `Float.floatToRawIntBits(x)` is an API call, not a basic-type cast.
+					common["ValueExpr"] = g.generateCastExpr(&definition.Int64, fmt.Sprintf("Float.floatToRawIntBits(%s[_i])", name)) + " & 0xFFFFFFFFL"
+				case definition.TypeID_Float64:
+					common["ValueExpr"] = fmt.Sprintf("Double.doubleToRawLongBits(%s[_i])", name)
+				case definition.TypeID_Bool:
+					common["ValueExpr"] = fmt.Sprintf("(%s[_i] ? 1L : 0L)", name)
+				default:
+					common["ValueExpr"] = g.generateCastExpr(&definition.Int64, fmt.Sprintf("%s[_i]", name))
+				}
+				stmt = util.ExecuteTemplate(fieldEncoderTemplate, "encodeArrayLoopBasicSimple", nil, common)
+			case *definition.Enum:
+				// `enumValue.getNumber()` is an API call, not a basic-type cast.
+				common["ValueExpr"] = g.generateCastExpr(&definition.Int64, fmt.Sprintf("%s[_i].getNumber()", name))
+				stmt = util.ExecuteTemplate(fieldEncoderTemplate, "encodeArrayLoopBasicSimple", nil, common)
+			default:
+				return nil, fmt.Errorf("internal error: unsupported fixed-element array type %T", ty.ElementType)
+			}
+			encodeStmts = append(encodeStmts, strings.Split(stmt, "\n")...)
+			_ = elemTy
 		} else {
 			// Unroll the array
 			// temp variable declaration
@@ -2204,6 +2413,32 @@ var fieldDecoderTemplate = `
 {{- define "signExtendArith" -}}
     {{ .FieldName }} = ({{ .FieldType }})((({{ .FieldName }}) ^ {{ .SignMask }}) - {{ .SignMask }});
 {{- end -}}
+
+{{- /* Decoder array bit-loops. Java's value-expression conversions all fit on
+       one line, so one decodeArrayLoopBasic with an .Expr slot covers all cases. */ -}}
+
+{{- define "decodeArrayLoopStruct" -}}
+for (int _i = 0; _i < {{ .Length }}; _i++) {
+    {{ .ArrayName }}[_i].decode({{ .DataExpr }});
+}
+{{- end -}}
+
+{{- define "decodeArrayLoopBasic" -}}
+for (int _i = 0; _i < {{ .Length }}; _i++) {
+    long _v = bbReadFieldBits(data, {{ .BitBaseExpr }}, {{ .BitSize }}L, {{ .BigEndian }});
+    {{ .ArrayName }}[_i] = {{ .Expr }};
+}
+{{- end -}}
+
+{{- /* Sign-extend expression templates (output the expression text only). */ -}}
+
+{{- define "intSignExtShift" -}}
+({{ .IntType }})((_v << {{ .Shift }}) >> {{ .Shift }})
+{{- end -}}
+
+{{- define "intSignExtArith" -}}
+({{ .IntType }})((_v ^ {{ .SignMask }}L) - {{ .SignMask }}L)
+{{- end -}}
 `
 
 func (g JavaGenerator) generateDecodeTempVarName(startBits int64) string {
@@ -2399,53 +2634,24 @@ func (g JavaGenerator) generateDecodeNormalField(field *definition.NormalField, 
 
 		name := g.generateDecodeStructFieldName(field.FieldName)
 
-		// Check if we need to generate a loop or unroll the array
+		// Decide loop vs unroll. See Go/C++ for rationale.
 		loopUnroll := g.GenCtx.GenOptions.LoopUnroll
-		canUseLoop := false
+		shouldUseLoop := loopUnroll >= 0 && ty.Length > int64(loopUnroll)
+
+		useDynamicLoop := false
 		switch elemTyLoop := ty.ElementType.(type) {
 		case *definition.String, *definition.Bytes:
-			canUseLoop = true
+			useDynamicLoop = true
 		case *definition.Struct:
-			canUseLoop = elemTyLoop.GetTypeDynamic()
+			useDynamicLoop = elemTyLoop.GetTypeDynamic()
 		}
-		shouldUseLoop := loopUnroll >= 0 && ty.Length > int64(loopUnroll) && canUseLoop
 
-		if shouldUseLoop {
-			// Generate loop code
+		if shouldUseLoop && useDynamicLoop {
+			// Dynamic-element loop (existing path).
 			loopStmts := []string{}
 
-			// temp variable declaration for special types
+			// temp variable declaration for Enum
 			switch ty.ElementType.(type) {
-			case *definition.BasicType:
-				if ty.ElementType.GetTypeID().IsBool() {
-					tyUint := "byte"
-					tempTy := &definition.Uint8
-					tempName := g.generateDecodeTempVarName(startBits)
-
-					decodeNormalFieldTempVarDeclOnlyData := map[string]any{
-						"TyUint":   tyUint,
-						"TempName": tempName,
-					}
-					declStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, decodeNormalFieldTempVarDeclOnlyData)
-					loopStmts = append(loopStmts, declStr)
-
-					// change elemTy to temp variable type
-					elemTy = tempTy
-				}
-
-				if ty.ElementType.GetTypeID().IsFloat() {
-					tempName := g.generateDecodeTempVarName(startBits)
-
-					decodeNormalFieldTempVarDeclOnlyData := map[string]any{
-						"TyUint":   tyUint,
-						"TempName": tempName,
-					}
-					declStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, decodeNormalFieldTempVarDeclOnlyData)
-					loopStmts = append(loopStmts, declStr)
-
-					// change elemTy to temp variable type
-					elemTy = definition.GetBasicType(tyUintID)
-				}
 			case *definition.Enum:
 				tempName := g.generateDecodeTempVarName(startBits)
 
@@ -2477,26 +2683,7 @@ func (g JavaGenerator) generateDecodeNormalField(field *definition.NormalField, 
 				loopStmts = append(loopStmts, util.IndentSpace(stmt, 4))
 			}
 
-			// Handle special type casting inside loop
 			switch ty.ElementType.(type) {
-			case *definition.BasicType:
-				if ty.ElementType.GetTypeID().IsBool() {
-					decodeNormalFieldTempVarAssignBoolCastData := map[string]any{
-						"FieldName": fmt.Sprintf("%s[_i]", name),
-						"TempName":  subName,
-					}
-					assignStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignBoolCast", nil, decodeNormalFieldTempVarAssignBoolCastData)
-					loopStmts = append(loopStmts, util.IndentSpace(assignStr, 4))
-				}
-				if ty.ElementType.GetTypeID().IsFloat() {
-					decodeNormalFieldTempVarAssignFloatCastData := map[string]any{
-						"TempName":  subName,
-						"FieldName": fmt.Sprintf("%s[_i]", name),
-						"IsFloat32": ty.ElementType.GetTypeID() == definition.TypeID_Float32,
-					}
-					assignStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignFloatCast", nil, decodeNormalFieldTempVarAssignFloatCastData)
-					loopStmts = append(loopStmts, util.IndentSpace(assignStr, 4))
-				}
 			case *definition.Enum:
 				decodeNormalFieldTempVarAssignEnumData := map[string]any{
 					"TempName":  subName,
@@ -2511,6 +2698,48 @@ func (g JavaGenerator) generateDecodeNormalField(field *definition.NormalField, 
 			loopStmts = append(loopStmts, "}")
 
 			decodeStmts = append(decodeStmts, loopStmts...)
+		} else if shouldUseLoop {
+			// Fixed-bit-width element loop using bbReadFieldBits.
+			g.GenState.UseBitHelpers = true
+
+			bigEndianStr := g.generateBoolLiteral(gen.MatchOption(field.FieldOptions, "order", "big"))
+
+			bitBaseExpr := fmt.Sprintf("%d + _i * %dL", from, elemBitSize)
+			if structDynamic {
+				bitBaseExpr = g.generateCastExpr(&definition.Int64, "offset") + " * 8 + (" + bitBaseExpr + ")"
+			}
+
+			// Each branch picks one self-contained loop template.
+			common := map[string]any{
+				"Length":      ty.Length,
+				"ArrayName":   name,
+				"BitBaseExpr": bitBaseExpr,
+				"BitSize":     elemBitSize,
+				"BigEndian":   bigEndianStr,
+			}
+			var stmt string
+			switch elemTyT := ty.ElementType.(type) {
+			case *definition.Struct:
+				byteBase := from / 8
+				offsetExpr := fmt.Sprintf("%d + _i * %d", byteBase, elemBitSize/8)
+				if structDynamic {
+					offsetExpr = "offset + " + offsetExpr
+				}
+				_ = elemTyT
+				common["DataExpr"] = "data, " + offsetExpr
+				stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopStruct", nil, common)
+			case *definition.BasicType:
+				common["Expr"] = g.decodeBasicValueExpr(elemTyT, elemTySize, elemBitSize)
+				stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopBasic", nil, common)
+			case *definition.Enum:
+				// `EnumName.forNumber(int)` is an API call; cast `(int)_v` is a basic-type cast.
+				common["Expr"] = fmt.Sprintf("%s.forNumber(%s)", elemTyT.EnumName, g.generateCastExpr(&definition.Int32, "_v"))
+				stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopBasic", nil, common)
+			default:
+				return nil, fmt.Errorf("internal error: unsupported fixed-element array type %T", ty.ElementType)
+			}
+			decodeStmts = append(decodeStmts, strings.Split(stmt, "\n")...)
+			_ = elemTy
 		} else {
 			// Unroll the array
 			// temp variable declaration

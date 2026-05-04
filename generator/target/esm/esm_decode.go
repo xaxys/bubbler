@@ -389,6 +389,23 @@ var fieldDecoderTemplate = `
 {{- define "signExtendLogic" -}}
     {{ .FieldName }} = ({{ .FieldName }} >>> {{ .SignShift }}) ? -(~{{ .FieldName }} + 1) : {{ .FieldName }};
 {{- end -}}
+
+{{- /* Decoder array bit-loops. ESM value-expression conversions all fit on
+       a single line, so one decodeArrayLoopBasic with an .Expr slot covers
+       everything. */ -}}
+
+{{- define "decodeArrayLoopStruct" -}}
+for (let _i = 0; _i < {{ .Length }}; _i++) {
+    {{ .ArrayName }}[_i].decode({{ .DataExpr }});
+}
+{{- end -}}
+
+{{- define "decodeArrayLoopBasic" -}}
+for (let _i = 0; _i < {{ .Length }}; _i++) {
+    let _v = bbReadFieldBits(data, {{ .BitBaseExpr }}, {{ .BitSize }}, {{ .BigEndian }});
+    {{ .ArrayName }}[_i] = {{ .Expr }};
+}
+{{- end -}}
 `
 
 func (g ESModuleGenerator) generateDecodeTempVarName(startBits int64) string {
@@ -485,36 +502,24 @@ func (g ESModuleGenerator) generateDecodeNormalField(field *definition.NormalFie
 		elemBitSize := field.FieldBitSize / ty.Length
 		name := g.generateDecodeStructFieldName(field.FieldName)
 
-		// Check if we need to generate a loop or unroll the array
+		// Decide loop vs unroll. See Go/C++ for rationale.
 		loopUnroll := g.GenCtx.GenOptions.LoopUnroll
-		canUseLoop := false
+		shouldUseLoop := loopUnroll >= 0 && ty.Length > int64(loopUnroll)
+
+		useDynamicLoop := false
 		switch elemTyLoop := ty.ElementType.(type) {
 		case *definition.String, *definition.Bytes:
-			canUseLoop = true
+			useDynamicLoop = true
 		case *definition.Struct:
-			canUseLoop = elemTyLoop.GetTypeDynamic()
+			useDynamicLoop = elemTyLoop.GetTypeDynamic()
 		}
-		shouldUseLoop := loopUnroll >= 0 && ty.Length > int64(loopUnroll) && canUseLoop
 
-		if shouldUseLoop {
-			// Generate loop code
+		if shouldUseLoop && useDynamicLoop {
+			// Dynamic-element loop (existing path).
 			var nameIndex func(int64) string
 			switch ty.ElementType.(type) {
 			case *definition.Struct, *definition.String, *definition.Bytes:
 				nameIndex = func(index int64) string { return fmt.Sprintf("%s[_i]", name) }
-			case *definition.BasicType:
-				nameIndex = func(index int64) string { return fmt.Sprintf("%s[_i]", name) }
-				if ty.ElementType.GetTypeID().IsFloat() {
-					tempName := g.generateDecodeTempVarName(startBits)
-					decodeStmts = append(decodeStmts, util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, map[string]any{"TempName": tempName}))
-					nameIndex = func(_ int64) string { return tempName }
-					switch ty.ElementType.GetTypeID() {
-					case definition.TypeID_Float32:
-						elemTy = &definition.Uint32
-					case definition.TypeID_Float64:
-						elemTy = &definition.Uint64
-					}
-				}
 			case *definition.Enum:
 				tempName := g.generateDecodeTempVarName(startBits)
 				decodeStmts = append(decodeStmts, util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, map[string]any{"TempName": tempName}))
@@ -539,12 +544,6 @@ func (g ESModuleGenerator) generateDecodeNormalField(field *definition.NormalFie
 			}
 
 			switch elemTy2 := ty.ElementType.(type) {
-			case *definition.BasicType:
-				if elemTy2.GetTypeID().IsFloat() {
-					decodeStmts = append(decodeStmts, util.IndentSpace(util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignFloatCast", nil, map[string]any{
-						"TempName": subName, "FieldName": fmt.Sprintf("%s[_i]", name), "IsFloat32": elemTy2.GetTypeID() == definition.TypeID_Float32,
-					}), 4))
-				}
 			case *definition.Enum:
 				decodeStmts = append(decodeStmts, util.IndentSpace(util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignEnum", nil, map[string]any{
 					"TempName": subName, "EnumDef": elemTy2, "FieldName": fmt.Sprintf("%s[_i]", name), "FieldDef": field,
@@ -553,6 +552,53 @@ func (g ESModuleGenerator) generateDecodeNormalField(field *definition.NormalFie
 			}
 
 			decodeStmts = append(decodeStmts, "}")
+		} else if shouldUseLoop {
+			// Fixed-bit-width element loop using bbReadFieldBits (BigInt-backed).
+			g.GenState.UseBitHelpers = true
+
+			bigEndianStr := g.generateBoolLiteral(gen.MatchOption(field.FieldOptions, "order", "big"))
+
+			bitBaseExpr := fmt.Sprintf("%d + _i * %d", from, elemBitSize)
+			if structDynamic {
+				bitBaseExpr = fmt.Sprintf("offset * 8 + (%s)", bitBaseExpr)
+			}
+			bitBaseExpr = "(start * 8) + (" + bitBaseExpr + ")"
+
+			// Each branch picks one self-contained loop template.
+			common := map[string]any{
+				"Length":      ty.Length,
+				"ArrayName":   name,
+				"BitBaseExpr": bitBaseExpr,
+				"BitSize":     elemBitSize,
+				"BigEndian":   bigEndianStr,
+			}
+			var stmt string
+			switch elemTyT := ty.ElementType.(type) {
+			case *definition.Struct:
+				byteBase := from / 8
+				offsetExpr := fmt.Sprintf("%d + _i * %d", byteBase, elemBitSize/8)
+				if structDynamic {
+					offsetExpr = "offset + " + offsetExpr
+				}
+				_ = elemTyT
+				common["DataExpr"] = "data, start + " + offsetExpr
+				stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopStruct", nil, common)
+			case *definition.BasicType:
+				common["Expr"] = g.decodeBasicValueExpr(elemTyT, elemBitSize)
+				stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopBasic", nil, common)
+			case *definition.Enum:
+				inPackage := field.FieldBelongs.StructBelongs.LocalNames.Has(elemTyT.EnumName)
+				idxCast := g.generateCastExpr(&definition.Uint32, "_v")
+				if g.GenCtx.GenOptions.SingleFile || inPackage {
+					common["Expr"] = fmt.Sprintf("%s[%s]", elemTyT.EnumName, idxCast)
+				} else {
+					common["Expr"] = fmt.Sprintf("$%s.%s[%s]", elemTyT.EnumBelongs.Package.PackageName, elemTyT.EnumName, idxCast)
+				}
+				stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopBasic", nil, common)
+			default:
+				return nil, fmt.Errorf("internal error: unsupported fixed-element array type %T", ty.ElementType)
+			}
+			decodeStmts = append(decodeStmts, strings.Split(stmt, "\n")...)
 		} else {
 			// Unroll the array
 			var nameIndex func(int64) string

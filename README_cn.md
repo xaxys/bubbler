@@ -44,7 +44,18 @@ bubbler [options] <input file>
 - `-memcpy`: 启用字段的内存复制（解码时复制 `string` 和 `bytes` 字段的内容，而不是直接引用原始解码缓冲区）
 - `-signext <method>`: 用于整数字段的符号扩展方法（选项: `shift`, `arith`）
 - `-compat`: 生成兼容性代码（在 CommonJS 目标中使用 `Array` 代替 `Uint8Array` 等 typed array 作为缓冲區和 `bytes` 字段的类型。默认使用 `Uint8Array` 以提高性能）
-- `-unroll <threshold>`: 数组编解码代码的循环展开阈值（默认值: `4`）。当数组长度超过此阈值时（不含本数），生成的 `encode`/`decode` 与 `encode_size`/`decode_size` 代码将使用循环。设置为 `-1` 以始终展开数组（无论大小如何）。例如，`-unroll=1` 将对所有长度超过 1 的数组使用循环，而 `-unroll=8` 仅对长度超过 8 的数组使用循环。
+- `-unroll <threshold>`: 数组编解码代码的循环展开阈值（默认值: `4`）。当数组长度大于此阈值时，生成的 `encode`/`decode` 与 `encode_size`/`decode_size` 代码将使用 `for` 循环，否则将每次迭代展开内联在生成的代码中。设置为 `-1` 始终展开（无论数组大小），设置为 `0` 始终循环。例如：`-unroll=1` 将对所有长度超过 1 的数组使用循环；`-unroll=8` 仅对长度超过 8 的数组使用循环。
+
+  所有目标（`c`、`cpp`、`csharp`、`commonjs`、`esmodule`、`go`、`java`、`python`）已对全部元素类型（基本类型、枚举、定长 / 不定长结构体、`string`、`bytes`）完整支持。对于定长位宽的元素，会按需在文件级（Java / C# 在类级）生成一对 bit 助手函数用于在任意比特偏移处写入 / 读取。诸如 `int16<4> narrow12 [6]`（12 位元素）这类亚字节数组也能正确处理。
+
+  各语言 bit 助手函数命名：
+  - `c` / `cpp`：`bb_write_field_bits` / `bb_read_field_bits`（文件私有；C++ 中位于源文件的匿名命名空间内）。
+  - `go`：`bbWriteFieldBits` / `bbReadFieldBits`（包私有）。
+  - `python`：`_bb_write_field_bits` / `_bb_read_field_bits`（模块顶层）。
+  - `java` / `csharp`：`bbWriteFieldBits` / `bbReadFieldBits`（生成类内的 private static 方法；仅在确实使用的类内发出）。
+  - `commonjs` / `esmodule`：`bbWriteFieldBits` / `bbReadFieldBits`（基于 BigInt；按需在模块顶部发出）。
+
+  助手仅在该编译单元（Java / C# 在类级）确实存在「需要循环且元素为定长位宽」的数组时才会生成，纯展开的文件不会引入助手代码。
 
 ### 示例
 

@@ -27,6 +27,7 @@ type ESModuleGeneratorState struct {
 	UseFloat64     bool
 	UseString      bool
 	UseStructArray bool
+	UseBitHelpers  bool
 }
 
 func NewESModuleGeneratorState() *ESModuleGeneratorState {
@@ -40,6 +41,7 @@ func (g *ESModuleGeneratorState) Reset() {
 	g.UseFloat64 = false
 	g.UseString = false
 	g.UseStructArray = false
+	g.UseBitHelpers = false
 }
 
 type ESModuleGenerator struct {
@@ -103,6 +105,47 @@ func (g *ESModuleGenerator) generateHexBigInt(value any) string {
 
 func (g *ESModuleGenerator) generateBinBigInt(value any) string {
 	return fmt.Sprintf("%sn", g.generateBin(value))
+}
+
+// generateBoolLiteral renders `true` / `false` via the ESM literal generator.
+func (g *ESModuleGenerator) generateBoolLiteral(value bool) string {
+	s, _ := NewESModuleLiteralGenerator().GenerateBoolLiteral(&definition.BoolLiteral{BoolValue: value})
+	return s
+}
+
+// generateCastExpr renders `jsType(expr)` via the ESM expression generator.
+func (g *ESModuleGenerator) generateCastExpr(toType *definition.BasicType, exprStr string) string {
+	exprGen := NewESModuleExprGenerator(g.GenerateType, "")
+	s, _ := exprGen.GenerateCastExpr(&definition.CastExpr{
+		ToType: toType,
+		Expr1:  &definition.RawExpr{Expr: exprStr},
+	})
+	return s
+}
+
+// decodeBasicValueExpr returns the JS expression that converts the helper's
+// `_v` (BigInt) into the field's element type for the array bit-loop decoder.
+func (g *ESModuleGenerator) decodeBasicValueExpr(elemTy *definition.BasicType, elemBitSize int64) string {
+	switch elemTy.GetTypeID() {
+	case definition.TypeID_Float32:
+		g.GenState.UseFloat32 = true
+		return "uint32BitsToFloat(" + g.generateCastExpr(&definition.Uint32, "_v & 0xFFFFFFFFn") + ")"
+	case definition.TypeID_Float64:
+		g.GenState.UseFloat64 = true
+		return "uint64BitsToDouble(_v & 0xFFFFFFFFFFFFFFFFn)"
+	case definition.TypeID_Bool:
+		return "_v !== 0n"
+	case definition.TypeID_Int8, definition.TypeID_Int16, definition.TypeID_Int32:
+		return g.generateCastExpr(elemTy, fmt.Sprintf("BigInt.asIntN(%d, _v)", elemBitSize))
+	case definition.TypeID_Uint8, definition.TypeID_Uint16, definition.TypeID_Uint32:
+		return g.generateCastExpr(elemTy, "_v")
+	case definition.TypeID_Int64:
+		return fmt.Sprintf("BigInt.asIntN(%d, _v)", elemBitSize)
+	case definition.TypeID_Uint64:
+		return "_v"
+	default:
+		return g.generateCastExpr(elemTy, "_v")
+	}
 }
 
 var structPackagePrefixTemplate = `
@@ -394,6 +437,124 @@ function stringFromUTF8Bytes(data, start) {
 }
 {{- end }}
 
+{{- if .GenState.UseBitHelpers }}
+
+/**
+ * Pack bitSize bits of value into data starting at bit position bitFrom.
+ * Used by encode loops generated for arrays whose length exceeds the -unroll
+ * threshold. value is a BigInt to support all element widths up to 64 bits.
+ * @param {Uint8Array|Array} data Output buffer.
+ * @param {Number} bitFrom Destination bit offset.
+ * @param {Number} bitSize Number of bits to write (1..64).
+ * @param {BigInt} value Value to write.
+ * @param {Boolean} bigEndian Whether to lay out source bytes high-first.
+ */
+function bbWriteFieldBits(data, bitFrom, bitSize, value, bigEndian) {
+    if (bitSize <= 0) return;
+    if (bitSize < 64) value = value & ((1n << BigInt(bitSize)) - 1n);
+    const bitTo = bitFrom + bitSize;
+    let i = bitFrom;
+    while (i < bitTo) {
+        let nextI = (i + 8) & ~7;
+        if (nextI > bitTo) nextI = bitTo;
+        const dataMask = ((1 << (((nextI - 1) & 7) + 1)) - 1) & ~((1 << (i & 7)) - 1);
+        const begin = i - bitFrom;
+        const end = nextI - bitFrom;
+        let part = 0;
+        let j = begin;
+        if (j < end) {
+            let nextJ = (j + 8) & ~7;
+            if (nextJ > end) nextJ = end;
+            const fieldMask = ((1 << (((nextJ - 1) & 7) + 1)) - 1) & ~((1 << (j & 7)) - 1);
+            const shiftRight = j & 7;
+            const srcByteIndex = (j / 8) | 0;
+            let srcShift;
+            if (bigEndian) {
+                srcShift = bitSize - 8 * (srcByteIndex + 1);
+                if (srcShift < 0) srcShift = 0;
+            } else {
+                srcShift = 8 * srcByteIndex;
+            }
+            const srcByte = Number((value >> BigInt(srcShift)) & 0xFFn);
+            part = (srcByte & fieldMask) >>> shiftRight;
+            j = nextJ;
+        }
+        if (j < end) {
+            let nextJ2 = (j + 8) & ~7;
+            if (nextJ2 > end) nextJ2 = end;
+            const fieldMask2 = ((1 << (((nextJ2 - 1) & 7) + 1)) - 1) & ~((1 << (j & 7)) - 1);
+            let shiftLeft2 = 8 - (nextJ2 & 7);
+            if ((nextJ2 & 7) === 0) shiftLeft2 = 8;
+            const srcByteIndex2 = (j / 8) | 0;
+            let srcShift2;
+            if (bigEndian) {
+                srcShift2 = bitSize - 8 * (srcByteIndex2 + 1);
+                if (srcShift2 < 0) srcShift2 = 0;
+            } else {
+                srcShift2 = 8 * srcByteIndex2;
+            }
+            const srcByte2 = Number((value >> BigInt(srcShift2)) & 0xFFn);
+            part |= (srcByte2 & fieldMask2) << shiftLeft2;
+        }
+        const shiftLeftOuter = i & 7;
+        part = ((part << shiftLeftOuter) & dataMask) & 0xFF;
+        if (dataMask === 0xFF) {
+            data[(i / 8) | 0] = part;
+        } else {
+            data[(i / 8) | 0] = (data[(i / 8) | 0] | part) & 0xFF;
+        }
+        i = (i + 8) & ~7;
+    }
+}
+
+/**
+ * Inverse of bbWriteFieldBits. Returns a BigInt holding bitSize bits read
+ * from data starting at bit position bitFrom.
+ * @param {Uint8Array|Array} data Input buffer.
+ * @param {Number} bitFrom Source bit offset.
+ * @param {Number} bitSize Number of bits to read (1..64).
+ * @param {Boolean} bigEndian Whether source bytes were laid out high-first.
+ * @returns {BigInt} Read value.
+ */
+function bbReadFieldBits(data, bitFrom, bitSize, bigEndian) {
+    if (bitSize <= 0) return 0n;
+    const bitTo = bitFrom + bitSize;
+    let out = 0n;
+    let outByteIndex = 0;
+    let i = bitFrom;
+    while (i < bitTo) {
+        const begin = i;
+        let end = i + 8;
+        if (end > bitTo) end = bitTo;
+        const width = end - begin;
+        let sep = (begin + 8) & ~7;
+        if (sep > end) sep = end;
+        let part = 0;
+        if (begin < sep) {
+            const fieldMask = ((1 << (((sep - 1) & 7) + 1)) - 1) & ~((1 << (begin & 7)) - 1);
+            const shiftRight = begin & 7;
+            part = ((data[(begin / 8) | 0] & 0xFF) & fieldMask) >>> shiftRight;
+        }
+        if (sep < end) {
+            const fieldMask2 = ((1 << (((end - 1) & 7) + 1)) - 1) & ~((1 << (sep & 7)) - 1);
+            const shiftLeft2 = width - (end % 8);
+            part |= ((data[(sep / 8) | 0] & 0xFF) & fieldMask2) << shiftLeft2;
+        }
+        let dstShift;
+        if (bigEndian) {
+            dstShift = bitSize - 8 * (outByteIndex + 1);
+            if (dstShift < 0) dstShift = 0;
+        } else {
+            dstShift = 8 * outByteIndex;
+        }
+        out |= BigInt(part & 0xFF) << BigInt(dstShift);
+        i += 8;
+        outByteIndex++;
+    }
+    return out;
+}
+{{- end }}
+
 {{ range $entry := .GenTypes.Entries -}}
 {{- $type := $entry.Value -}}
 // ====================== {{ $entry.Key }} ======================
@@ -596,6 +757,124 @@ function stringFromUTF8Bytes(data, start) {
         }
     }
     return [str, offset - start];
+}
+{{- end }}
+
+{{- if .GenState.UseBitHelpers }}
+
+/**
+ * Pack bitSize bits of value into data starting at bit position bitFrom.
+ * Used by encode loops generated for arrays whose length exceeds the -unroll
+ * threshold. value is a BigInt to support all element widths up to 64 bits.
+ * @param {Uint8Array|Array} data Output buffer.
+ * @param {Number} bitFrom Destination bit offset.
+ * @param {Number} bitSize Number of bits to write (1..64).
+ * @param {BigInt} value Value to write.
+ * @param {Boolean} bigEndian Whether to lay out source bytes high-first.
+ */
+function bbWriteFieldBits(data, bitFrom, bitSize, value, bigEndian) {
+    if (bitSize <= 0) return;
+    if (bitSize < 64) value = value & ((1n << BigInt(bitSize)) - 1n);
+    const bitTo = bitFrom + bitSize;
+    let i = bitFrom;
+    while (i < bitTo) {
+        let nextI = (i + 8) & ~7;
+        if (nextI > bitTo) nextI = bitTo;
+        const dataMask = ((1 << (((nextI - 1) & 7) + 1)) - 1) & ~((1 << (i & 7)) - 1);
+        const begin = i - bitFrom;
+        const end = nextI - bitFrom;
+        let part = 0;
+        let j = begin;
+        if (j < end) {
+            let nextJ = (j + 8) & ~7;
+            if (nextJ > end) nextJ = end;
+            const fieldMask = ((1 << (((nextJ - 1) & 7) + 1)) - 1) & ~((1 << (j & 7)) - 1);
+            const shiftRight = j & 7;
+            const srcByteIndex = (j / 8) | 0;
+            let srcShift;
+            if (bigEndian) {
+                srcShift = bitSize - 8 * (srcByteIndex + 1);
+                if (srcShift < 0) srcShift = 0;
+            } else {
+                srcShift = 8 * srcByteIndex;
+            }
+            const srcByte = Number((value >> BigInt(srcShift)) & 0xFFn);
+            part = (srcByte & fieldMask) >>> shiftRight;
+            j = nextJ;
+        }
+        if (j < end) {
+            let nextJ2 = (j + 8) & ~7;
+            if (nextJ2 > end) nextJ2 = end;
+            const fieldMask2 = ((1 << (((nextJ2 - 1) & 7) + 1)) - 1) & ~((1 << (j & 7)) - 1);
+            let shiftLeft2 = 8 - (nextJ2 & 7);
+            if ((nextJ2 & 7) === 0) shiftLeft2 = 8;
+            const srcByteIndex2 = (j / 8) | 0;
+            let srcShift2;
+            if (bigEndian) {
+                srcShift2 = bitSize - 8 * (srcByteIndex2 + 1);
+                if (srcShift2 < 0) srcShift2 = 0;
+            } else {
+                srcShift2 = 8 * srcByteIndex2;
+            }
+            const srcByte2 = Number((value >> BigInt(srcShift2)) & 0xFFn);
+            part |= (srcByte2 & fieldMask2) << shiftLeft2;
+        }
+        const shiftLeftOuter = i & 7;
+        part = ((part << shiftLeftOuter) & dataMask) & 0xFF;
+        if (dataMask === 0xFF) {
+            data[(i / 8) | 0] = part;
+        } else {
+            data[(i / 8) | 0] = (data[(i / 8) | 0] | part) & 0xFF;
+        }
+        i = (i + 8) & ~7;
+    }
+}
+
+/**
+ * Inverse of bbWriteFieldBits. Returns a BigInt holding bitSize bits read
+ * from data starting at bit position bitFrom.
+ * @param {Uint8Array|Array} data Input buffer.
+ * @param {Number} bitFrom Source bit offset.
+ * @param {Number} bitSize Number of bits to read (1..64).
+ * @param {Boolean} bigEndian Whether source bytes were laid out high-first.
+ * @returns {BigInt} Read value.
+ */
+function bbReadFieldBits(data, bitFrom, bitSize, bigEndian) {
+    if (bitSize <= 0) return 0n;
+    const bitTo = bitFrom + bitSize;
+    let out = 0n;
+    let outByteIndex = 0;
+    let i = bitFrom;
+    while (i < bitTo) {
+        const begin = i;
+        let end = i + 8;
+        if (end > bitTo) end = bitTo;
+        const width = end - begin;
+        let sep = (begin + 8) & ~7;
+        if (sep > end) sep = end;
+        let part = 0;
+        if (begin < sep) {
+            const fieldMask = ((1 << (((sep - 1) & 7) + 1)) - 1) & ~((1 << (begin & 7)) - 1);
+            const shiftRight = begin & 7;
+            part = ((data[(begin / 8) | 0] & 0xFF) & fieldMask) >>> shiftRight;
+        }
+        if (sep < end) {
+            const fieldMask2 = ((1 << (((end - 1) & 7) + 1)) - 1) & ~((1 << (sep & 7)) - 1);
+            const shiftLeft2 = width - (end % 8);
+            part |= ((data[(sep / 8) | 0] & 0xFF) & fieldMask2) << shiftLeft2;
+        }
+        let dstShift;
+        if (bigEndian) {
+            dstShift = bitSize - 8 * (outByteIndex + 1);
+            if (dstShift < 0) dstShift = 0;
+        } else {
+            dstShift = 8 * outByteIndex;
+        }
+        out |= BigInt(part & 0xFF) << BigInt(dstShift);
+        i += 8;
+        outByteIndex++;
+    }
+    return out;
 }
 {{- end }}
 

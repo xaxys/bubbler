@@ -381,6 +381,157 @@ for unroll_val in -1 0 1 2 4 6 8 16 32; do
 done
 
 ##############################################################################
+# 11b. -unroll static checks — generated code actually uses loops vs. unrolls
+#      depending on threshold. Uses testcase_unroll.bb (arrays of size 2/4/8/32).
+##############################################################################
+echo
+echo "=== #11b: -unroll static checks against testcase_unroll.bb ==="
+
+# Helper: count occurrences of a loop marker in a generated file.
+count_loops() {
+    local file="$1" pattern="$2"
+    if [[ ! -f "$file" ]]; then echo 0; return; fi
+    local cnt
+    cnt=$(grep -c -- "$pattern" "$file" 2>/dev/null) || cnt=0
+    echo "$cnt"
+}
+
+unroll_static_dir="$TMPDIR_BASE/unroll_static"
+mkdir -p "$unroll_static_dir"
+
+# Generate Go output for testcase_unroll.bb at -unroll=-1 (never loop) and -unroll=0
+# (always loop) and verify the loop count meaningfully differs.
+if command -v go >/dev/null 2>&1; then
+    "$BUBBLER" -t go -unroll=-1 -single -o "$unroll_static_dir/go_neg1.go" testcase_unroll.bb
+    "$BUBBLER" -t go -unroll=0  -single -o "$unroll_static_dir/go_0.go"     testcase_unroll.bb
+
+    loops_neg1=$(count_loops "$unroll_static_dir/go_neg1.go" 'for _i := int64')
+    loops_0=$(count_loops "$unroll_static_dir/go_0.go"      'for _i := int64')
+
+    if [[ "$loops_neg1" -eq 0 && "$loops_0" -gt 0 ]]; then
+        ok "Go static: unroll=-1 yields no loops; unroll=0 yields $loops_0 loops"
+    else
+        fail "Go static: expected 0/positive loops, got neg1=$loops_neg1 / 0=$loops_0"
+    fi
+fi
+
+# Same for C++ (file-private bb_write/read_field_bits and `for (int64_t _i` loop).
+if command -v g++ >/dev/null 2>&1; then
+    "$BUBBLER" -t cpp -unroll=-1 -single -o "$unroll_static_dir/cpp_neg1.cpp" testcase_unroll.bb
+    "$BUBBLER" -t cpp -unroll=0  -single -o "$unroll_static_dir/cpp_0.cpp"     testcase_unroll.bb
+
+    loops_neg1=$(count_loops "$unroll_static_dir/cpp_neg1.cpp" 'for (int64_t _i')
+    loops_0=$(count_loops "$unroll_static_dir/cpp_0.cpp"      'for (int64_t _i')
+
+    if [[ "$loops_neg1" -eq 0 && "$loops_0" -gt 0 ]]; then
+        ok "C++ static: unroll=-1 yields no loops; unroll=0 yields $loops_0 loops"
+    else
+        fail "C++ static: expected 0/positive loops, got neg1=$loops_neg1 / 0=$loops_0"
+    fi
+fi
+
+# Same for Python.
+if command -v python3 >/dev/null 2>&1; then
+    "$BUBBLER" -t py -unroll=-1 -single -o "$unroll_static_dir/py_neg1.py" testcase_unroll.bb
+    "$BUBBLER" -t py -unroll=0  -single -o "$unroll_static_dir/py_0.py"     testcase_unroll.bb
+
+    loops_neg1=$(count_loops "$unroll_static_dir/py_neg1.py" 'for _i in range')
+    loops_0=$(count_loops "$unroll_static_dir/py_0.py"      'for _i in range')
+
+    if [[ "$loops_neg1" -eq 0 && "$loops_0" -gt 0 ]]; then
+        ok "Python static: unroll=-1 yields no loops; unroll=0 yields $loops_0 loops"
+    else
+        fail "Python static: expected 0/positive loops, got neg1=$loops_neg1 / 0=$loops_0"
+    fi
+fi
+
+# Threshold boundary check (Go): -unroll=4 must NOT loop arrays of length 4
+# (MediumArrays) but MUST loop arrays of length 8 (LargeArrays). Spot-check by
+# confirming loop count at unroll=4 is between unroll=-1 and unroll=0.
+if command -v go >/dev/null 2>&1; then
+    "$BUBBLER" -t go -unroll=4 -single -o "$unroll_static_dir/go_4.go" testcase_unroll.bb
+    loops_4=$(count_loops "$unroll_static_dir/go_4.go" 'for _i := int64')
+    loops_neg1=$(count_loops "$unroll_static_dir/go_neg1.go" 'for _i := int64')
+    loops_0=$(count_loops "$unroll_static_dir/go_0.go" 'for _i := int64')
+    if [[ "$loops_4" -gt "$loops_neg1" && "$loops_4" -lt "$loops_0" ]]; then
+        ok "Go threshold: unroll=4 loops ($loops_4) sit between unroll=-1 ($loops_neg1) and unroll=0 ($loops_0)"
+    else
+        fail "Go threshold: expected -1 < 4 < 0, got -1=$loops_neg1 / 4=$loops_4 / 0=$loops_0"
+    fi
+fi
+
+# C: bb_write_field_bits / bb_read_field_bits + `for (int64_t _i` loop.
+if command -v gcc >/dev/null 2>&1; then
+    "$BUBBLER" -t c -unroll=-1 -single -o "$unroll_static_dir/c_neg1.c" testcase_unroll.bb
+    "$BUBBLER" -t c -unroll=0  -single -o "$unroll_static_dir/c_0.c"     testcase_unroll.bb
+    loops_neg1=$(count_loops "$unroll_static_dir/c_neg1.c" 'for (int64_t _i')
+    loops_0=$(count_loops "$unroll_static_dir/c_0.c"      'for (int64_t _i')
+    if [[ "$loops_neg1" -eq 0 && "$loops_0" -gt 0 ]]; then
+        ok "C static: unroll=-1 yields no loops; unroll=0 yields $loops_0 loops"
+    else
+        fail "C static: expected 0/positive loops, got neg1=$loops_neg1 / 0=$loops_0"
+    fi
+fi
+
+# Java: bbWriteFieldBits / bbReadFieldBits + `for (int _i` loop.
+if command -v javac >/dev/null 2>&1; then
+    mkdir -p "$unroll_static_dir/java_neg1" "$unroll_static_dir/java_0"
+    "$BUBBLER" -t java -unroll=-1 -o "$unroll_static_dir/java_neg1" testcase_unroll.bb
+    "$BUBBLER" -t java -unroll=0  -o "$unroll_static_dir/java_0"     testcase_unroll.bb
+    loops_neg1=0
+    while IFS= read -r f; do
+        c=$(count_loops "$f" 'for (int _i')
+        loops_neg1=$((loops_neg1 + c))
+    done < <(find "$unroll_static_dir/java_neg1" -name "*.java")
+    loops_0=0
+    while IFS= read -r f; do
+        c=$(count_loops "$f" 'for (int _i')
+        loops_0=$((loops_0 + c))
+    done < <(find "$unroll_static_dir/java_0" -name "*.java")
+    if [[ "$loops_neg1" -eq 0 && "$loops_0" -gt 0 ]]; then
+        ok "Java static: unroll=-1 yields no loops; unroll=0 yields $loops_0 loops"
+    else
+        fail "Java static: expected 0/positive loops, got neg1=$loops_neg1 / 0=$loops_0"
+    fi
+fi
+
+# C#: BbWriteFieldBits / BbReadFieldBits + `for (int _i` loop.
+if command -v dotnet >/dev/null 2>&1; then
+    "$BUBBLER" -t cs -unroll=-1 -single -o "$unroll_static_dir/cs_neg1.cs" testcase_unroll.bb
+    "$BUBBLER" -t cs -unroll=0  -single -o "$unroll_static_dir/cs_0.cs"     testcase_unroll.bb
+    loops_neg1=$(count_loops "$unroll_static_dir/cs_neg1.cs" 'for (int _i')
+    loops_0=$(count_loops "$unroll_static_dir/cs_0.cs"      'for (int _i')
+    if [[ "$loops_neg1" -eq 0 && "$loops_0" -gt 0 ]]; then
+        ok "C# static: unroll=-1 yields no loops; unroll=0 yields $loops_0 loops"
+    else
+        fail "C# static: expected 0/positive loops, got neg1=$loops_neg1 / 0=$loops_0"
+    fi
+fi
+
+# CommonJS / ESM: bbWriteFieldBits / bbReadFieldBits + `for (let _i` loop.
+if command -v node >/dev/null 2>&1; then
+    "$BUBBLER" -t cjs -unroll=-1 -single -o "$unroll_static_dir/cjs_neg1.js" testcase_unroll.bb
+    "$BUBBLER" -t cjs -unroll=0  -single -o "$unroll_static_dir/cjs_0.js"     testcase_unroll.bb
+    loops_neg1=$(count_loops "$unroll_static_dir/cjs_neg1.js" 'for (let _i')
+    loops_0=$(count_loops "$unroll_static_dir/cjs_0.js"      'for (let _i')
+    if [[ "$loops_neg1" -eq 0 && "$loops_0" -gt 0 ]]; then
+        ok "CommonJS static: unroll=-1 yields no loops; unroll=0 yields $loops_0 loops"
+    else
+        fail "CommonJS static: expected 0/positive loops, got neg1=$loops_neg1 / 0=$loops_0"
+    fi
+
+    "$BUBBLER" -t mjs -unroll=-1 -single -o "$unroll_static_dir/esm_neg1.js" testcase_unroll.bb
+    "$BUBBLER" -t mjs -unroll=0  -single -o "$unroll_static_dir/esm_0.js"     testcase_unroll.bb
+    loops_neg1=$(count_loops "$unroll_static_dir/esm_neg1.js" 'for (let _i')
+    loops_0=$(count_loops "$unroll_static_dir/esm_0.js"      'for (let _i')
+    if [[ "$loops_neg1" -eq 0 && "$loops_0" -gt 0 ]]; then
+        ok "ESModule static: unroll=-1 yields no loops; unroll=0 yields $loops_0 loops"
+    else
+        fail "ESModule static: expected 0/positive loops, got neg1=$loops_neg1 / 0=$loops_0"
+    fi
+fi
+
+##############################################################################
 # 12. Runtime matrix — per-target CLI option variants must pass codec tests
 ##############################################################################
 echo

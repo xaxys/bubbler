@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"strings"
 	"text/template"
 
 	"github.com/xaxys/bubbler/definition"
@@ -24,10 +25,11 @@ type GeneratedType struct {
 // ==================== Cpp Generator ====================
 
 type CppGeneratorState struct {
-	UseMathH     bool
-	UseStringH   bool
-	UseStdLibH   bool
-	UseBytesType bool
+	UseMathH      bool
+	UseStringH    bool
+	UseStdLibH    bool
+	UseBytesType  bool
+	UseBitHelpers bool
 }
 
 func NewCppGeneratorState() *CppGeneratorState {
@@ -41,6 +43,7 @@ func (g *CppGeneratorState) Reset() {
 	g.UseStringH = false
 	g.UseStdLibH = false
 	g.UseBytesType = false
+	g.UseBitHelpers = false
 }
 
 type CppGenerator struct {
@@ -86,6 +89,55 @@ func (g *CppGenerator) generateBin(value any) string {
 	return fmt.Sprintf("0b%b", value)
 }
 
+// generateBoolLiteral renders `true` / `false` via the C++ literal generator.
+func (g *CppGenerator) generateBoolLiteral(value bool) string {
+	s, _ := NewCLiteralGenerator().GenerateBoolLiteral(&definition.BoolLiteral{BoolValue: value})
+	return s
+}
+
+// generateCastExpr renders `(toType)expr` via the C++ expression generator.
+func (g *CppGenerator) generateCastExpr(toType *definition.BasicType, exprStr string) string {
+	exprGen := NewCppExprGenerator(g.GenerateType, "", g.GenState)
+	s, _ := exprGen.GenerateCastExpr(&definition.CastExpr{
+		ToType: toType,
+		Expr1:  &definition.RawExpr{Expr: exprStr},
+	})
+	return s
+}
+
+// decodeBasicValueExpr returns the C++ expression that converts the helper's
+// `_v` (uint64_t) into the field's element type. Used by the array bit-loop
+// decoder for non-float, non-struct, non-enum element types. Sign-extension
+// for narrow signed ints goes through the intSignExt* templates.
+func (g *CppGenerator) decodeBasicValueExpr(elemTy *definition.BasicType, elemTySize, elemBitSize int64) string {
+	tyID := elemTy.GetTypeID()
+	if tyID.IsBool() {
+		return "_v != 0"
+	}
+	if tyID.IsInt() {
+		tyIntBT := definition.GetBasicType(typeSizeMapInt[elemTySize*8])
+		if elemBitSize >= elemTySize*8 {
+			return g.generateCastExpr(tyIntBT, "_v")
+		}
+		switch g.GenCtx.GenOptions.SignExtMethod {
+		case gen.SignExtMethodArith:
+			signMask := uint64(1) << uint(elemBitSize-1)
+			return util.ExecuteTemplate(fieldDecoderTemplate, "intSignExtArith", nil, map[string]any{
+				"IntType":  typeSizeToIntStr(elemTySize * 8),
+				"SignMask": g.generateHex(signMask),
+			})
+		default:
+			return util.ExecuteTemplate(fieldDecoderTemplate, "intSignExtShift", nil, map[string]any{
+				"IntType":  typeSizeToIntStr(elemTySize * 8),
+				"UintType": typeSizeToUintStr(elemTySize * 8),
+				"Shift":    elemTySize*8 - elemBitSize,
+			})
+		}
+	}
+	tyUintBT := definition.GetBasicType(typeSizeMapUint[elemTySize*8])
+	return g.generateCastExpr(tyUintBT, "_v")
+}
+
 // ==================== Generate ====================
 
 func (g *CppGenerator) Generate(ctx *gen.GenCtx) (retErr error, retWarnings error) {
@@ -117,12 +169,13 @@ func (g *CppGenerator) Generate(ctx *gen.GenCtx) (retErr error, retWarnings erro
 	// generate single file
 	if g.GenCtx.GenOptions.SingleFile {
 		singleData := map[string]any{
-			"GenUnits":     g.GenUnits,
-			"UseMathH":     g.GenState.UseMathH,
-			"UseStringH":   g.GenState.UseStringH,
-			"UseStdLibH":   g.GenState.UseStdLibH,
-			"UseBytesType": g.GenState.UseBytesType,
-			"GenOptions":   g.GenCtx.GenOptions,
+			"GenUnits":      g.GenUnits,
+			"UseMathH":      g.GenState.UseMathH,
+			"UseStringH":    g.GenState.UseStringH,
+			"UseStdLibH":    g.GenState.UseStdLibH,
+			"UseBytesType":  g.GenState.UseBytesType,
+			"UseBitHelpers": g.GenState.UseBitHelpers,
+			"GenOptions":    g.GenCtx.GenOptions,
 		}
 
 		singleStr := util.ExecuteTemplate(fileTemplate, "singleFile", nil, singleData)
@@ -140,6 +193,112 @@ func (g *CppGenerator) Generate(ctx *gen.GenCtx) (retErr error, retWarnings erro
 // ==================== GenerateUnit ====================
 
 var fileTemplate = `
+{{- define "bitHelpers" -}}
+namespace { // anonymous: file-private helpers
+
+// bb_write_field_bits packs bitSize bits of value into data starting at bit
+// position bitFrom. Used by encode loops generated for arrays whose length
+// exceeds the -unroll threshold.
+inline void bb_write_field_bits(uint8_t* data, int64_t bit_from, int64_t bit_size, uint64_t value, bool big_endian) {
+    if (bit_size <= 0) return;
+    if (bit_size < 64) value &= ((uint64_t)1 << bit_size) - 1;
+    int64_t bit_to = bit_from + bit_size;
+    int64_t i = bit_from;
+    while (i < bit_to) {
+        int64_t next_i = (i + 8) & ~(int64_t)7;
+        if (next_i > bit_to) next_i = bit_to;
+        uint64_t data_mask = ((((uint64_t)1) << (((next_i - 1) & 7) + 1)) - 1) & ~(((uint64_t)1 << (i & 7)) - 1);
+        int64_t begin = i - bit_from;
+        int64_t end = next_i - bit_from;
+        uint64_t part = 0;
+        int64_t j = begin;
+        if (j < end) {
+            int64_t next_j = (j + 8) & ~(int64_t)7;
+            if (next_j > end) next_j = end;
+            uint64_t field_mask = ((((uint64_t)1) << (((next_j - 1) & 7) + 1)) - 1) & ~(((uint64_t)1 << (j & 7)) - 1);
+            int shift_right = (int)(j & 7);
+            int64_t src_byte_index = j / 8;
+            int64_t src_shift;
+            if (big_endian) {
+                src_shift = bit_size - 8 * (src_byte_index + 1);
+                if (src_shift < 0) src_shift = 0;
+            } else {
+                src_shift = 8 * src_byte_index;
+            }
+            uint64_t src_byte = (value >> src_shift) & 0xFF;
+            part = (src_byte & field_mask) >> shift_right;
+            j = next_j;
+        }
+        if (j < end) {
+            int64_t next_j = (j + 8) & ~(int64_t)7;
+            if (next_j > end) next_j = end;
+            uint64_t field_mask = ((((uint64_t)1) << (((next_j - 1) & 7) + 1)) - 1) & ~(((uint64_t)1 << (j & 7)) - 1);
+            int shift_left = (int)(8 - (next_j & 7));
+            if ((next_j & 7) == 0) shift_left = 8;
+            int64_t src_byte_index = j / 8;
+            int64_t src_shift;
+            if (big_endian) {
+                src_shift = bit_size - 8 * (src_byte_index + 1);
+                if (src_shift < 0) src_shift = 0;
+            } else {
+                src_shift = 8 * src_byte_index;
+            }
+            uint64_t src_byte = (value >> src_shift) & 0xFF;
+            part |= (src_byte & field_mask) << shift_left;
+        }
+        int shift_left_outer = (int)(i & 7);
+        part = (part << shift_left_outer) & data_mask;
+        if (data_mask == 0xFF) {
+            data[i / 8] = (uint8_t)part;
+        } else {
+            data[i / 8] |= (uint8_t)part;
+        }
+        i = (i + 8) & ~(int64_t)7;
+    }
+}
+
+// bb_read_field_bits is the inverse of bb_write_field_bits.
+inline uint64_t bb_read_field_bits(const uint8_t* data, int64_t bit_from, int64_t bit_size, bool big_endian) {
+    if (bit_size <= 0) return 0;
+    int64_t bit_to = bit_from + bit_size;
+    uint64_t out = 0;
+    int64_t out_byte_index = 0;
+    int64_t i = bit_from;
+    while (i < bit_to) {
+        int64_t begin = i;
+        int64_t end = i + 8;
+        if (end > bit_to) end = bit_to;
+        int64_t width = end - begin;
+        int64_t sep = (begin + 8) & ~(int64_t)7;
+        if (sep > end) sep = end;
+        uint64_t part = 0;
+        if (begin < sep) {
+            uint64_t field_mask = ((((uint64_t)1) << (((sep - 1) & 7) + 1)) - 1) & ~(((uint64_t)1 << (begin & 7)) - 1);
+            int shift_right = (int)(begin & 7);
+            part = ((uint64_t)data[begin / 8] & field_mask) >> shift_right;
+        }
+        if (sep < end) {
+            uint64_t field_mask = ((((uint64_t)1) << (((end - 1) & 7) + 1)) - 1) & ~(((uint64_t)1 << (sep & 7)) - 1);
+            int shift_left = (int)(width - (end % 8));
+            part |= ((uint64_t)data[sep / 8] & field_mask) << shift_left;
+        }
+        int64_t dst_shift;
+        if (big_endian) {
+            dst_shift = bit_size - 8 * (out_byte_index + 1);
+            if (dst_shift < 0) dst_shift = 0;
+        } else {
+            dst_shift = 8 * out_byte_index;
+        }
+        out |= part << dst_shift;
+        i += 8;
+        out_byte_index++;
+    }
+    return out;
+}
+
+} // anonymous namespace
+{{- end -}}
+
 {{- define "headerFile" -}}
 {{- $allCapName := ToALLCAP_CASE (.Unit.Package.ToPath "_" "") -}}
 // Target: C++ (header)
@@ -232,6 +391,10 @@ namespace {{ .Unit.Package.ToPath "::" "" }}
 {{- if .UseMathH }}
 #include <cmath>
 {{- end }}
+{{- if .UseBitHelpers }}
+#include <cstring>
+#include <cstdint>
+{{- end }}
 
 {{ if .GenOptions.RelativePath -}}
 #include "{{ .Unit.Package.ToRelativePathStrict .Unit.Package ".bb.hpp" }}"
@@ -239,6 +402,9 @@ namespace {{ .Unit.Package.ToPath "::" "" }}
 #include "{{ .Unit.Package.ToFilePath ".bb.hpp" }}"
 {{ end -}}
 
+{{ if .UseBitHelpers }}
+{{ template "bitHelpers" . }}
+{{ end }}
 {{- if .Unit.Options.Has "cpp_namespace" }}
 {{- $namespace0 := .Unit.Options.MustGet "cpp_namespace" }}
 {{- $namespace1 := slice $namespace0.OptionValue 1 -1 }}
@@ -307,6 +473,9 @@ struct bytes {
 
 {{ end -}}
 
+{{ if .UseBitHelpers }}
+{{ template "bitHelpers" . }}
+{{ end }}
 {{ range $genUnit := .GenUnits.Values -}}
 {{- $unit := $genUnit.SourceUnit }}
 {{- if $unit.Options.Has "cpp_namespace" }}
@@ -389,10 +558,11 @@ func (g CppGenerator) GenerateUnit(unit *definition.CompilationUnit) error {
 	}
 
 	sourceData := map[string]any{
-		"Unit":       unit,
-		"GenTypes":   genTypes,
-		"UseMathH":   g.GenState.UseMathH,
-		"GenOptions": g.GenCtx.GenOptions,
+		"Unit":          unit,
+		"GenTypes":      genTypes,
+		"UseMathH":      g.GenState.UseMathH,
+		"UseBitHelpers": g.GenState.UseBitHelpers,
+		"GenOptions":    g.GenCtx.GenOptions,
 	}
 	sourceStr := util.ExecuteTemplate(fileTemplate, "sourceFile", nil, sourceData)
 	err = g.GenCtx.WritePackage(unit.Package, ".bb.cpp", sourceStr)
@@ -1623,8 +1793,60 @@ var fieldEncoderTemplate = `
         }
 {{- end -}}
 
+{{- define "arrayControlBlock" -}}
+{{- if eq .Kind "dynamic_loop" -}}
+	for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
+{{ .Body }}
+	}
+{{- else if eq .Kind "fixed_switch" -}}
+	for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
+		switch (_i) {
+{{ .Cases }}
+			default: break;
+		}
+	}
+{{- end -}}
+{{- end -}}
+
+{{- define "arrayCaseBlock" -}}
+            case {{ .Index }}: {
+{{ .Body }}
+                break;
+            }
+{{- end -}}
+
 {{- define "encodeImpl" -}}
     static_cast<{{ .TyUint8 }}*>(data)[{{ if .Dynamic }}offset + {{ end }}{{ .BytePos }}] {{ .Operator }} {{ .FieldData }};
+{{- end -}}
+
+{{- define "arrayBitLoopStruct" -}}
+for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
+    (({{ .ArrayName }})[_i]).{{ .Method }}({{ .DataExpr }});
+}
+{{- end -}}
+
+{{- define "arrayBitLoopWriteSimple" -}}
+for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
+    bb_write_field_bits({{ .DataPtrExpr }}, {{ .BitBaseExpr }}, {{ .BitSize }}, {{ .ValueExpr }}, {{ .BigEndian }});
+}
+{{- end -}}
+
+{{- define "arrayBitLoopWriteFloat32" -}}
+for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
+    uint32_t _u32;
+    float _f32 = (({{ .ArrayName }})[_i]);
+    ::std::memcpy(&_u32, &_f32, 4);
+    bb_write_field_bits({{ .DataPtrExpr }}, {{ .BitBaseExpr }}, {{ .BitSize }}, {{ .UCast }}, {{ .BigEndian }});
+}
+{{- end -}}
+
+{{- define "arrayBitLoopWriteFloat64" -}}
+for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
+    uint64_t _u64;
+    double _f64 = (({{ .ArrayName }})[_i]);
+    ::std::memcpy(&_u64, &_f64, 8);
+    bb_write_field_bits({{ .DataPtrExpr }}, {{ .BitBaseExpr }}, {{ .BitSize }}, _u64, {{ .BigEndian }});
+}
 {{- end -}}
 `
 
@@ -1725,20 +1947,22 @@ func (g CppGenerator) generateEncodeNormalField(field *definition.NormalField, s
 
 		name := g.generateEncodeStructFieldName(field.FieldName)
 
-		// Check if we need to generate a loop or unroll the array
+		// Check if we need to generate a loop or unroll the array.
+		// Loop threshold is applied to all array element types.
 		loopUnroll := g.GenCtx.GenOptions.LoopUnroll
-		canUseLoop := false
+		shouldUseLoop := loopUnroll >= 0 && ty.Length > int64(loopUnroll)
+
+		useDynamicLoop := false
 		switch elemTyLoop := ty.ElementType.(type) {
 		case *definition.String, *definition.Bytes:
-			canUseLoop = true
+			useDynamicLoop = true
 		case *definition.Struct:
-			canUseLoop = elemTyLoop.GetTypeDynamic()
+			useDynamicLoop = elemTyLoop.GetTypeDynamic()
 		}
-		shouldUseLoop := loopUnroll >= 0 && ty.Length > int64(loopUnroll) && canUseLoop
 
-		if shouldUseLoop {
-			// Generate loop code
-			loopStmts := []string{}
+		if shouldUseLoop && useDynamicLoop {
+			// Dynamic-size element arrays can safely use a direct loop body.
+			bodyStmts := []string{}
 
 			// temp variable declaration for Enum
 			switch ty.ElementType.(type) {
@@ -1750,14 +1974,12 @@ func (g CppGenerator) generateEncodeNormalField(field *definition.NormalField, s
 					"TempName": tempName,
 				}
 				declStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarDeclOnly", nil, encodeNormalFieldTempVarDeclOnlyData)
-				loopStmts = append(loopStmts, declStr)
+				bodyStmts = append(bodyStmts, declStr)
 
 				// change elemTy to temp variable type
 				elemTy = definition.GetBasicType(tyUintID)
 			default:
 			}
-
-			loopStmts = append(loopStmts, fmt.Sprintf("for (int64_t _i = 0; _i < %d; _i++) {", ty.Length))
 
 			// Generate loop body
 			subFrom := from
@@ -1774,7 +1996,7 @@ func (g CppGenerator) generateEncodeNormalField(field *definition.NormalField, s
 					"FieldName": fmt.Sprintf("((%s)[_i])", name),
 				}
 				assignStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarAssign", nil, encodeNormalFieldTempVarAssignData)
-				loopStmts = append(loopStmts, util.IndentSpace(assignStr, 4))
+				bodyStmts = append(bodyStmts, util.IndentSpace(assignStr, 4))
 				subName = tempName
 			default:
 			}
@@ -1785,12 +2007,79 @@ func (g CppGenerator) generateEncodeNormalField(field *definition.NormalField, s
 			}
 
 			for _, stmt := range stmts {
-				loopStmts = append(loopStmts, util.IndentSpace(stmt, 4))
+				bodyStmts = append(bodyStmts, util.IndentSpace(stmt, 4))
 			}
 
-			loopStmts = append(loopStmts, "}")
+			loopBlock := util.ExecuteTemplate(fieldEncoderTemplate, "arrayControlBlock", nil, map[string]any{
+				"Kind":   "dynamic_loop",
+				"Length": ty.Length,
+				"Body":   strings.Join(bodyStmts, "\n"),
+			})
+			encodeStmts = append(encodeStmts, strings.Split(loopBlock, "\n")...)
+		} else if shouldUseLoop {
+			// Fixed-bit-width element: write each element via bb_write_field_bits
+			// inside a real for loop. The bit base is uniform per iteration:
+			// from + _i * elemBitSize (plus offset*8 if the enclosing struct is dynamic).
+			g.GenState.UseBitHelpers = true
 
-			encodeStmts = append(encodeStmts, loopStmts...)
+			bigEndianStr := g.generateBoolLiteral(gen.MatchOption(field.FieldOptions, "order", "big"))
+
+			bitBaseExpr := fmt.Sprintf("%d + _i * %d", from, elemBitSize)
+			if structDynamic {
+				bitBaseExpr = g.generateCastExpr(&definition.Int64, "offset") + " * 8 + (" + bitBaseExpr + ")"
+			}
+			// `static_cast<uint8_t*>(data)` is a pointer-to-basic-type cast not
+			// modeled by CastExpr; built directly here.
+			dataPtrExpr := "static_cast<uint8_t*>(data)"
+
+			// Each branch picks one self-contained loop template. Cast composition
+			// stays in Go; the loop wrapper and any multi-line body live in templates.
+			common := map[string]any{
+				"Length":      ty.Length,
+				"ArrayName":   name,
+				"DataPtrExpr": dataPtrExpr,
+				"BitBaseExpr": bitBaseExpr,
+				"BitSize":     elemBitSize,
+				"BigEndian":   bigEndianStr,
+			}
+			var stmt string
+			switch elemTyT := ty.ElementType.(type) {
+			case *definition.Struct:
+				byteBase := from / 8
+				offsetExpr := fmt.Sprintf("%d + _i * %d", byteBase, elemBitSize/8)
+				if structDynamic {
+					offsetExpr = "offset + " + offsetExpr
+				}
+				if g.GenCtx.GenOptions.CompatibleMode {
+					common["DataExpr"] = dataPtrExpr + " + " + offsetExpr
+				} else {
+					common["DataExpr"] = "buf.subspan(" + offsetExpr + ")"
+				}
+				_ = elemTyT
+				common["Method"] = "encode"
+				stmt = util.ExecuteTemplate(fieldEncoderTemplate, "arrayBitLoopStruct", nil, common)
+			case *definition.BasicType:
+				if elemTyT.GetTypeID().IsFloat() {
+					g.GenState.UseStringH = true
+					if elemTyT.GetTypeBitSize() == 32 {
+						common["UCast"] = g.generateCastExpr(&definition.Uint64, "_u32")
+						stmt = util.ExecuteTemplate(fieldEncoderTemplate, "arrayBitLoopWriteFloat32", nil, common)
+					} else {
+						stmt = util.ExecuteTemplate(fieldEncoderTemplate, "arrayBitLoopWriteFloat64", nil, common)
+					}
+				} else {
+					common["ValueExpr"] = g.generateCastExpr(&definition.Uint64, fmt.Sprintf("((%s)[_i])", name))
+					stmt = util.ExecuteTemplate(fieldEncoderTemplate, "arrayBitLoopWriteSimple", nil, common)
+				}
+			case *definition.Enum:
+				_ = elemTyT
+				common["ValueExpr"] = g.generateCastExpr(&definition.Uint64, fmt.Sprintf("((%s)[_i])", name))
+				stmt = util.ExecuteTemplate(fieldEncoderTemplate, "arrayBitLoopWriteSimple", nil, common)
+			default:
+				return nil, fmt.Errorf("internal error: unsupported fixed-element array type %T", ty.ElementType)
+			}
+			encodeStmts = append(encodeStmts, strings.Split(stmt, "\n")...)
+			_ = elemTy
 		} else {
 			// Unroll the array
 			// temp variable declaration
@@ -2528,6 +2817,73 @@ var fieldDecoderTemplate = `
 {{- define "signExtendArith" -}}
     {{ .FieldName }} = (({{ .FieldName }}) ^ {{ .SignMask }}) - {{ .SignMask }};
 {{- end -}}
+
+{{- define "arrayControlBlock" -}}
+{{- if eq .Kind "dynamic_loop" -}}
+	for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
+{{ .Body }}
+	}
+{{- else if eq .Kind "fixed_switch" -}}
+	for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
+		switch (_i) {
+{{ .Cases }}
+			default: break;
+		}
+	}
+{{- end -}}
+{{- end -}}
+
+{{- define "arrayCaseBlock" -}}
+            case {{ .Index }}: {
+{{ .Body }}
+                break;
+            }
+{{- end -}}
+
+{{- /* Decoder array bit-loops, one per element-type variant. */ -}}
+
+{{- define "decodeArrayLoopStruct" -}}
+for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
+    (({{ .ArrayName }})[_i]).decode({{ .DataExpr }});
+}
+{{- end -}}
+
+{{- define "decodeArrayLoopBasicSimple" -}}
+for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
+    uint64_t _v = bb_read_field_bits({{ .DataPtrExpr }}, {{ .BitBaseExpr }}, {{ .BitSize }}, {{ .BigEndian }});
+    (({{ .ArrayName }})[_i]) = {{ .Expr }};
+}
+{{- end -}}
+
+{{- define "decodeArrayLoopBasicFloat32" -}}
+for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
+    uint64_t _v = bb_read_field_bits({{ .DataPtrExpr }}, {{ .BitBaseExpr }}, {{ .BitSize }}, {{ .BigEndian }});
+    uint32_t _u32 = {{ .U32Cast }};
+    float _f32;
+    ::std::memcpy(&_f32, &_u32, 4);
+    (({{ .ArrayName }})[_i]) = _f32;
+}
+{{- end -}}
+
+{{- define "decodeArrayLoopBasicFloat64" -}}
+for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
+    uint64_t _v = bb_read_field_bits({{ .DataPtrExpr }}, {{ .BitBaseExpr }}, {{ .BitSize }}, {{ .BigEndian }});
+    uint64_t _u64 = _v;
+    double _f64;
+    ::std::memcpy(&_f64, &_u64, 8);
+    (({{ .ArrayName }})[_i]) = _f64;
+}
+{{- end -}}
+
+{{- /* Sign-extend expression templates (output the expression text only). */ -}}
+
+{{- define "intSignExtShift" -}}
+({{ .IntType }})(({{ .IntType }})(({{ .UintType }})_v << {{ .Shift }}) >> {{ .Shift }})
+{{- end -}}
+
+{{- define "intSignExtArith" -}}
+({{ .IntType }})(({{ .IntType }})(_v ^ {{ .SignMask }}) - {{ .SignMask }})
+{{- end -}}
 `
 
 func (g CppGenerator) generateDecodeTempVarName(startBits int64) string {
@@ -2653,20 +3009,22 @@ func (g CppGenerator) generateDecodeNormalField(field *definition.NormalField, s
 
 		name := g.generateDecodeStructFieldName(field.FieldName)
 
-		// Check if we need to generate a loop or unroll the array
+		// Check if we need to generate a loop or unroll the array.
+		// Loop threshold is applied to all array element types.
 		loopUnroll := g.GenCtx.GenOptions.LoopUnroll
-		canUseLoop := false
+		shouldUseLoop := loopUnroll >= 0 && ty.Length > int64(loopUnroll)
+
+		useDynamicLoop := false
 		switch elemTyLoop := ty.ElementType.(type) {
 		case *definition.String, *definition.Bytes:
-			canUseLoop = true
+			useDynamicLoop = true
 		case *definition.Struct:
-			canUseLoop = elemTyLoop.GetTypeDynamic()
+			useDynamicLoop = elemTyLoop.GetTypeDynamic()
 		}
-		shouldUseLoop := loopUnroll >= 0 && ty.Length > int64(loopUnroll) && canUseLoop
 
-		if shouldUseLoop {
-			// Generate loop code
-			loopStmts := []string{}
+		if shouldUseLoop && useDynamicLoop {
+			// Dynamic-size element arrays can safely use a direct loop body.
+			bodyStmts := []string{}
 
 			// temp variable declaration for Enum
 			switch ty.ElementType.(type) {
@@ -2678,14 +3036,12 @@ func (g CppGenerator) generateDecodeNormalField(field *definition.NormalField, s
 					"TempName": tempName,
 				}
 				declStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, decodeNormalFieldTempVarDeclOnly)
-				loopStmts = append(loopStmts, declStr)
+				bodyStmts = append(bodyStmts, declStr)
 
 				// change elemTy to temp variable type
 				elemTy = definition.GetBasicType(tyUintID)
 			default:
 			}
-
-			loopStmts = append(loopStmts, fmt.Sprintf("for (int64_t _i = 0; _i < %d; _i++) {", ty.Length))
 
 			// Generate loop body
 			subFrom := from
@@ -2699,7 +3055,7 @@ func (g CppGenerator) generateDecodeNormalField(field *definition.NormalField, s
 			}
 
 			for _, stmt := range stmts {
-				loopStmts = append(loopStmts, util.IndentSpace(stmt, 4))
+				bodyStmts = append(bodyStmts, util.IndentSpace(stmt, 4))
 			}
 
 			switch ty.ElementType.(type) {
@@ -2711,13 +3067,85 @@ func (g CppGenerator) generateDecodeNormalField(field *definition.NormalField, s
 					"FieldName": fmt.Sprintf("((%s)[_i])", name),
 				}
 				assignStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignEnum", nil, decodeNormalFieldTempVarAssignEnumData)
-				loopStmts = append(loopStmts, util.IndentSpace(assignStr, 4))
+				bodyStmts = append(bodyStmts, util.IndentSpace(assignStr, 4))
 			default:
 			}
 
-			loopStmts = append(loopStmts, "}")
+			loopBlock := util.ExecuteTemplate(fieldDecoderTemplate, "arrayControlBlock", nil, map[string]any{
+				"Kind":   "dynamic_loop",
+				"Length": ty.Length,
+				"Body":   strings.Join(bodyStmts, "\n"),
+			})
+			decodeStmts = append(decodeStmts, strings.Split(loopBlock, "\n")...)
+		} else if shouldUseLoop {
+			// Fixed-bit-width element: read each element via bb_read_field_bits
+			// in a real for loop. Bit base is uniform: from + _i * elemBitSize.
+			g.GenState.UseBitHelpers = true
 
-			decodeStmts = append(decodeStmts, loopStmts...)
+			bigEndianStr := g.generateBoolLiteral(gen.MatchOption(field.FieldOptions, "order", "big"))
+
+			bitBaseExpr := fmt.Sprintf("%d + _i * %d", from, elemBitSize)
+			if structDynamic {
+				bitBaseExpr = g.generateCastExpr(&definition.Int64, "offset") + " * 8 + (" + bitBaseExpr + ")"
+			}
+
+			// In compat mode `data` is `const void*`; otherwise it is
+			// `std::span<const uint8_t>`. The helper wants `const uint8_t*`.
+			// Both forms are pointer/span-flavoured casts that CastExpr does
+			// not model, so they are built directly.
+			dataPtrExpr := "data.data()"
+			if g.GenCtx.GenOptions.CompatibleMode {
+				dataPtrExpr = "static_cast<const uint8_t*>(data)"
+			}
+
+			// Each branch picks one self-contained loop template.
+			common := map[string]any{
+				"Length":      ty.Length,
+				"ArrayName":   name,
+				"DataPtrExpr": dataPtrExpr,
+				"BitBaseExpr": bitBaseExpr,
+				"BitSize":     elemBitSize,
+				"BigEndian":   bigEndianStr,
+			}
+			var stmt string
+			switch elemTyT := ty.ElementType.(type) {
+			case *definition.Struct:
+				byteBase := from / 8
+				offsetExpr := fmt.Sprintf("%d + _i * %d", byteBase, elemBitSize/8)
+				if structDynamic {
+					offsetExpr = "offset + " + offsetExpr
+				}
+				if g.GenCtx.GenOptions.CompatibleMode {
+					common["DataExpr"] = "static_cast<const uint8_t*>(data) + " + offsetExpr
+				} else {
+					common["DataExpr"] = "data.subspan(" + offsetExpr + ")"
+				}
+				_ = elemTyT
+				stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopStruct", nil, common)
+			case *definition.BasicType:
+				if elemTyT.GetTypeID().IsFloat() {
+					g.GenState.UseStringH = true
+					if elemTyT.GetTypeBitSize() == 32 {
+						common["U32Cast"] = g.generateCastExpr(&definition.Uint32, "_v")
+						stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopBasicFloat32", nil, common)
+					} else {
+						stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopBasicFloat64", nil, common)
+					}
+				} else {
+					common["Expr"] = g.decodeBasicValueExpr(elemTyT, elemTySize, elemBitSize)
+					stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopBasicSimple", nil, common)
+				}
+			case *definition.Enum:
+				// `(EnumName)_v` is a tagged-type cast not modeled by CastExpr.
+				common["Expr"] = fmt.Sprintf("(%s)_v", elemTyT.EnumName)
+				stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopBasicSimple", nil, common)
+			default:
+				return nil, fmt.Errorf("internal error: unsupported fixed-element array type %T", ty.ElementType)
+			}
+			decodeStmts = append(decodeStmts, strings.Split(stmt, "\n")...)
+			_ = elemTy
+			_ = tyUint
+			_ = tyUintID
 		} else {
 			// Unroll the array
 			// temp variable declaration

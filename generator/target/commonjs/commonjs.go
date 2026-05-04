@@ -30,6 +30,7 @@ type CommonJSGeneratorState struct {
 	UseFloat64     bool
 	UseString      bool
 	UseStructArray bool
+	UseBitHelpers  bool
 }
 
 func NewCommonJSGeneratorState() *CommonJSGeneratorState {
@@ -43,6 +44,7 @@ func (g *CommonJSGeneratorState) Reset() {
 	g.UseFloat64 = false
 	g.UseString = false
 	g.UseStructArray = false
+	g.UseBitHelpers = false
 }
 
 type CommonJSGenerator struct {
@@ -106,6 +108,48 @@ func (g *CommonJSGenerator) generateHexBigInt(value any) string {
 
 func (g *CommonJSGenerator) generateBinBigInt(value any) string {
 	return fmt.Sprintf("%sn", g.generateBin(value))
+}
+
+// generateBoolLiteral renders `true` / `false` via the CommonJS literal generator.
+func (g *CommonJSGenerator) generateBoolLiteral(value bool) string {
+	s, _ := NewCommonJSLiteralGenerator().GenerateBoolLiteral(&definition.BoolLiteral{BoolValue: value})
+	return s
+}
+
+// generateCastExpr renders `jsType(expr)` via the CommonJS expression generator.
+// In CommonJS that is e.g. `Number(_v)`, `BigInt(_v)` for the bbReadFieldBits return.
+func (g *CommonJSGenerator) generateCastExpr(toType *definition.BasicType, exprStr string) string {
+	exprGen := NewCommonJSExprGenerator(g.GenerateType, "")
+	s, _ := exprGen.GenerateCastExpr(&definition.CastExpr{
+		ToType: toType,
+		Expr1:  &definition.RawExpr{Expr: exprStr},
+	})
+	return s
+}
+
+// decodeBasicValueExpr returns the JS expression that converts the helper's
+// `_v` (BigInt) into the field's element type for the array bit-loop decoder.
+func (g *CommonJSGenerator) decodeBasicValueExpr(elemTy *definition.BasicType, elemBitSize int64) string {
+	switch elemTy.GetTypeID() {
+	case definition.TypeID_Float32:
+		g.GenState.UseFloat32 = true
+		return "uint32BitsToFloat(" + g.generateCastExpr(&definition.Uint32, "_v & 0xFFFFFFFFn") + ")"
+	case definition.TypeID_Float64:
+		g.GenState.UseFloat64 = true
+		return "uint64BitsToDouble(_v & 0xFFFFFFFFFFFFFFFFn)"
+	case definition.TypeID_Bool:
+		return "_v !== 0n"
+	case definition.TypeID_Int8, definition.TypeID_Int16, definition.TypeID_Int32:
+		return g.generateCastExpr(elemTy, fmt.Sprintf("BigInt.asIntN(%d, _v)", elemBitSize))
+	case definition.TypeID_Uint8, definition.TypeID_Uint16, definition.TypeID_Uint32:
+		return g.generateCastExpr(elemTy, "_v")
+	case definition.TypeID_Int64:
+		return fmt.Sprintf("BigInt.asIntN(%d, _v)", elemBitSize)
+	case definition.TypeID_Uint64:
+		return "_v"
+	default:
+		return g.generateCastExpr(elemTy, "_v")
+	}
 }
 
 var structPackagePrefixTemplate = `
@@ -440,6 +484,125 @@ var fileTemplate = `
         return [str, offset - start];
     }
     {{- end }}
+
+    {{- if .GenState.UseBitHelpers }}
+
+    /**
+     * Pack bitSize bits of value into data starting at bit position bitFrom.
+     * Used by encode loops generated for arrays whose length exceeds the
+     * -unroll threshold. value is a BigInt to support all element widths up to
+     * 64 bits.
+     * @param {Uint8Array|Array} data Output buffer.
+     * @param {Number} bitFrom Destination bit offset.
+     * @param {Number} bitSize Number of bits to write (1..64).
+     * @param {BigInt} value Value to write.
+     * @param {Boolean} bigEndian Whether to lay out source bytes high-first.
+     */
+    function bbWriteFieldBits(data, bitFrom, bitSize, value, bigEndian) {
+        if (bitSize <= 0) return;
+        if (bitSize < 64) value = value & ((1n << BigInt(bitSize)) - 1n);
+        var bitTo = bitFrom + bitSize;
+        var i = bitFrom;
+        while (i < bitTo) {
+            var nextI = (i + 8) & ~7;
+            if (nextI > bitTo) nextI = bitTo;
+            var dataMask = ((1 << (((nextI - 1) & 7) + 1)) - 1) & ~((1 << (i & 7)) - 1);
+            var begin = i - bitFrom;
+            var end = nextI - bitFrom;
+            var part = 0;
+            var j = begin;
+            if (j < end) {
+                var nextJ = (j + 8) & ~7;
+                if (nextJ > end) nextJ = end;
+                var fieldMask = ((1 << (((nextJ - 1) & 7) + 1)) - 1) & ~((1 << (j & 7)) - 1);
+                var shiftRight = j & 7;
+                var srcByteIndex = (j / 8) | 0;
+                var srcShift;
+                if (bigEndian) {
+                    srcShift = bitSize - 8 * (srcByteIndex + 1);
+                    if (srcShift < 0) srcShift = 0;
+                } else {
+                    srcShift = 8 * srcByteIndex;
+                }
+                var srcByte = Number((value >> BigInt(srcShift)) & 0xFFn);
+                part = (srcByte & fieldMask) >>> shiftRight;
+                j = nextJ;
+            }
+            if (j < end) {
+                var nextJ2 = (j + 8) & ~7;
+                if (nextJ2 > end) nextJ2 = end;
+                var fieldMask2 = ((1 << (((nextJ2 - 1) & 7) + 1)) - 1) & ~((1 << (j & 7)) - 1);
+                var shiftLeft2 = 8 - (nextJ2 & 7);
+                if ((nextJ2 & 7) === 0) shiftLeft2 = 8;
+                var srcByteIndex2 = (j / 8) | 0;
+                var srcShift2;
+                if (bigEndian) {
+                    srcShift2 = bitSize - 8 * (srcByteIndex2 + 1);
+                    if (srcShift2 < 0) srcShift2 = 0;
+                } else {
+                    srcShift2 = 8 * srcByteIndex2;
+                }
+                var srcByte2 = Number((value >> BigInt(srcShift2)) & 0xFFn);
+                part |= (srcByte2 & fieldMask2) << shiftLeft2;
+            }
+            var shiftLeftOuter = i & 7;
+            part = ((part << shiftLeftOuter) & dataMask) & 0xFF;
+            if (dataMask === 0xFF) {
+                data[(i / 8) | 0] = part;
+            } else {
+                data[(i / 8) | 0] = (data[(i / 8) | 0] | part) & 0xFF;
+            }
+            i = (i + 8) & ~7;
+        }
+    }
+
+    /**
+     * Inverse of bbWriteFieldBits. Returns a BigInt holding bitSize bits read
+     * from data starting at bit position bitFrom.
+     * @param {Uint8Array|Array} data Input buffer.
+     * @param {Number} bitFrom Source bit offset.
+     * @param {Number} bitSize Number of bits to read (1..64).
+     * @param {Boolean} bigEndian Whether source bytes were laid out high-first.
+     * @returns {BigInt} Read value.
+     */
+    function bbReadFieldBits(data, bitFrom, bitSize, bigEndian) {
+        if (bitSize <= 0) return 0n;
+        var bitTo = bitFrom + bitSize;
+        var out = 0n;
+        var outByteIndex = 0;
+        var i = bitFrom;
+        while (i < bitTo) {
+            var begin = i;
+            var end = i + 8;
+            if (end > bitTo) end = bitTo;
+            var width = end - begin;
+            var sep = (begin + 8) & ~7;
+            if (sep > end) sep = end;
+            var part = 0;
+            if (begin < sep) {
+                var fieldMask = ((1 << (((sep - 1) & 7) + 1)) - 1) & ~((1 << (begin & 7)) - 1);
+                var shiftRight = begin & 7;
+                part = ((data[(begin / 8) | 0] & 0xFF) & fieldMask) >>> shiftRight;
+            }
+            if (sep < end) {
+                var fieldMask2 = ((1 << (((end - 1) & 7) + 1)) - 1) & ~((1 << (sep & 7)) - 1);
+                var shiftLeft2 = width - (end % 8);
+                part |= ((data[(sep / 8) | 0] & 0xFF) & fieldMask2) << shiftLeft2;
+            }
+            var dstShift;
+            if (bigEndian) {
+                dstShift = bitSize - 8 * (outByteIndex + 1);
+                if (dstShift < 0) dstShift = 0;
+            } else {
+                dstShift = 8 * outByteIndex;
+            }
+            out |= BigInt(part & 0xFF) << BigInt(dstShift);
+            i += 8;
+            outByteIndex++;
+        }
+        return out;
+    }
+    {{- end }}
     
     // ====================== {{ $curUnit.Package }} ======================
 
@@ -676,6 +839,125 @@ var fileTemplate = `
             }
         }
         return [str, offset - start];
+    }
+    {{- end }}
+
+    {{- if .GenState.UseBitHelpers }}
+
+    /**
+     * Pack bitSize bits of value into data starting at bit position bitFrom.
+     * Used by encode loops generated for arrays whose length exceeds the
+     * -unroll threshold. value is a BigInt to support all element widths up to
+     * 64 bits.
+     * @param {Uint8Array|Array} data Output buffer.
+     * @param {Number} bitFrom Destination bit offset.
+     * @param {Number} bitSize Number of bits to write (1..64).
+     * @param {BigInt} value Value to write.
+     * @param {Boolean} bigEndian Whether to lay out source bytes high-first.
+     */
+    function bbWriteFieldBits(data, bitFrom, bitSize, value, bigEndian) {
+        if (bitSize <= 0) return;
+        if (bitSize < 64) value = value & ((1n << BigInt(bitSize)) - 1n);
+        var bitTo = bitFrom + bitSize;
+        var i = bitFrom;
+        while (i < bitTo) {
+            var nextI = (i + 8) & ~7;
+            if (nextI > bitTo) nextI = bitTo;
+            var dataMask = ((1 << (((nextI - 1) & 7) + 1)) - 1) & ~((1 << (i & 7)) - 1);
+            var begin = i - bitFrom;
+            var end = nextI - bitFrom;
+            var part = 0;
+            var j = begin;
+            if (j < end) {
+                var nextJ = (j + 8) & ~7;
+                if (nextJ > end) nextJ = end;
+                var fieldMask = ((1 << (((nextJ - 1) & 7) + 1)) - 1) & ~((1 << (j & 7)) - 1);
+                var shiftRight = j & 7;
+                var srcByteIndex = (j / 8) | 0;
+                var srcShift;
+                if (bigEndian) {
+                    srcShift = bitSize - 8 * (srcByteIndex + 1);
+                    if (srcShift < 0) srcShift = 0;
+                } else {
+                    srcShift = 8 * srcByteIndex;
+                }
+                var srcByte = Number((value >> BigInt(srcShift)) & 0xFFn);
+                part = (srcByte & fieldMask) >>> shiftRight;
+                j = nextJ;
+            }
+            if (j < end) {
+                var nextJ2 = (j + 8) & ~7;
+                if (nextJ2 > end) nextJ2 = end;
+                var fieldMask2 = ((1 << (((nextJ2 - 1) & 7) + 1)) - 1) & ~((1 << (j & 7)) - 1);
+                var shiftLeft2 = 8 - (nextJ2 & 7);
+                if ((nextJ2 & 7) === 0) shiftLeft2 = 8;
+                var srcByteIndex2 = (j / 8) | 0;
+                var srcShift2;
+                if (bigEndian) {
+                    srcShift2 = bitSize - 8 * (srcByteIndex2 + 1);
+                    if (srcShift2 < 0) srcShift2 = 0;
+                } else {
+                    srcShift2 = 8 * srcByteIndex2;
+                }
+                var srcByte2 = Number((value >> BigInt(srcShift2)) & 0xFFn);
+                part |= (srcByte2 & fieldMask2) << shiftLeft2;
+            }
+            var shiftLeftOuter = i & 7;
+            part = ((part << shiftLeftOuter) & dataMask) & 0xFF;
+            if (dataMask === 0xFF) {
+                data[(i / 8) | 0] = part;
+            } else {
+                data[(i / 8) | 0] = (data[(i / 8) | 0] | part) & 0xFF;
+            }
+            i = (i + 8) & ~7;
+        }
+    }
+
+    /**
+     * Inverse of bbWriteFieldBits. Returns a BigInt holding bitSize bits read
+     * from data starting at bit position bitFrom.
+     * @param {Uint8Array|Array} data Input buffer.
+     * @param {Number} bitFrom Source bit offset.
+     * @param {Number} bitSize Number of bits to read (1..64).
+     * @param {Boolean} bigEndian Whether source bytes were laid out high-first.
+     * @returns {BigInt} Read value.
+     */
+    function bbReadFieldBits(data, bitFrom, bitSize, bigEndian) {
+        if (bitSize <= 0) return 0n;
+        var bitTo = bitFrom + bitSize;
+        var out = 0n;
+        var outByteIndex = 0;
+        var i = bitFrom;
+        while (i < bitTo) {
+            var begin = i;
+            var end = i + 8;
+            if (end > bitTo) end = bitTo;
+            var width = end - begin;
+            var sep = (begin + 8) & ~7;
+            if (sep > end) sep = end;
+            var part = 0;
+            if (begin < sep) {
+                var fieldMask = ((1 << (((sep - 1) & 7) + 1)) - 1) & ~((1 << (begin & 7)) - 1);
+                var shiftRight = begin & 7;
+                part = ((data[(begin / 8) | 0] & 0xFF) & fieldMask) >>> shiftRight;
+            }
+            if (sep < end) {
+                var fieldMask2 = ((1 << (((end - 1) & 7) + 1)) - 1) & ~((1 << (sep & 7)) - 1);
+                var shiftLeft2 = width - (end % 8);
+                part |= ((data[(sep / 8) | 0] & 0xFF) & fieldMask2) << shiftLeft2;
+            }
+            var dstShift;
+            if (bigEndian) {
+                dstShift = bitSize - 8 * (outByteIndex + 1);
+                if (dstShift < 0) dstShift = 0;
+            } else {
+                dstShift = 8 * outByteIndex;
+            }
+            out |= BigInt(part & 0xFF) << BigInt(dstShift);
+            i += 8;
+            outByteIndex++;
+        }
+        return out;
     }
     {{- end }}
 
@@ -1672,6 +1954,20 @@ var fieldEncoderTemplate = `
 {{- define "encodeImpl" -}}
     data[{{ if .Dynamic }}offset + {{ end }}start + {{ .BytePos }}] {{ .Operator }} {{ .FieldData }};
 {{- end -}}
+
+{{- /* Encoder array bit-loops, one per element-type variant. */ -}}
+
+{{- define "encodeArrayLoopStruct" -}}
+for (let _i = 0; _i < {{ .Length }}; _i++) {
+    {{ .ArrayName }}[_i].encode({{ .DataExpr }});
+}
+{{- end -}}
+
+{{- define "encodeArrayLoopBasicSimple" -}}
+for (let _i = 0; _i < {{ .Length }}; _i++) {
+    bbWriteFieldBits(data, {{ .BitBaseExpr }}, {{ .BitSize }}, {{ .ValueExpr }}, {{ .BigEndian }});
+}
+{{- end -}}
 `
 
 func (g CommonJSGenerator) generateEncodeTempVarName(startBits int64) string {
@@ -1789,41 +2085,24 @@ func (g CommonJSGenerator) generateEncodeNormalField(field *definition.NormalFie
 
 		name := g.generateEncodeStructFieldName(field.FieldName)
 
-		// Check if we need to generate a loop or unroll the array
+		// Decide loop vs unroll. See Go/C++ for rationale.
 		loopUnroll := g.GenCtx.GenOptions.LoopUnroll
-		canUseLoop := false
+		shouldUseLoop := loopUnroll >= 0 && ty.Length > int64(loopUnroll)
+
+		useDynamicLoop := false
 		switch elemTyLoop := ty.ElementType.(type) {
 		case *definition.String, *definition.Bytes:
-			canUseLoop = true
+			useDynamicLoop = true
 		case *definition.Struct:
-			canUseLoop = elemTyLoop.GetTypeDynamic()
+			useDynamicLoop = elemTyLoop.GetTypeDynamic()
 		}
-		shouldUseLoop := loopUnroll >= 0 && ty.Length > int64(loopUnroll) && canUseLoop
 
-		if shouldUseLoop {
-			// Generate loop code
+		if shouldUseLoop && useDynamicLoop {
+			// Dynamic-element loop (existing path).
 			loopStmts := []string{}
 
-			// temp variable declaration for special types
+			// temp variable declaration for Enum
 			switch ty.ElementType.(type) {
-			case *definition.BasicType:
-				if ty.ElementType.GetTypeID().IsFloat() {
-					tempName := g.generateEncodeTempVarName(startBits)
-
-					encodeNormalFieldTempVarDeclOnlyData := map[string]any{
-						"TempName": tempName,
-					}
-					declStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarDeclOnly", nil, encodeNormalFieldTempVarDeclOnlyData)
-					loopStmts = append(loopStmts, declStr)
-
-					// change elemTy to 32 or 64 bit integer type
-					switch ty.ElementType.GetTypeID() {
-					case definition.TypeID_Float32:
-						elemTy = &definition.Uint32
-					case definition.TypeID_Float64:
-						elemTy = &definition.Uint64
-					}
-				}
 			case *definition.Enum:
 				tempName := g.generateEncodeTempVarName(startBits)
 
@@ -1833,31 +2112,17 @@ func (g CommonJSGenerator) generateEncodeNormalField(field *definition.NormalFie
 				declStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarDeclOnly", nil, encodeNormalFieldTempVarDeclOnlyData)
 				loopStmts = append(loopStmts, declStr)
 
-				// change elemTy to any integer type (except 64-bit)
 				elemTy = &definition.Uint32
 			default:
 			}
 
 			loopStmts = append(loopStmts, fmt.Sprintf("for (let _i = 0; _i < %d; _i++) {", ty.Length))
 
-			// Generate loop body
 			subFrom := from
 			subTo := from + elemBitSize
 			subName := fmt.Sprintf("%s[_i]", name)
 
 			switch ty.ElementType.(type) {
-			case *definition.BasicType:
-				if ty.ElementType.GetTypeID().IsFloat() {
-					tempName := g.generateEncodeTempVarName(startBits)
-					encodeNormalFieldTempVarAssignFloatCastData := map[string]any{
-						"TempName":  tempName,
-						"FieldName": fmt.Sprintf("%s[_i]", name),
-						"IsFloat32": ty.ElementType.GetTypeID() == definition.TypeID_Float32,
-					}
-					assignStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarAssignFloatCast", nil, encodeNormalFieldTempVarAssignFloatCastData)
-					loopStmts = append(loopStmts, util.IndentSpace(assignStr, 4))
-					subName = tempName
-				}
 			case *definition.Enum:
 				tempName := g.generateEncodeTempVarName(startBits)
 				encodeNormalFieldTempVarAssignData := map[string]any{
@@ -1884,6 +2149,71 @@ func (g CommonJSGenerator) generateEncodeNormalField(field *definition.NormalFie
 			loopStmts = append(loopStmts, "}")
 
 			encodeStmts = append(encodeStmts, loopStmts...)
+		} else if shouldUseLoop {
+			// Fixed-bit-width element loop using bbWriteFieldBits (BigInt-backed).
+			g.GenState.UseBitHelpers = true
+
+			bigEndianStr := g.generateBoolLiteral(gen.MatchOption(field.FieldOptions, "order", "big"))
+
+			bitBaseExpr := fmt.Sprintf("%d + _i * %d", from, elemBitSize)
+			if structDynamic {
+				bitBaseExpr = fmt.Sprintf("offset * 8 + (%s)", bitBaseExpr)
+			}
+			// Inside encode, the buffer offset is `start + bitBase/8`. Helper
+			// ignores `start` because it operates on byte indexing relative
+			// to data[0]; we encode `start * 8` into the bit base.
+			bitBaseExpr = "(start * 8) + (" + bitBaseExpr + ")"
+
+			// Each branch picks one self-contained loop template.
+			common := map[string]any{
+				"Length":      ty.Length,
+				"ArrayName":   name,
+				"BitBaseExpr": bitBaseExpr,
+				"BitSize":     elemBitSize,
+				"BigEndian":   bigEndianStr,
+			}
+			var stmt string
+			switch elemTyT := ty.ElementType.(type) {
+			case *definition.Struct:
+				byteBase := from / 8
+				offsetExpr := fmt.Sprintf("%d + _i * %d", byteBase, elemBitSize/8)
+				if structDynamic {
+					offsetExpr = "offset + " + offsetExpr
+				}
+				_ = elemTyT
+				common["DataExpr"] = "data, start + " + offsetExpr
+				stmt = util.ExecuteTemplate(fieldEncoderTemplate, "encodeArrayLoopStruct", nil, common)
+			case *definition.BasicType:
+				switch elemTyT.GetTypeID() {
+				case definition.TypeID_Float32:
+					g.GenState.UseFloat32 = true
+					// `floatToUint32Bits(x)` is a runtime helper, not a basic-type cast.
+					common["ValueExpr"] = g.generateCastExpr(&definition.Int64, fmt.Sprintf("floatToUint32Bits(%s[_i])", name))
+				case definition.TypeID_Float64:
+					g.GenState.UseFloat64 = true
+					common["ValueExpr"] = fmt.Sprintf("doubleToUint64Bits(%s[_i])", name)
+				case definition.TypeID_Uint64, definition.TypeID_Int64:
+					common["ValueExpr"] = fmt.Sprintf("BigInt.asUintN(64, %s)", g.generateCastExpr(&definition.Int64, fmt.Sprintf("%s[_i]", name)))
+				case definition.TypeID_Bool:
+					common["ValueExpr"] = fmt.Sprintf("(%s[_i] ? 1n : 0n)", name)
+				default:
+					common["ValueExpr"] = g.generateCastExpr(&definition.Int64, fmt.Sprintf("%s[_i]", name))
+				}
+				stmt = util.ExecuteTemplate(fieldEncoderTemplate, "encodeArrayLoopBasicSimple", nil, common)
+			case *definition.Enum:
+				inPackage := field.FieldBelongs.StructBelongs.LocalNames.Has(elemTyT.EnumName)
+				var lookupExpr string
+				if inPackage {
+					lookupExpr = fmt.Sprintf("(typeof %s[_i] === \"number\" ? %s[_i] : $package.%s[%s[_i]])", name, name, elemTyT.EnumName, name)
+				} else {
+					lookupExpr = fmt.Sprintf("(typeof %s[_i] === \"number\" ? %s[_i] : $root.%s.%s[%s[_i]])", name, name, elemTyT.EnumBelongs.Package, elemTyT.EnumName, name)
+				}
+				common["ValueExpr"] = g.generateCastExpr(&definition.Int64, lookupExpr)
+				stmt = util.ExecuteTemplate(fieldEncoderTemplate, "encodeArrayLoopBasicSimple", nil, common)
+			default:
+				return nil, fmt.Errorf("internal error: unsupported fixed-element array type %T", ty.ElementType)
+			}
+			encodeStmts = append(encodeStmts, strings.Split(stmt, "\n")...)
 		} else {
 			// Unroll the array
 			// temp variable declaration
@@ -2626,6 +2956,23 @@ var fieldDecoderTemplate = `
 {{- define "signExtendLogic" -}}
     {{ .FieldName }} = ({{ .FieldName }} >>> {{ .SignShift }}) ? -(~{{ .FieldName }} + 1) : {{ .FieldName }};
 {{- end -}}
+
+{{- /* Decoder array bit-loops. CommonJS value-expression conversions all
+       fit on a single line, so one decodeArrayLoopBasic with an .Expr slot
+       covers everything. */ -}}
+
+{{- define "decodeArrayLoopStruct" -}}
+for (let _i = 0; _i < {{ .Length }}; _i++) {
+    {{ .ArrayName }}[_i].decode({{ .DataExpr }});
+}
+{{- end -}}
+
+{{- define "decodeArrayLoopBasic" -}}
+for (let _i = 0; _i < {{ .Length }}; _i++) {
+    var _v = bbReadFieldBits(data, {{ .BitBaseExpr }}, {{ .BitSize }}, {{ .BigEndian }});
+    {{ .ArrayName }}[_i] = {{ .Expr }};
+}
+{{- end -}}
 `
 
 func (g CommonJSGenerator) generateDecodeTempVarName(startBits int64) string {
@@ -2777,41 +3124,24 @@ func (g CommonJSGenerator) generateDecodeNormalField(field *definition.NormalFie
 
 		name := g.generateDecodeStructFieldName(field.FieldName)
 
-		// Check if we need to generate a loop or unroll the array
+		// Decide loop vs unroll. See Go/C++ for rationale.
 		loopUnroll := g.GenCtx.GenOptions.LoopUnroll
-		canUseLoop := false
+		shouldUseLoop := loopUnroll >= 0 && ty.Length > int64(loopUnroll)
+
+		useDynamicLoop := false
 		switch elemTyLoop := ty.ElementType.(type) {
 		case *definition.String, *definition.Bytes:
-			canUseLoop = true
+			useDynamicLoop = true
 		case *definition.Struct:
-			canUseLoop = elemTyLoop.GetTypeDynamic()
+			useDynamicLoop = elemTyLoop.GetTypeDynamic()
 		}
-		shouldUseLoop := loopUnroll >= 0 && ty.Length > int64(loopUnroll) && canUseLoop
 
-		if shouldUseLoop {
-			// Generate loop code
+		if shouldUseLoop && useDynamicLoop {
+			// Dynamic-element loop (existing path).
 			loopStmts := []string{}
 
-			// temp variable declaration for special types
+			// temp variable declaration for Enum
 			switch ty.ElementType.(type) {
-			case *definition.BasicType:
-				if ty.ElementType.GetTypeID().IsFloat() {
-					tempName := g.generateDecodeTempVarName(startBits)
-
-					decodeNormalFieldTempVarDeclOnlyData := map[string]any{
-						"TempName": tempName,
-					}
-					declStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, decodeNormalFieldTempVarDeclOnlyData)
-					loopStmts = append(loopStmts, declStr)
-
-					// change elemTy to 32 or 64 bit integer type
-					switch ty.ElementType.GetTypeID() {
-					case definition.TypeID_Float32:
-						elemTy = &definition.Uint32
-					case definition.TypeID_Float64:
-						elemTy = &definition.Uint64
-					}
-				}
 			case *definition.Enum:
 				tempName := g.generateDecodeTempVarName(startBits)
 
@@ -2821,14 +3151,12 @@ func (g CommonJSGenerator) generateDecodeNormalField(field *definition.NormalFie
 				declStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarDecl", nil, decodeNormalFieldTempVarDeclOnly)
 				loopStmts = append(loopStmts, declStr)
 
-				// change elemTy to any integer type (except 64-bit)
 				elemTy = &definition.Uint32
 			default:
 			}
 
 			loopStmts = append(loopStmts, fmt.Sprintf("for (let _i = 0; _i < %d; _i++) {", ty.Length))
 
-			// Generate loop body
 			subFrom := from
 			subTo := from + elemBitSize
 			subName := fmt.Sprintf("%s[_i]", name)
@@ -2842,18 +3170,7 @@ func (g CommonJSGenerator) generateDecodeNormalField(field *definition.NormalFie
 				loopStmts = append(loopStmts, util.IndentSpace(stmt, 4))
 			}
 
-			// Handle special type casting inside loop
 			switch ty.ElementType.(type) {
-			case *definition.BasicType:
-				if ty.ElementType.GetTypeID().IsFloat() {
-					decodeNormalFieldTempVarAssignFloatCastData := map[string]any{
-						"TempName":  subName,
-						"FieldName": fmt.Sprintf("%s[_i]", name),
-						"IsFloat32": ty.ElementType.GetTypeID() == definition.TypeID_Float32,
-					}
-					assignStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignFloatCast", nil, decodeNormalFieldTempVarAssignFloatCastData)
-					loopStmts = append(loopStmts, util.IndentSpace(assignStr, 4))
-				}
 			case *definition.Enum:
 				decodeNormalFieldTempVarAssignEnumData := map[string]any{
 					"TempName":  subName,
@@ -2869,6 +3186,52 @@ func (g CommonJSGenerator) generateDecodeNormalField(field *definition.NormalFie
 			loopStmts = append(loopStmts, "}")
 
 			decodeStmts = append(decodeStmts, loopStmts...)
+		} else if shouldUseLoop {
+			// Fixed-bit-width element loop using bbReadFieldBits (BigInt-backed).
+			g.GenState.UseBitHelpers = true
+
+			bigEndianStr := g.generateBoolLiteral(gen.MatchOption(field.FieldOptions, "order", "big"))
+
+			bitBaseExpr := fmt.Sprintf("%d + _i * %d", from, elemBitSize)
+			if structDynamic {
+				bitBaseExpr = fmt.Sprintf("offset * 8 + (%s)", bitBaseExpr)
+			}
+			bitBaseExpr = "(start * 8) + (" + bitBaseExpr + ")"
+
+			// Each branch picks one self-contained loop template.
+			common := map[string]any{
+				"Length":      ty.Length,
+				"ArrayName":   name,
+				"BitBaseExpr": bitBaseExpr,
+				"BitSize":     elemBitSize,
+				"BigEndian":   bigEndianStr,
+			}
+			var stmt string
+			switch elemTyT := ty.ElementType.(type) {
+			case *definition.Struct:
+				byteBase := from / 8
+				offsetExpr := fmt.Sprintf("%d + _i * %d", byteBase, elemBitSize/8)
+				if structDynamic {
+					offsetExpr = "offset + " + offsetExpr
+				}
+				_ = elemTyT
+				common["DataExpr"] = "data, start + " + offsetExpr
+				stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopStruct", nil, common)
+			case *definition.BasicType:
+				common["Expr"] = g.decodeBasicValueExpr(elemTyT, elemBitSize)
+				stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopBasic", nil, common)
+			case *definition.Enum:
+				inPackage := field.FieldBelongs.StructBelongs.LocalNames.Has(elemTyT.EnumName)
+				if inPackage {
+					common["Expr"] = fmt.Sprintf("$package.%s[%s]", elemTyT.EnumName, g.generateCastExpr(&definition.Uint32, "_v"))
+				} else {
+					common["Expr"] = fmt.Sprintf("$root.%s.%s[%s]", elemTyT.EnumBelongs.Package, elemTyT.EnumName, g.generateCastExpr(&definition.Uint32, "_v"))
+				}
+				stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopBasic", nil, common)
+			default:
+				return nil, fmt.Errorf("internal error: unsupported fixed-element array type %T", ty.ElementType)
+			}
+			decodeStmts = append(decodeStmts, strings.Split(stmt, "\n")...)
 		} else {
 			// Unroll the array
 			// temp variable declaration
