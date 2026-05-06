@@ -161,3 +161,70 @@ struct DynamicFields {
     string label;
     bytes  data;
 }
+
+// ============================================================
+// Test 9: FloatSpecials
+// IEEE-754 corner cases: +/-Inf, NaN (positive/negative), -0.0, +0.0,
+// FLT_MAX/DBL_MAX, smallest normal positive, smallest subnormal positive.
+// Round-trip must preserve every bit, including NaN sign / payload.
+// ============================================================
+struct FloatSpecials {
+    float32 f32_pos_inf;
+    float32 f32_neg_inf;
+    float32 f32_qnan_pos;
+    float32 f32_qnan_neg;
+    float32 f32_neg_zero;
+    float32 f32_pos_zero;
+    float32 f32_max;
+    float32 f32_min_normal;
+    float32 f32_subnormal;
+
+    float64 f64_pos_inf;
+    float64 f64_neg_inf;
+    float64 f64_qnan_pos;
+    float64 f64_qnan_neg;
+    float64 f64_neg_zero;
+    float64 f64_pos_zero;
+    float64 f64_max;
+    float64 f64_min_normal;
+    float64 f64_subnormal;
+}
+
+// ============================================================
+// Test 10-14: Array sizing matrix for -unroll feature
+// SmallArrays / MediumArrays / LargeArrays / VeryLargeArrays / MixedArrays.
+// Each language driver round-trips these so test_options.sh's runtime
+// matrix exercises every unroll threshold against arrays of every size class.
+// ============================================================
+struct SmallArrays {
+    uint8<2>  small_uint8;
+    int16<2>  small_int16;
+    Color<2>  small_enum;
+}
+
+struct MediumArrays {
+    uint8<4>   medium_uint8;
+    int16<4>   medium_int16;
+    Color<4>   medium_enum;
+    float32<4> medium_float32;
+}
+
+struct LargeArrays {
+    uint8<8>   large_uint8;
+    int16<8>   large_int16;
+    Color<8>   large_enum;
+    float64<8> large_float64;
+}
+
+struct VeryLargeArrays {
+    uint8<32>  very_large_uint8;
+    int16<32>  very_large_int16;
+    Color<32>  very_large_enum;
+}
+
+struct MixedArrays {
+    uint8<1>   single_elem;
+    uint16<2>  pair;
+    uint32<4>  quad;
+    uint64<8>  octet;
+}

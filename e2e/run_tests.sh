@@ -118,6 +118,30 @@ echo "════════════════════════�
 echo "[gen] done"
 
 ##############################################################################
+# TEST DRIVER GENERATION
+#
+# Per-language test drivers (main.c / Main.java / test_main.py / test.mjs /
+# Program.cs / *_test.go) are emitted from a single Go spec at e2e/spec/.
+# Adding a test case = editing scenarios.go once; never touching 7 hand-
+# written drivers. Re-run before every language compile so the drivers always
+# match the source-of-truth scenarios.
+##############################################################################
+echo
+echo "════════════════════════════════════════════"
+echo " Test Driver Generation"
+echo "════════════════════════════════════════════"
+
+(cd "$PROJECT_ROOT" && go run ./e2e/spec -lang=c       -out "$E2E_DIR/tests/c/main.c")
+(cd "$PROJECT_ROOT" && go run ./e2e/spec -lang=cpp     -out "$E2E_DIR/tests/cpp/main.cpp")
+(cd "$PROJECT_ROOT" && go run ./e2e/spec -lang=go      -out "$E2E_DIR/tests/go/")
+(cd "$PROJECT_ROOT" && go run ./e2e/spec -lang=java    -out "$E2E_DIR/tests/java/Main.java")
+(cd "$PROJECT_ROOT" && go run ./e2e/spec -lang=python  -out "$E2E_DIR/tests/python/test_main.py")
+(cd "$PROJECT_ROOT" && go run ./e2e/spec -lang=csharp  -out "$E2E_DIR/tests/csharp/Program.cs")
+(cd "$PROJECT_ROOT" && go run ./e2e/spec -lang=cjs     -out "$E2E_DIR/tests/cjs/test.mjs")
+(cd "$PROJECT_ROOT" && go run ./e2e/spec -lang=esm     -out "$E2E_DIR/tests/esm/test.mjs")
+echo "[spec] drivers generated"
+
+##############################################################################
 # LANGUAGE TESTS
 ##############################################################################
 echo

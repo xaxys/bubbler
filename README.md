@@ -710,6 +710,23 @@ stringFromUTF8Bytes(data, start);
 
 Contributions to Bubbler are welcome.
 
+### Testing
+
+The end-to-end test suite lives under [e2e/](e2e/) and runs every code generator
+across every supported target language.
+
+```sh
+make e2e            # runs the complete suite (uses Docker on Windows)
+make e2e-docker     # always runs inside Docker
+```
+
+Per-language test drivers (`tests/c/main.c`, `tests/java/Main.java`,
+`tests/python/test_main.py`, `tests/cjs/test.mjs`, etc.) are **generated**
+from a single Go spec at [e2e/spec/](e2e/spec/) before each compile step.
+To add a test case, edit [e2e/spec/scenarios.go](e2e/spec/scenarios.go); the
+generator emits all eight language drivers on the next run. See
+[e2e/spec/README.md](e2e/spec/README.md) for the full guide.
+
 ## License
 
 MIT License

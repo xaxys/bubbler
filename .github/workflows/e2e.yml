@@ -81,16 +81,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
       - uses: actions/download-artifact@v4
         with: { name: bubbler-linux }
 
       - run: chmod +x bubbler
 
-      - name: Generate C code
+      - name: Generate C code and test driver
         run: |
           mkdir -p e2e/tests/c/gen
           ./bubbler -t c -o e2e/tests/c/gen/ e2e/testcase.bb
           ./bubbler -t c -o e2e/tests/c/gen/ e2e/features/bitwid.bb
+          go run ./e2e/spec -lang=c -out e2e/tests/c/main.c
 
       - name: Compile and run
         run: |
@@ -108,16 +114,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
       - uses: actions/download-artifact@v4
         with: { name: bubbler-linux }
 
       - run: chmod +x bubbler
 
-      - name: Generate C++ code
+      - name: Generate C++ code and test driver
         run: |
           mkdir -p e2e/tests/cpp/gen
           ./bubbler -t cpp -o e2e/tests/cpp/gen/ e2e/testcase.bb
           ./bubbler -t cpp -o e2e/tests/cpp/gen/ e2e/features/bitwid.bb
+          go run ./e2e/spec -lang=cpp -out e2e/tests/cpp/main.cpp
 
       - name: Compile and run
         run: |
@@ -145,10 +157,11 @@ jobs:
 
       - run: chmod +x bubbler
 
-      - name: Generate Go code
+      - name: Generate Go code and test files
         run: |
           ./bubbler -t go -o e2e/tests/go/ e2e/testcase.bb
           ./bubbler -t go -o e2e/tests/go/ e2e/features/bitwid.bb
+          go run ./e2e/spec -lang=go -out e2e/tests/go/
 
       - name: Run tests
         run: |
@@ -165,16 +178,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
       - uses: actions/download-artifact@v4
         with: { name: bubbler-linux }
 
       - run: chmod +x bubbler
 
-      - name: Generate Python code
+      - name: Generate Python code and test driver
         run: |
           mkdir -p e2e/tests/python/gen
           ./bubbler -t py -single -o e2e/tests/python/gen/testcase_bb.py e2e/testcase.bb
           ./bubbler -t py -single -o e2e/tests/python/gen/bitwid_bb.py   e2e/features/bitwid.bb
+          go run ./e2e/spec -lang=python -out e2e/tests/python/test_main.py
 
       - name: Run tests
         run: |
@@ -191,6 +210,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -201,11 +225,12 @@ jobs:
 
       - run: chmod +x bubbler
 
-      - name: Generate Java code
+      - name: Generate Java code and test driver
         run: |
           mkdir -p e2e/tests/java/gen
           ./bubbler -t java -o e2e/tests/java/gen/ e2e/testcase.bb
           ./bubbler -t java -o e2e/tests/java/gen/ e2e/features/bitwid.bb
+          go run ./e2e/spec -lang=java -out e2e/tests/java/Main.java
 
       - name: Compile and run
         run: |
@@ -225,6 +250,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
@@ -234,11 +264,12 @@ jobs:
 
       - run: chmod +x bubbler
 
-      - name: Generate C# code
+      - name: Generate C# code and test driver
         run: |
           mkdir -p e2e/tests/csharp/gen
           ./bubbler -t cs -single -o e2e/tests/csharp/gen/testcase.bb.cs e2e/testcase.bb
           ./bubbler -t cs -single -o e2e/tests/csharp/gen/bitwid.bb.cs   e2e/features/bitwid.bb
+          go run ./e2e/spec -lang=csharp -out e2e/tests/csharp/Program.cs
 
       - name: Run tests (net8.0)
         run: |
@@ -255,6 +286,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
@@ -262,11 +298,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with: { name: bubbler-windows }
 
-      - name: Generate C# code
+      - name: Generate C# code and test driver
         run: |
           mkdir -p e2e/tests/csharp/gen
           ./bubbler.exe -t cs -single -o e2e/tests/csharp/gen/testcase.bb.cs e2e/testcase.bb
           ./bubbler.exe -t cs -single -o e2e/tests/csharp/gen/bitwid.bb.cs   e2e/features/bitwid.bb
+          go run ./e2e/spec -lang=csharp -out e2e/tests/csharp/Program.cs
 
       - name: Run tests (net472 native)
         run: |
@@ -283,6 +320,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
       - uses: actions/setup-node@v4
         with:
           node-version: "18"
@@ -292,11 +334,12 @@ jobs:
 
       - run: chmod +x bubbler
 
-      - name: Generate JS code
+      - name: Generate JS code and test driver
         run: |
           mkdir -p e2e/tests/cjs/gen
           ./bubbler -t cjs -single -o e2e/tests/cjs/gen/testcase.bb.js e2e/testcase.bb
           ./bubbler -t cjs -single -o e2e/tests/cjs/gen/bitwid.bb.js   e2e/features/bitwid.bb
+          go run ./e2e/spec -lang=cjs -out e2e/tests/cjs/test.mjs
 
       - name: Run tests
         run: |
@@ -313,6 +356,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
       - uses: actions/setup-node@v4
         with:
           node-version: "18"
@@ -322,11 +370,12 @@ jobs:
 
       - run: chmod +x bubbler
 
-      - name: Generate ESM code
+      - name: Generate ESM code and test driver
         run: |
           mkdir -p e2e/tests/esm/gen
           ./bubbler -t mjs -single -o e2e/tests/esm/gen/testcase.bb.js e2e/testcase.bb
           ./bubbler -t mjs -single -o e2e/tests/esm/gen/bitwid.bb.js   e2e/features/bitwid.bb
+          go run ./e2e/spec -lang=esm -out e2e/tests/esm/test.mjs
 
       - name: Run tests
         run: |

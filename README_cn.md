@@ -706,6 +706,21 @@ stringFromUTF8Bytes(data, start);
 
 欢迎为 Bubbler 做出贡献。
 
+### 测试
+
+端到端测试位于 [e2e/](e2e/) 目录下，覆盖所有代码生成器与所有支持的目标语言。
+
+```sh
+make e2e            # 运行完整测试套件（Windows 下使用 Docker）
+make e2e-docker     # 始终在 Docker 中运行
+```
+
+各语言测试驱动（`tests/c/main.c`、`tests/java/Main.java`、
+`tests/python/test_main.py`、`tests/cjs/test.mjs` 等）都是在每次编译步骤之前
+**由 [e2e/spec/](e2e/spec/) 中的统一 Go spec 生成的**。新增测试用例只需编辑
+[e2e/spec/scenarios.go](e2e/spec/scenarios.go)，下次运行时所有 8 种语言驱动会
+自动同步。详见 [e2e/spec/README.md](e2e/spec/README.md)。
+
 ## 许可证
 
 MIT 许可证

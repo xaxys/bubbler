@@ -11,6 +11,8 @@
 ##############################################################################
 set -euo pipefail
 cd "$(dirname "$0")/.."   # ensure we run from e2e/
+E2E_DIR="$(pwd)"
+PROJECT_ROOT="$(cd .. && pwd)"
 
 if [[ -z "${BUBBLER:-}" ]]; then
     if [[ -x "../bubbler.exe" ]]; then
@@ -22,6 +24,14 @@ fi
 TMPDIR_BASE="tests/.tmp_bubbler_opts_$$"
 mkdir -p "$TMPDIR_BASE"
 trap 'rm -rf "$TMPDIR_BASE"' EXIT
+
+# Build the test-driver generator once per variant invocation. Test drivers
+# are identical across compiler-flag variants — only the *.bb codegen
+# changes — so we render once into the variant directory.
+gen_driver() {
+    local lang="$1" out="$2"
+    (cd "$PROJECT_ROOT" && go run ./e2e/spec -lang="$lang" -out "$out")
+}
 
 pass=0
 fail=0
@@ -62,7 +72,8 @@ variant_c() {
     mkdir -p "$out/gen"
     "$BUBBLER" -t c "$@" -o "$out/gen/" testcase.bb
     "$BUBBLER" -t c "$@" -o "$out/gen/" features/bitwid.bb
-    gcc -std=c11 -I"$out" -I"$out/gen" -o "$out/run_test" tests/c/main.c "$out/gen/testpkg.bb.c" "$out/gen/bitwid.bb.c" -lm
+    gen_driver c "$E2E_DIR/$out/main.c"
+    gcc -std=c11 -I"$out" -I"$out/gen" -o "$out/run_test" "$out/main.c" "$out/gen/testpkg.bb.c" "$out/gen/bitwid.bb.c" -lm
     "$out/run_test" > /dev/null
 }
 
@@ -92,7 +103,7 @@ variant_cpp() {
     fi
 
     mkdir -p "$out/gen"
-    cp tests/cpp/main.cpp "$out/main.cpp"
+    gen_driver cpp "$E2E_DIR/$out/main.cpp"
     if [[ "$is_single" -eq 1 ]]; then
         "$BUBBLER" -t cpp "${bubbler_flags[@]}" -o "$out/gen/testpkg.bb.cpp" testcase.bb
         "$BUBBLER" -t cpp "${bubbler_flags[@]}" -o "$out/gen/bitwid.bb.cpp" features/bitwid.bb
@@ -111,11 +122,10 @@ variant_go() {
     local out="$TMPDIR_BASE/variants/go/$name"
     mkdir -p "$out/bitwid" "$out/testpkg"
     cp tests/go/go.mod "$out/go.mod"
-    cp tests/go/bitwid/bitwid_test.go "$out/bitwid/"
-    cp tests/go/testpkg/testpkg_test.go "$out/testpkg/"
     "$BUBBLER" -t go "$@" -o "$out/" testcase.bb
     "$BUBBLER" -t go "$@" -o "$out/" features/bitwid.bb
-    (cd "$out" && go test ./... -v > /dev/null)
+    gen_driver go "$E2E_DIR/$out/"
+    (cd "$out" && go test ./... > /dev/null)
 }
 
 variant_java() {
@@ -123,7 +133,7 @@ variant_java() {
     shift
     local out="$TMPDIR_BASE/variants/java/$name"
     mkdir -p "$out/gen"
-    cp tests/java/Main.java "$out/Main.java"
+    gen_driver java "$E2E_DIR/$out/Main.java"
     "$BUBBLER" -t java "$@" -o "$out/gen/" testcase.bb
     "$BUBBLER" -t java "$@" -o "$out/gen/" features/bitwid.bb
     (cd "$out" && rm -rf out && mkdir out && find gen -name "*.java" -exec javac -encoding UTF-8 -d out {} + && javac -encoding UTF-8 -cp out -d out Main.java && java -cp out Main > /dev/null)
@@ -134,7 +144,7 @@ variant_python() {
     shift
     local out="$TMPDIR_BASE/variants/python/$name"
     mkdir -p "$out/gen"
-    cp tests/python/test_main.py "$out/test_main.py"
+    gen_driver python "$E2E_DIR/$out/test_main.py"
     "$BUBBLER" -t py "$@" -single -o "$out/gen/testcase_bb.py" testcase.bb
     "$BUBBLER" -t py "$@" -single -o "$out/gen/bitwid_bb.py" features/bitwid.bb
     (cd "$out" && python3 test_main.py > /dev/null)
@@ -145,7 +155,7 @@ variant_csharp() {
     shift
     local out="$TMPDIR_BASE/variants/csharp/$name"
     mkdir -p "$out/gen"
-    cp tests/csharp/Program.cs "$out/Program.cs"
+    gen_driver csharp "$E2E_DIR/$out/Program.cs"
     cp tests/csharp/test.csproj "$out/test.csproj"
     "$BUBBLER" -t cs "$@" -single -o "$out/gen/testcase.bb.cs" testcase.bb
     "$BUBBLER" -t cs "$@" -single -o "$out/gen/bitwid.bb.cs" features/bitwid.bb
@@ -154,8 +164,6 @@ variant_csharp() {
         dotnet run -f net8.0 --project test.csproj > dotnet.log 2>&1 || {
             echo "[csharp:$name] dotnet run failed" >&2
             cat dotnet.log >&2
-            echo "[csharp:$name] Program.cs around reported lines:" >&2
-            awk '{printf("%6d  %s\n", NR, $0)}' Program.cs | sed -n '250,295p' >&2
             return 1
         }
     )
@@ -166,7 +174,7 @@ variant_cjs() {
     shift
     local out="$TMPDIR_BASE/variants/cjs/$name"
     mkdir -p "$out/gen"
-    cp tests/cjs/test.mjs "$out/test.mjs"
+    gen_driver cjs "$E2E_DIR/$out/test.mjs"
     "$BUBBLER" -t cjs "$@" -single -o "$out/gen/testcase.bb.js" testcase.bb
     "$BUBBLER" -t cjs "$@" -single -o "$out/gen/bitwid.bb.js" features/bitwid.bb
     (cd "$out" && node test.mjs > /dev/null)
@@ -177,7 +185,7 @@ variant_esm() {
     shift
     local out="$TMPDIR_BASE/variants/esm/$name"
     mkdir -p "$out/gen"
-    cp tests/esm/test.mjs "$out/test.mjs"
+    gen_driver esm "$E2E_DIR/$out/test.mjs"
     cp tests/esm/package.json "$out/package.json"
     "$BUBBLER" -t mjs "$@" -single -o "$out/gen/testcase.bb.js" testcase.bb
     "$BUBBLER" -t mjs "$@" -single -o "$out/gen/bitwid.bb.js" features/bitwid.bb
@@ -382,10 +390,10 @@ done
 
 ##############################################################################
 # 11b. -unroll static checks — generated code actually uses loops vs. unrolls
-#      depending on threshold. Uses testcase_unroll.bb (arrays of size 2/4/8/32).
+#      depending on threshold. Uses testcase.bb (arrays of size 2/4/8/32).
 ##############################################################################
 echo
-echo "=== #11b: -unroll static checks against testcase_unroll.bb ==="
+echo "=== #11b: -unroll static checks against testcase.bb ==="
 
 # Helper: count occurrences of a loop marker in a generated file.
 count_loops() {
@@ -399,11 +407,11 @@ count_loops() {
 unroll_static_dir="$TMPDIR_BASE/unroll_static"
 mkdir -p "$unroll_static_dir"
 
-# Generate Go output for testcase_unroll.bb at -unroll=-1 (never loop) and -unroll=0
+# Generate Go output for testcase.bb at -unroll=-1 (never loop) and -unroll=0
 # (always loop) and verify the loop count meaningfully differs.
 if command -v go >/dev/null 2>&1; then
-    "$BUBBLER" -t go -unroll=-1 -single -o "$unroll_static_dir/go_neg1.go" testcase_unroll.bb
-    "$BUBBLER" -t go -unroll=0  -single -o "$unroll_static_dir/go_0.go"     testcase_unroll.bb
+    "$BUBBLER" -t go -unroll=-1 -single -o "$unroll_static_dir/go_neg1.go" testcase.bb
+    "$BUBBLER" -t go -unroll=0  -single -o "$unroll_static_dir/go_0.go"     testcase.bb
 
     loops_neg1=$(count_loops "$unroll_static_dir/go_neg1.go" 'for _i := int64')
     loops_0=$(count_loops "$unroll_static_dir/go_0.go"      'for _i := int64')
@@ -417,8 +425,8 @@ fi
 
 # Same for C++ (file-private bb_write/read_field_bits and `for (int64_t _i` loop).
 if command -v g++ >/dev/null 2>&1; then
-    "$BUBBLER" -t cpp -unroll=-1 -single -o "$unroll_static_dir/cpp_neg1.cpp" testcase_unroll.bb
-    "$BUBBLER" -t cpp -unroll=0  -single -o "$unroll_static_dir/cpp_0.cpp"     testcase_unroll.bb
+    "$BUBBLER" -t cpp -unroll=-1 -single -o "$unroll_static_dir/cpp_neg1.cpp" testcase.bb
+    "$BUBBLER" -t cpp -unroll=0  -single -o "$unroll_static_dir/cpp_0.cpp"     testcase.bb
 
     loops_neg1=$(count_loops "$unroll_static_dir/cpp_neg1.cpp" 'for (int64_t _i')
     loops_0=$(count_loops "$unroll_static_dir/cpp_0.cpp"      'for (int64_t _i')
@@ -432,8 +440,8 @@ fi
 
 # Same for Python.
 if command -v python3 >/dev/null 2>&1; then
-    "$BUBBLER" -t py -unroll=-1 -single -o "$unroll_static_dir/py_neg1.py" testcase_unroll.bb
-    "$BUBBLER" -t py -unroll=0  -single -o "$unroll_static_dir/py_0.py"     testcase_unroll.bb
+    "$BUBBLER" -t py -unroll=-1 -single -o "$unroll_static_dir/py_neg1.py" testcase.bb
+    "$BUBBLER" -t py -unroll=0  -single -o "$unroll_static_dir/py_0.py"     testcase.bb
 
     loops_neg1=$(count_loops "$unroll_static_dir/py_neg1.py" 'for _i in range')
     loops_0=$(count_loops "$unroll_static_dir/py_0.py"      'for _i in range')
@@ -449,7 +457,7 @@ fi
 # (MediumArrays) but MUST loop arrays of length 8 (LargeArrays). Spot-check by
 # confirming loop count at unroll=4 is between unroll=-1 and unroll=0.
 if command -v go >/dev/null 2>&1; then
-    "$BUBBLER" -t go -unroll=4 -single -o "$unroll_static_dir/go_4.go" testcase_unroll.bb
+    "$BUBBLER" -t go -unroll=4 -single -o "$unroll_static_dir/go_4.go" testcase.bb
     loops_4=$(count_loops "$unroll_static_dir/go_4.go" 'for _i := int64')
     loops_neg1=$(count_loops "$unroll_static_dir/go_neg1.go" 'for _i := int64')
     loops_0=$(count_loops "$unroll_static_dir/go_0.go" 'for _i := int64')
@@ -462,8 +470,8 @@ fi
 
 # C: bb_write_field_bits / bb_read_field_bits + `for (int64_t _i` loop.
 if command -v gcc >/dev/null 2>&1; then
-    "$BUBBLER" -t c -unroll=-1 -single -o "$unroll_static_dir/c_neg1.c" testcase_unroll.bb
-    "$BUBBLER" -t c -unroll=0  -single -o "$unroll_static_dir/c_0.c"     testcase_unroll.bb
+    "$BUBBLER" -t c -unroll=-1 -single -o "$unroll_static_dir/c_neg1.c" testcase.bb
+    "$BUBBLER" -t c -unroll=0  -single -o "$unroll_static_dir/c_0.c"     testcase.bb
     loops_neg1=$(count_loops "$unroll_static_dir/c_neg1.c" 'for (int64_t _i')
     loops_0=$(count_loops "$unroll_static_dir/c_0.c"      'for (int64_t _i')
     if [[ "$loops_neg1" -eq 0 && "$loops_0" -gt 0 ]]; then
@@ -476,8 +484,8 @@ fi
 # Java: bbWriteFieldBits / bbReadFieldBits + `for (int _i` loop.
 if command -v javac >/dev/null 2>&1; then
     mkdir -p "$unroll_static_dir/java_neg1" "$unroll_static_dir/java_0"
-    "$BUBBLER" -t java -unroll=-1 -o "$unroll_static_dir/java_neg1" testcase_unroll.bb
-    "$BUBBLER" -t java -unroll=0  -o "$unroll_static_dir/java_0"     testcase_unroll.bb
+    "$BUBBLER" -t java -unroll=-1 -o "$unroll_static_dir/java_neg1" testcase.bb
+    "$BUBBLER" -t java -unroll=0  -o "$unroll_static_dir/java_0"     testcase.bb
     loops_neg1=0
     while IFS= read -r f; do
         c=$(count_loops "$f" 'for (int _i')
@@ -497,8 +505,8 @@ fi
 
 # C#: BbWriteFieldBits / BbReadFieldBits + `for (int _i` loop.
 if command -v dotnet >/dev/null 2>&1; then
-    "$BUBBLER" -t cs -unroll=-1 -single -o "$unroll_static_dir/cs_neg1.cs" testcase_unroll.bb
-    "$BUBBLER" -t cs -unroll=0  -single -o "$unroll_static_dir/cs_0.cs"     testcase_unroll.bb
+    "$BUBBLER" -t cs -unroll=-1 -single -o "$unroll_static_dir/cs_neg1.cs" testcase.bb
+    "$BUBBLER" -t cs -unroll=0  -single -o "$unroll_static_dir/cs_0.cs"     testcase.bb
     loops_neg1=$(count_loops "$unroll_static_dir/cs_neg1.cs" 'for (int _i')
     loops_0=$(count_loops "$unroll_static_dir/cs_0.cs"      'for (int _i')
     if [[ "$loops_neg1" -eq 0 && "$loops_0" -gt 0 ]]; then
@@ -510,8 +518,8 @@ fi
 
 # CommonJS / ESM: bbWriteFieldBits / bbReadFieldBits + `for (let _i` loop.
 if command -v node >/dev/null 2>&1; then
-    "$BUBBLER" -t cjs -unroll=-1 -single -o "$unroll_static_dir/cjs_neg1.js" testcase_unroll.bb
-    "$BUBBLER" -t cjs -unroll=0  -single -o "$unroll_static_dir/cjs_0.js"     testcase_unroll.bb
+    "$BUBBLER" -t cjs -unroll=-1 -single -o "$unroll_static_dir/cjs_neg1.js" testcase.bb
+    "$BUBBLER" -t cjs -unroll=0  -single -o "$unroll_static_dir/cjs_0.js"     testcase.bb
     loops_neg1=$(count_loops "$unroll_static_dir/cjs_neg1.js" 'for (let _i')
     loops_0=$(count_loops "$unroll_static_dir/cjs_0.js"      'for (let _i')
     if [[ "$loops_neg1" -eq 0 && "$loops_0" -gt 0 ]]; then
@@ -520,8 +528,8 @@ if command -v node >/dev/null 2>&1; then
         fail "CommonJS static: expected 0/positive loops, got neg1=$loops_neg1 / 0=$loops_0"
     fi
 
-    "$BUBBLER" -t mjs -unroll=-1 -single -o "$unroll_static_dir/esm_neg1.js" testcase_unroll.bb
-    "$BUBBLER" -t mjs -unroll=0  -single -o "$unroll_static_dir/esm_0.js"     testcase_unroll.bb
+    "$BUBBLER" -t mjs -unroll=-1 -single -o "$unroll_static_dir/esm_neg1.js" testcase.bb
+    "$BUBBLER" -t mjs -unroll=0  -single -o "$unroll_static_dir/esm_0.js"     testcase.bb
     loops_neg1=$(count_loops "$unroll_static_dir/esm_neg1.js" 'for (let _i')
     loops_0=$(count_loops "$unroll_static_dir/esm_0.js"      'for (let _i')
     if [[ "$loops_neg1" -eq 0 && "$loops_0" -gt 0 ]]; then

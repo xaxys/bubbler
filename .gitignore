@@ -29,3 +29,6 @@ vendor/
 go.work
 
 *.deprecated
+
+e2e/tests/*
+e2e/tests/**/*
