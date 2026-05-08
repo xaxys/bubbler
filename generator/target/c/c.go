@@ -167,6 +167,7 @@ func (g *CGenerator) Generate(ctx *gen.GenCtx) (retErr error, retWarnings error)
 	if g.GenCtx.GenOptions.SingleFile {
 		singleData := map[string]any{
 			"GenTypes":      g.GenTypes,
+			"GenOptions":    g.GenCtx.GenOptions,
 			"UseMathH":      g.GenState.UseMathH,
 			"UseStringH":    g.GenState.UseStringH,
 			"UseStdLibH":    g.GenState.UseStdLibH,
