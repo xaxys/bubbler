@@ -2298,7 +2298,7 @@ int64_t {{ $structName }}_decode(const void* data, struct {{ $structName }}* ptr
 {{- if $f.FieldType.GetTypeID.IsArray -}}
 {{- $shouldUseLoop := and (ge $loopUnroll 0) (gt $f.FieldType.Length $loopUnroll) -}}
     {{- if $f.FieldType.ElementType.GetTypeID.IsString -}}
-        {{- if $shouldUseLoop -}}
+        {{- if $shouldUseLoop }}
     for (int64_t _i = 0; _i < {{ $f.FieldType.Length }}; _i++) {
         if (size <= offset + {{ $fromByte }}) return -(int64_t)(offset + {{ $fromByte }} + 1);
         const uint8_t* p = (const uint8_t*)data + offset + {{ $fromByte }};
@@ -2318,7 +2318,7 @@ int64_t {{ $structName }}_decode(const void* data, struct {{ $structName }}* ptr
         {{- end -}}
         {{- end -}}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsBytes -}}
-        {{- if $shouldUseLoop -}}
+        {{- if $shouldUseLoop }}
     for (int64_t _i = 0; _i < {{ $f.FieldType.Length }}; _i++) {
         if (size <= offset + {{ $fromByte }}) return -(int64_t)(offset + {{ $fromByte }} + 1);
         uint64_t len = 0;
