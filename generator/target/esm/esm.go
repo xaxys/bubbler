@@ -69,47 +69,66 @@ func NewESModuleGenerator() *ESModuleGenerator {
 
 // ==================== Util ====================
 
+// All numeric output goes through ESModuleLiteralGenerator. The non-BigInt
+// helpers emit a plain JS Number; the *BigInt variants append `n` for use
+// with int64/uint64 fields (which are BigInt at runtime in the generated JS).
+// generateDec is also exported as a free function for templates that need a
+// quick %d without going through the receiver.
 func generateDec(value any) string {
-	return fmt.Sprintf("%d", value)
+	return gen.FormatIntLiteral(gen.MakeIntLit(value, definition.IntBaseDec), nil)
 }
 
 func generateDecBigInt(value any) string {
-	return fmt.Sprintf("%sn", generateDec(value))
+	return generateDec(value) + "n"
 }
 
+// The bare generators emit a plain JS Number literal. They go through
+// gen.FormatIntLiteral (which centralises -decnum + signed/unsigned
+// formatting) but DO NOT add a BigInt `n` suffix; callers that explicitly
+// want BigInt (because the destination field is int64/uint64) use the
+// *BigInt wrappers below. ESModuleLiteralGenerator itself adds `n` when
+// GenerateIntLiteral is invoked directly (constant fields).
 func (g *ESModuleGenerator) generateDec(value any) string {
-	return generateDec(value)
+	return gen.FormatIntLiteral(gen.MakeIntLit(value, definition.IntBaseDec), g.opts())
 }
 
 func (g *ESModuleGenerator) generateHex(value any) string {
-	if g.GenCtx.GenOptions.DecimalNumber {
-		return fmt.Sprintf("%d", value)
-	}
-	return fmt.Sprintf("0x%X", value)
+	return gen.FormatIntLiteral(gen.MakeIntLit(value, definition.IntBaseHex), g.opts())
 }
 
 func (g *ESModuleGenerator) generateBin(value any) string {
-	if g.GenCtx.GenOptions.DecimalNumber {
-		return fmt.Sprintf("%d", value)
+	return gen.FormatIntLiteral(gen.MakeIntLit(value, definition.IntBaseBin), g.opts())
+}
+
+func (g *ESModuleGenerator) opts() *gen.GenOptions {
+	if g.GenCtx == nil {
+		return nil
 	}
-	return fmt.Sprintf("0b%b", value)
+	return g.GenCtx.GenOptions
 }
 
 func (g *ESModuleGenerator) generateDecBigInt(value any) string {
-	return generateDecBigInt(value)
+	return g.generateDec(value) + "n"
 }
 
 func (g *ESModuleGenerator) generateHexBigInt(value any) string {
-	return fmt.Sprintf("%sn", g.generateHex(value))
+	return g.generateHex(value) + "n"
 }
 
 func (g *ESModuleGenerator) generateBinBigInt(value any) string {
-	return fmt.Sprintf("%sn", g.generateBin(value))
+	return g.generateBin(value) + "n"
+}
+
+func (g *ESModuleGenerator) literalGen() *ESModuleLiteralGenerator {
+	if g.GenCtx == nil {
+		return NewESModuleLiteralGenerator(nil)
+	}
+	return NewESModuleLiteralGenerator(g.GenCtx.GenOptions)
 }
 
 // generateBoolLiteral renders `true` / `false` via the ESM literal generator.
 func (g *ESModuleGenerator) generateBoolLiteral(value bool) string {
-	s, _ := NewESModuleLiteralGenerator().GenerateBoolLiteral(&definition.BoolLiteral{BoolValue: value})
+	s, _ := g.literalGen().GenerateBoolLiteral(&definition.BoolLiteral{BoolValue: value})
 	return s
 }
 
@@ -1293,7 +1312,7 @@ var constantFieldTemplate = `
 `
 
 func (g ESModuleGenerator) GenerateConstantField(field *definition.ConstantField) (string, error) {
-	literalGentor := NewESModuleLiteralGenerator()
+	literalGentor := g.literalGen()
 	funcMap := template.FuncMap{
 		"GenerateType":    g.GenerateType,
 		"GenerateLiteral": literalGentor.GenerateLiteral,

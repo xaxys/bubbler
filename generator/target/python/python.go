@@ -39,22 +39,28 @@ func NewPythonGenerator() *PythonGenerator {
 
 // ==================== Util ====================
 
+// generateDec / generateHex / generateBin route every numeric output through
+// PythonLiteralGenerator so -decnum / unsigned-mask formatting is centralised.
 func (g *PythonGenerator) generateDec(value any) string {
-	return fmt.Sprintf("%d", value)
+	s, _ := g.literalGen().GenerateIntLiteral(gen.MakeIntLit(value, definition.IntBaseDec))
+	return s
 }
 
 func (g *PythonGenerator) generateHex(value any) string {
-	if g.GenCtx.GenOptions.DecimalNumber {
-		return fmt.Sprintf("%d", value)
-	}
-	return fmt.Sprintf("0x%X", value)
+	s, _ := g.literalGen().GenerateIntLiteral(gen.MakeIntLit(value, definition.IntBaseHex))
+	return s
 }
 
 func (g *PythonGenerator) generateBin(value any) string {
-	if g.GenCtx.GenOptions.DecimalNumber {
-		return fmt.Sprintf("%d", value)
+	s, _ := g.literalGen().GenerateIntLiteral(gen.MakeIntLit(value, definition.IntBaseBin))
+	return s
+}
+
+func (g *PythonGenerator) literalGen() *PythonLiteralGenerator {
+	if g.GenCtx == nil {
+		return NewPythonLiteralGenerator(nil)
 	}
-	return fmt.Sprintf("0b%b", value)
+	return NewPythonLiteralGenerator(g.GenCtx.GenOptions)
 }
 
 func pyBoolLiteral(v bool) string {
@@ -625,7 +631,7 @@ var constantFieldTemplate = `
 `
 
 func (g PythonGenerator) GenerateConstantField(field *definition.ConstantField) (string, error) {
-	literalGentor := NewPythonLiteralGenerator()
+	literalGentor := g.literalGen()
 
 	funcMap := template.FuncMap{
 		"GenerateType":    g.GenerateType,
@@ -2054,7 +2060,7 @@ func (g PythonGenerator) generateDecodeConstantField(field *definition.ConstantF
 
 	decodeStmts = append(decodeStmts, stmts...)
 
-	literalValue, err := NewPythonLiteralGenerator().GenerateLiteral(field.FieldConstant)
+	literalValue, err := g.literalGen().GenerateLiteral(field.FieldConstant)
 	if err != nil {
 		return nil, err
 	}
@@ -2650,7 +2656,7 @@ func (g PythonExprGenerator) GenerateCastExpr(expr *definition.CastExpr) (string
 func (g PythonExprGenerator) GenerateConstantExpr(expr *definition.ConstantExpr) (string, error) {
 	generator := g.LiteralGenerator
 	if generator == nil {
-		generator = NewPythonLiteralGenerator()
+		generator = NewPythonLiteralGenerator(nil)
 	}
 	return g.AcceptLiteral(expr.ConstantValue, generator)
 }
@@ -2683,11 +2689,13 @@ func (g PythonExprGenerator) GenerateRawExpr(expr *definition.RawExpr) (string, 
 
 type PythonLiteralGenerator struct {
 	*gen.GenLiteralDispatcher
+	GenOptions *gen.GenOptions
 }
 
-func NewPythonLiteralGenerator() *PythonLiteralGenerator {
+func NewPythonLiteralGenerator(opts *gen.GenOptions) *PythonLiteralGenerator {
 	generator := &PythonLiteralGenerator{
 		GenLiteralDispatcher: nil,
+		GenOptions:           opts,
 	}
 	generator.GenLiteralDispatcher = gen.NewGenLiteralDispatcher(generator)
 	return generator
@@ -2705,7 +2713,7 @@ func (g PythonLiteralGenerator) GenerateBoolLiteral(literal *definition.BoolLite
 }
 
 func (g PythonLiteralGenerator) GenerateIntLiteral(literal *definition.IntLiteral) (string, error) {
-	return fmt.Sprintf("%d", literal.IntValue), nil
+	return gen.FormatIntLiteral(literal, g.GenOptions), nil
 }
 
 func (g PythonLiteralGenerator) GenerateFloatLiteral(literal *definition.FloatLiteral) (string, error) {

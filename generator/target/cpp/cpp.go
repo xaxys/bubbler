@@ -71,28 +71,35 @@ func NewCppGenerator() *CppGenerator {
 
 // ==================== Util ====================
 
+// generateDec / generateHex / generateBin route every numeric output through
+// the C++ literal generator so -decnum and unsigned-mask formatting are
+// handled in one place.
 func (g *CppGenerator) generateDec(value any) string {
-	return fmt.Sprintf("%d", value)
+	s, _ := g.literalGen().GenerateIntLiteral(gen.MakeIntLit(value, definition.IntBaseDec))
+	return s
 }
 
 func (g *CppGenerator) generateHex(value any) string {
-	if g.GenCtx.GenOptions.DecimalNumber {
-		return fmt.Sprintf("%d", value)
-	}
-	return fmt.Sprintf("0x%X", value)
+	s, _ := g.literalGen().GenerateIntLiteral(gen.MakeIntLit(value, definition.IntBaseHex))
+	return s
 }
 
 func (g *CppGenerator) generateBin(value any) string {
-	if g.GenCtx.GenOptions.DecimalNumber {
-		return fmt.Sprintf("%d", value)
-	}
-	return fmt.Sprintf("0b%b", value)
+	s, _ := g.literalGen().GenerateIntLiteral(gen.MakeIntLit(value, definition.IntBaseBin))
+	return s
 }
 
 // generateBoolLiteral renders `true` / `false` via the C++ literal generator.
 func (g *CppGenerator) generateBoolLiteral(value bool) string {
-	s, _ := NewCLiteralGenerator().GenerateBoolLiteral(&definition.BoolLiteral{BoolValue: value})
+	s, _ := g.literalGen().GenerateBoolLiteral(&definition.BoolLiteral{BoolValue: value})
 	return s
+}
+
+func (g *CppGenerator) literalGen() *CLiteralGenerator {
+	if g.GenCtx == nil {
+		return NewCLiteralGenerator(nil)
+	}
+	return NewCLiteralGenerator(g.GenCtx.GenOptions)
 }
 
 // generateCastExpr renders `(toType)expr` via the C++ expression generator.
@@ -2929,7 +2936,7 @@ func (g CppGenerator) generateDecodeConstantField(field *definition.ConstantFiel
 
 	decodeStmts = append(decodeStmts, stmts...)
 
-	literalValue, err := NewCLiteralGenerator().GenerateLiteral(field.FieldConstant)
+	literalValue, err := g.literalGen().GenerateLiteral(field.FieldConstant)
 	if err != nil {
 		return nil, err
 	}
@@ -3596,7 +3603,7 @@ func (g CppExprGenerator) GenerateCastExpr(expr *definition.CastExpr) (string, e
 func (g CppExprGenerator) GenerateConstantExpr(expr *definition.ConstantExpr) (string, error) {
 	generator := g.LiteralGenerator
 	if generator == nil {
-		generator = NewCLiteralGenerator()
+		generator = NewCLiteralGenerator(nil)
 	}
 	return g.AcceptLiteral(expr.ConstantValue, generator)
 }
@@ -3629,11 +3636,13 @@ func (g CppExprGenerator) GenerateRawExpr(expr *definition.RawExpr) (string, err
 
 type CLiteralGenerator struct {
 	*gen.GenLiteralDispatcher
+	GenOptions *gen.GenOptions
 }
 
-func NewCLiteralGenerator() *CLiteralGenerator {
+func NewCLiteralGenerator(opts *gen.GenOptions) *CLiteralGenerator {
 	generator := &CLiteralGenerator{
 		GenLiteralDispatcher: nil,
+		GenOptions:           opts,
 	}
 	generator.GenLiteralDispatcher = gen.NewGenLiteralDispatcher(generator)
 	return generator
@@ -3648,7 +3657,7 @@ func (g CLiteralGenerator) GenerateBoolLiteral(literal *definition.BoolLiteral) 
 }
 
 func (g CLiteralGenerator) GenerateIntLiteral(literal *definition.IntLiteral) (string, error) {
-	return fmt.Sprintf("%d", literal.IntValue), nil
+	return gen.FormatIntLiteral(literal, g.GenOptions), nil
 }
 
 func (g CLiteralGenerator) GenerateFloatLiteral(literal *definition.FloatLiteral) (string, error) {

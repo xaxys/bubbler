@@ -72,47 +72,54 @@ func NewCommonJSGenerator() *CommonJSGenerator {
 
 // ==================== Util ====================
 
-func generateDec(value any) string {
-	return fmt.Sprintf("%d", value)
-}
-
-func generateDecBigInt(value any) string {
-	return fmt.Sprintf("%sn", generateDec(value))
-}
-
+// The bare generators (generateDec / generateHex / generateBin) emit a plain
+// JS Number literal. They go through gen.FormatIntLiteral (which centralises
+// -decnum + signed/unsigned formatting) but DO NOT add a BigInt `n` suffix;
+// callers that explicitly want BigInt (because the destination field is
+// int64/uint64) use the *BigInt wrappers below. The CommonJSLiteralGenerator
+// itself adds `n` when GenerateIntLiteral is invoked directly (constant
+// fields), since those values may exceed Number.MAX_SAFE_INTEGER.
 func (g *CommonJSGenerator) generateDec(value any) string {
-	return generateDec(value)
+	return gen.FormatIntLiteral(gen.MakeIntLit(value, definition.IntBaseDec), g.opts())
 }
 
 func (g *CommonJSGenerator) generateHex(value any) string {
-	if g.GenCtx.GenOptions.DecimalNumber {
-		return fmt.Sprintf("%d", value)
-	}
-	return fmt.Sprintf("0x%X", value)
+	return gen.FormatIntLiteral(gen.MakeIntLit(value, definition.IntBaseHex), g.opts())
 }
 
 func (g *CommonJSGenerator) generateBin(value any) string {
-	if g.GenCtx.GenOptions.DecimalNumber {
-		return fmt.Sprintf("%d", value)
+	return gen.FormatIntLiteral(gen.MakeIntLit(value, definition.IntBaseBin), g.opts())
+}
+
+func (g *CommonJSGenerator) opts() *gen.GenOptions {
+	if g.GenCtx == nil {
+		return nil
 	}
-	return fmt.Sprintf("0b%b", value)
+	return g.GenCtx.GenOptions
 }
 
 func (g *CommonJSGenerator) generateDecBigInt(value any) string {
-	return generateDecBigInt(value)
+	return g.generateDec(value) + "n"
 }
 
 func (g *CommonJSGenerator) generateHexBigInt(value any) string {
-	return fmt.Sprintf("%sn", g.generateHex(value))
+	return g.generateHex(value) + "n"
 }
 
 func (g *CommonJSGenerator) generateBinBigInt(value any) string {
-	return fmt.Sprintf("%sn", g.generateBin(value))
+	return g.generateBin(value) + "n"
+}
+
+func (g *CommonJSGenerator) literalGen() *CommonJSLiteralGenerator {
+	if g.GenCtx == nil {
+		return NewCommonJSLiteralGenerator(nil)
+	}
+	return NewCommonJSLiteralGenerator(g.GenCtx.GenOptions)
 }
 
 // generateBoolLiteral renders `true` / `false` via the CommonJS literal generator.
 func (g *CommonJSGenerator) generateBoolLiteral(value bool) string {
-	s, _ := NewCommonJSLiteralGenerator().GenerateBoolLiteral(&definition.BoolLiteral{BoolValue: value})
+	s, _ := g.literalGen().GenerateBoolLiteral(&definition.BoolLiteral{BoolValue: value})
 	return s
 }
 
@@ -1464,7 +1471,7 @@ var constantFieldTemplate = `
 `
 
 func (g CommonJSGenerator) GenerateConstantField(field *definition.ConstantField) (string, error) {
-	literalGentor := NewCommonJSLiteralGenerator()
+	literalGentor := g.literalGen()
 
 	funcMap := template.FuncMap{
 		"GenerateType":    g.GenerateType,
@@ -3012,7 +3019,7 @@ func (g CommonJSGenerator) generateDecodeConstantField(field *definition.Constan
 
 	decodeStmts = append(decodeStmts, stmts...)
 
-	literalValue, err := NewCommonJSLiteralGenerator().GenerateLiteral(field.FieldConstant)
+	literalValue, err := g.literalGen().GenerateLiteral(field.FieldConstant)
 	if err != nil {
 		return nil, err
 	}
@@ -3710,7 +3717,7 @@ func (g CommonJSExprGenerator) GenerateCastExpr(expr *definition.CastExpr) (stri
 func (g CommonJSExprGenerator) GenerateConstantExpr(expr *definition.ConstantExpr) (string, error) {
 	generator := g.LiteralGenerator
 	if generator == nil {
-		generator = NewCommonJSLiteralGenerator()
+		generator = NewCommonJSLiteralGenerator(nil)
 	}
 	return g.AcceptLiteral(expr.ConstantValue, generator)
 }
@@ -3743,11 +3750,13 @@ func (g CommonJSExprGenerator) GenerateRawExpr(expr *definition.RawExpr) (string
 
 type CommonJSLiteralGenerator struct {
 	*gen.GenLiteralDispatcher
+	GenOptions *gen.GenOptions
 }
 
-func NewCommonJSLiteralGenerator() *CommonJSLiteralGenerator {
+func NewCommonJSLiteralGenerator(opts *gen.GenOptions) *CommonJSLiteralGenerator {
 	generator := &CommonJSLiteralGenerator{
 		GenLiteralDispatcher: nil,
+		GenOptions:           opts,
 	}
 	generator.GenLiteralDispatcher = gen.NewGenLiteralDispatcher(generator)
 	return generator
@@ -3761,11 +3770,23 @@ func (g CommonJSLiteralGenerator) GenerateBoolLiteral(literal *definition.BoolLi
 	return fmt.Sprintf("%t", literal.BoolValue), nil
 }
 
+// GenerateIntLiteral defers base/-decnum/unsigned formatting to gen.FormatIntLiteral
+// then promotes to BigInt (`n` suffix) when the value cannot fit in a JS Number
+// safely (Number.MAX_SAFE_INTEGER is 2^53 - 1; we use the int32 boundary plus
+// the unsigned-bit-pattern check to match the previous behaviour).
 func (g CommonJSLiteralGenerator) GenerateIntLiteral(literal *definition.IntLiteral) (string, error) {
-	if literal.IntValue > math.MaxInt32 || literal.IntValue < math.MinInt32 {
-		return generateDecBigInt(literal.IntValue), nil
+	out := gen.FormatIntLiteral(literal, g.GenOptions)
+	bigInt := literal.IntValue > math.MaxInt32 || literal.IntValue < math.MinInt32
+	if literal.Unsigned {
+		u := uint64(literal.IntValue)
+		if u > math.MaxInt32 {
+			bigInt = true
+		}
 	}
-	return generateDec(literal.IntValue), nil
+	if bigInt {
+		return out + "n", nil
+	}
+	return out, nil
 }
 
 func (g CommonJSLiteralGenerator) GenerateFloatLiteral(literal *definition.FloatLiteral) (string, error) {

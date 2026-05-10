@@ -55,36 +55,34 @@ func NewJavaGenerator() *JavaGenerator {
 
 // ==================== Util ====================
 
+// generateDec / generateHex / generateBin route every numeric output through
+// JavaLiteralGenerator. -decnum and Java's `L` long-suffix logic are handled
+// inside GenerateIntLiteral.
 func (g *JavaGenerator) generateDec(value any) string {
-	if util.ToInt64(value) > math.MaxInt32 || util.ToInt64(value) < math.MinInt32 {
-		return fmt.Sprintf("%dL", value)
-	}
-	return fmt.Sprintf("%d", value)
+	s, _ := g.literalGen().GenerateIntLiteral(gen.MakeIntLit(value, definition.IntBaseDec))
+	return s
 }
 
 func (g *JavaGenerator) generateHex(value any) string {
-	if g.GenCtx.GenOptions.DecimalNumber {
-		g.generateDec(value)
-	}
-	if util.ToInt64(value) > math.MaxInt32 || util.ToInt64(value) < math.MinInt32 {
-		return fmt.Sprintf("0x%XL", value)
-	}
-	return fmt.Sprintf("0x%X", value)
+	s, _ := g.literalGen().GenerateIntLiteral(gen.MakeIntLit(value, definition.IntBaseHex))
+	return s
 }
 
 func (g *JavaGenerator) generateBin(value any) string {
-	if g.GenCtx.GenOptions.DecimalNumber {
-		g.generateDec(value)
+	s, _ := g.literalGen().GenerateIntLiteral(gen.MakeIntLit(value, definition.IntBaseBin))
+	return s
+}
+
+func (g *JavaGenerator) literalGen() *JavaLiteralGenerator {
+	if g.GenCtx == nil {
+		return NewJavaLiteralGenerator(nil)
 	}
-	if util.ToInt64(value) > math.MaxInt32 || util.ToInt64(value) < math.MinInt32 {
-		return fmt.Sprintf("0b%bL", value)
-	}
-	return fmt.Sprintf("0b%b", value)
+	return NewJavaLiteralGenerator(g.GenCtx.GenOptions)
 }
 
 // generateBoolLiteral renders `true` / `false` via the Java literal generator.
 func (g *JavaGenerator) generateBoolLiteral(value bool) string {
-	s, _ := NewJavaLiteralGenerator().GenerateBoolLiteral(&definition.BoolLiteral{BoolValue: value})
+	s, _ := g.literalGen().GenerateBoolLiteral(&definition.BoolLiteral{BoolValue: value})
 	return s
 }
 
@@ -794,7 +792,7 @@ var constantFieldTemplate = `
 `
 
 func (g JavaGenerator) GenerateConstantField(field *definition.ConstantField) (string, error) {
-	literalGentor := NewJavaLiteralGenerator()
+	literalGentor := g.literalGen()
 
 	funcMap := template.FuncMap{
 		"GenerateType":    g.GenerateType,
@@ -2484,7 +2482,7 @@ func (g JavaGenerator) generateDecodeConstantField(field *definition.ConstantFie
 
 	decodeStmts = append(decodeStmts, stmts...)
 
-	literalValue, err := NewJavaLiteralGenerator().GenerateLiteral(field.FieldConstant)
+	literalValue, err := g.literalGen().GenerateLiteral(field.FieldConstant)
 	if err != nil {
 		return nil, err
 	}
@@ -3224,7 +3222,7 @@ func (g JavaExprGenerator) GenerateCastExpr(expr *definition.CastExpr) (string, 
 func (g JavaExprGenerator) GenerateConstantExpr(expr *definition.ConstantExpr) (string, error) {
 	generator := g.LiteralGenerator
 	if generator == nil {
-		generator = NewJavaLiteralGenerator()
+		generator = NewJavaLiteralGenerator(nil)
 	}
 	return g.AcceptLiteral(expr.ConstantValue, generator)
 }
@@ -3257,11 +3255,13 @@ func (g JavaExprGenerator) GenerateRawExpr(expr *definition.RawExpr) (string, er
 
 type JavaLiteralGenerator struct {
 	*gen.GenLiteralDispatcher
+	GenOptions *gen.GenOptions
 }
 
-func NewJavaLiteralGenerator() *JavaLiteralGenerator {
+func NewJavaLiteralGenerator(opts *gen.GenOptions) *JavaLiteralGenerator {
 	generator := &JavaLiteralGenerator{
 		GenLiteralDispatcher: nil,
+		GenOptions:           opts,
 	}
 	generator.GenLiteralDispatcher = gen.NewGenLiteralDispatcher(generator)
 	return generator
@@ -3275,11 +3275,43 @@ func (g JavaLiteralGenerator) GenerateBoolLiteral(literal *definition.BoolLitera
 	return fmt.Sprintf("%t", literal.BoolValue), nil
 }
 
+// GenerateIntLiteral routes through gen.FormatIntLiteral for base / -decnum /
+// unsigned handling, then appends Java's `L` suffix for values that don't fit
+// in a 32-bit int.
+//
+// Java-specific quirk: decimal long literals are signed and capped at
+// Long.MAX_VALUE = 2^63 - 1. An unsigned bit pattern with the high bit set
+// (e.g. 0x8000000000000000) renders to 9223372036854775808 in decimal, which
+// javac rejects ("integer number too large"). The same value spelled in hex
+// is fine (Java reinterprets the bit pattern as signed). So when -decnum
+// would otherwise force decimal, we keep the original hex base for that
+// boundary case.
 func (g JavaLiteralGenerator) GenerateIntLiteral(literal *definition.IntLiteral) (string, error) {
-	if literal.IntValue > math.MaxInt32 || literal.IntValue < math.MinInt32 {
-		return fmt.Sprintf("%dL", literal.IntValue), nil
+	resolved := *literal
+	if resolved.Base == definition.IntBaseAuto {
+		resolved.Base = definition.IntBaseDec
 	}
-	return fmt.Sprintf("%d", literal.IntValue), nil
+	if g.GenOptions != nil && g.GenOptions.DecimalNumber {
+		resolved.Base = definition.IntBaseDec
+	}
+	// Override decimal back to hex when the value can't be expressed as a
+	// positive signed long literal.
+	if resolved.Base == definition.IntBaseDec && resolved.Unsigned && resolved.IntValue < 0 {
+		resolved.Base = definition.IntBaseHex
+	}
+	out := gen.FormatIntLiteral(&resolved, nil)
+
+	needsLong := resolved.IntValue > math.MaxInt32 || resolved.IntValue < math.MinInt32
+	if resolved.Unsigned {
+		u := uint64(resolved.IntValue)
+		if u > math.MaxInt32 {
+			needsLong = true
+		}
+	}
+	if needsLong {
+		return out + "L", nil
+	}
+	return out, nil
 }
 
 func (g JavaLiteralGenerator) GenerateFloatLiteral(literal *definition.FloatLiteral) (string, error) {

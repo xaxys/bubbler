@@ -31,4 +31,6 @@ go.work
 *.deprecated
 
 e2e/tests/*
-e2e/tests/**/*
+!e2e/tests/csharp/test.csproj
+!e2e/tests/esm/package.json
+!e2e/tests/go/go.mod

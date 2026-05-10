@@ -55,27 +55,33 @@ func NewCSharpGenerator() *CSharpGenerator {
 
 // ==================== Util ====================
 
+// generateDec / generateHex / generateBin route every numeric output through
+// CSharpLiteralGenerator so -decnum / unsigned-mask formatting is centralised.
 func (g *CSharpGenerator) generateDec(value any) string {
-	return fmt.Sprintf("%d", value)
+	s, _ := g.literalGen().GenerateIntLiteral(gen.MakeIntLit(value, definition.IntBaseDec))
+	return s
 }
 
 func (g *CSharpGenerator) generateHex(value any) string {
-	if g.GenCtx.GenOptions.DecimalNumber {
-		return fmt.Sprintf("%d", value)
-	}
-	return fmt.Sprintf("0x%X", value)
+	s, _ := g.literalGen().GenerateIntLiteral(gen.MakeIntLit(value, definition.IntBaseHex))
+	return s
 }
 
 func (g *CSharpGenerator) generateBin(value any) string {
-	if g.GenCtx.GenOptions.DecimalNumber {
-		return fmt.Sprintf("%d", value)
+	s, _ := g.literalGen().GenerateIntLiteral(gen.MakeIntLit(value, definition.IntBaseBin))
+	return s
+}
+
+func (g *CSharpGenerator) literalGen() *CSharpLiteralGenerator {
+	if g.GenCtx == nil {
+		return NewCSharpLiteralGenerator(nil)
 	}
-	return fmt.Sprintf("0b%b", value)
+	return NewCSharpLiteralGenerator(g.GenCtx.GenOptions)
 }
 
 // generateBoolLiteral renders `true` / `false` via the C# literal generator.
 func (g *CSharpGenerator) generateBoolLiteral(value bool) string {
-	s, _ := NewCSharpLiteralGenerator().GenerateBoolLiteral(&definition.BoolLiteral{BoolValue: value})
+	s, _ := g.literalGen().GenerateBoolLiteral(&definition.BoolLiteral{BoolValue: value})
 	return s
 }
 
@@ -830,7 +836,7 @@ var constantFieldTemplate = `
 `
 
 func (g CSharpGenerator) GenerateConstantField(field *definition.ConstantField) (string, error) {
-	literalGentor := NewCSharpLiteralGenerator()
+	literalGentor := g.literalGen()
 
 	funcMap := template.FuncMap{
 		"GenerateType":    g.GenerateType,
@@ -2723,7 +2729,7 @@ func (g CSharpGenerator) generateDecodeConstantField(field *definition.ConstantF
 
 	decodeStmts = append(decodeStmts, stmts...)
 
-	literalValue, err := NewCSharpLiteralGenerator().GenerateLiteral(field.FieldConstant)
+	literalValue, err := g.literalGen().GenerateLiteral(field.FieldConstant)
 	if err != nil {
 		return nil, err
 	}
@@ -3495,7 +3501,7 @@ func (g CSharpExprGenerator) GenerateCastExpr(expr *definition.CastExpr) (string
 func (g CSharpExprGenerator) GenerateConstantExpr(expr *definition.ConstantExpr) (string, error) {
 	generator := g.LiteralGenerator
 	if generator == nil {
-		generator = NewCSharpLiteralGenerator()
+		generator = NewCSharpLiteralGenerator(nil)
 	}
 	return g.AcceptLiteral(expr.ConstantValue, generator)
 }
@@ -3528,11 +3534,13 @@ func (g CSharpExprGenerator) GenerateRawExpr(expr *definition.RawExpr) (string, 
 
 type CSharpLiteralGenerator struct {
 	*gen.GenLiteralDispatcher
+	GenOptions *gen.GenOptions
 }
 
-func NewCSharpLiteralGenerator() *CSharpLiteralGenerator {
+func NewCSharpLiteralGenerator(opts *gen.GenOptions) *CSharpLiteralGenerator {
 	generator := &CSharpLiteralGenerator{
 		GenLiteralDispatcher: nil,
+		GenOptions:           opts,
 	}
 	generator.GenLiteralDispatcher = gen.NewGenLiteralDispatcher(generator)
 	return generator
@@ -3547,7 +3555,7 @@ func (g CSharpLiteralGenerator) GenerateBoolLiteral(literal *definition.BoolLite
 }
 
 func (g CSharpLiteralGenerator) GenerateIntLiteral(literal *definition.IntLiteral) (string, error) {
-	return fmt.Sprintf("%d", literal.IntValue), nil
+	return gen.FormatIntLiteral(literal, g.GenOptions), nil
 }
 
 func (g CSharpLiteralGenerator) GenerateFloatLiteral(literal *definition.FloatLiteral) (string, error) {

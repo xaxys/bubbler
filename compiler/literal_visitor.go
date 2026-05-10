@@ -38,6 +38,18 @@ func (v *LiteralVisitor) VisitConstant(ctx *parser.ConstantContext) any {
 		if ctx.SUB() != nil {
 			constant = -constant
 		}
+		// Preserve the source-text base so generators can re-emit literals
+		// in the same form the user wrote (subject to -decnum).
+		base := definition.IntBaseDec
+		txt := ctx.IntLit().GetText()
+		if len(txt) >= 2 {
+			switch {
+			case txt[0] == '0' && (txt[1] == 'x' || txt[1] == 'X'):
+				base = definition.IntBaseHex
+			case txt[0] == '0' && (txt[1] == 'b' || txt[1] == 'B'):
+				base = definition.IntBaseBin
+			}
+		}
 		return &definition.IntLiteral{
 			BasePosition: definition.BasePosition{
 				File:   v.Unit.UnitName.Path,
@@ -45,6 +57,7 @@ func (v *LiteralVisitor) VisitConstant(ctx *parser.ConstantContext) any {
 				Column: ctx.IntLit().GetStart().GetColumn(),
 			},
 			IntValue: constant,
+			Base:     base,
 		}
 	}
 	if ctx.FloatLit() != nil {

@@ -426,7 +426,7 @@ func (g ESModuleGenerator) generateDecodeConstantField(field *definition.Constan
 		return nil, err
 	}
 	decodeStmts = append(decodeStmts, stmts...)
-	literalValue, err := NewESModuleLiteralGenerator().GenerateLiteral(field.FieldConstant)
+	literalValue, err := g.literalGen().GenerateLiteral(field.FieldConstant)
 	if err != nil {
 		return nil, err
 	}
@@ -914,7 +914,7 @@ func (g ESModuleExprGenerator) GenerateCastExpr(expr *definition.CastExpr) (stri
 func (g ESModuleExprGenerator) GenerateConstantExpr(expr *definition.ConstantExpr) (string, error) {
 	generator := g.LiteralGenerator
 	if generator == nil {
-		generator = NewESModuleLiteralGenerator()
+		generator = NewESModuleLiteralGenerator(nil)
 	}
 	return g.AcceptLiteral(expr.ConstantValue, generator)
 }
@@ -947,10 +947,11 @@ func (g ESModuleExprGenerator) GenerateRawExpr(expr *definition.RawExpr) (string
 
 type ESModuleLiteralGenerator struct {
 	*gen.GenLiteralDispatcher
+	GenOptions *gen.GenOptions
 }
 
-func NewESModuleLiteralGenerator() *ESModuleLiteralGenerator {
-	g := &ESModuleLiteralGenerator{}
+func NewESModuleLiteralGenerator(opts *gen.GenOptions) *ESModuleLiteralGenerator {
+	g := &ESModuleLiteralGenerator{GenOptions: opts}
 	g.GenLiteralDispatcher = gen.NewGenLiteralDispatcher(g)
 	return g
 }
@@ -963,11 +964,22 @@ func (g ESModuleLiteralGenerator) GenerateBoolLiteral(literal *definition.BoolLi
 	return fmt.Sprintf("%t", literal.BoolValue), nil
 }
 
+// GenerateIntLiteral defers base / -decnum / unsigned formatting to
+// gen.FormatIntLiteral, then promotes to BigInt (`n` suffix) when the value
+// cannot fit in a JS Number safely.
 func (g ESModuleLiteralGenerator) GenerateIntLiteral(literal *definition.IntLiteral) (string, error) {
-	if literal.IntValue > 2147483647 || literal.IntValue < -2147483648 {
-		return generateDecBigInt(literal.IntValue), nil
+	out := gen.FormatIntLiteral(literal, g.GenOptions)
+	bigInt := literal.IntValue > 2147483647 || literal.IntValue < -2147483648
+	if literal.Unsigned {
+		u := uint64(literal.IntValue)
+		if u > 2147483647 {
+			bigInt = true
+		}
 	}
-	return generateDec(literal.IntValue), nil
+	if bigInt {
+		return out + "n", nil
+	}
+	return out, nil
 }
 
 func (g ESModuleLiteralGenerator) GenerateFloatLiteral(literal *definition.FloatLiteral) (string, error) {

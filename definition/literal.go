@@ -112,12 +112,29 @@ func (l BoolLiteral) GetMinimalTypeID() TypeID {
 
 // ==================== IntLiteral ====================
 
+// IntBase carries the formatting hint for an integer literal: how the
+// language generator should render it. Source-parsed literals capture the
+// base of the original token (e.g. `0xAA` → IntBaseHex). Internally
+// constructed literals (bit masks, etc.) set Base explicitly.
+//
+// The `-decnum` generator option overrides every Base to IntBaseDec.
+type IntBase int8
+
+const (
+	IntBaseAuto IntBase = iota // unspecified — generator picks (default Dec)
+	IntBaseDec                 // 42
+	IntBaseHex                 // 0x2A
+	IntBaseBin                 // 0b101010
+)
+
 // ensure that IntLiteral implements Literal
 var _ Literal = (*IntLiteral)(nil)
 
 type IntLiteral struct {
 	BasePosition
-	IntValue int64
+	IntValue int64   // bit pattern; reinterpret as uint64 when Unsigned is true
+	Unsigned bool    // if true, treat IntValue's bit pattern as a uint64 (used for masks > 2^63)
+	Base     IntBase // formatting hint; -decnum still wins
 }
 
 func (l IntLiteral) String() string {

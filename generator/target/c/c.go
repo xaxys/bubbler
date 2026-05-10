@@ -66,28 +66,39 @@ func NewCGenerator() *CGenerator {
 
 // ==================== Util ====================
 
+// generateDec / generateHex / generateBin construct an *IntLiteral with the
+// requested base hint and dispatch through the C literal generator. The
+// literal generator centralises -decnum handling and unsigned-vs-signed
+// formatting, so every numeric output in the C generator goes through the
+// same path.
 func (g *CGenerator) generateDec(value any) string {
-	return fmt.Sprintf("%d", value)
+	s, _ := g.literalGen().GenerateIntLiteral(gen.MakeIntLit(value, definition.IntBaseDec))
+	return s
 }
 
 func (g *CGenerator) generateHex(value any) string {
-	if g.GenCtx.GenOptions.DecimalNumber {
-		return fmt.Sprintf("%d", value)
-	}
-	return fmt.Sprintf("0x%X", value)
+	s, _ := g.literalGen().GenerateIntLiteral(gen.MakeIntLit(value, definition.IntBaseHex))
+	return s
 }
 
 func (g *CGenerator) generateBin(value any) string {
-	if g.GenCtx.GenOptions.DecimalNumber {
-		return fmt.Sprintf("%d", value)
-	}
-	return fmt.Sprintf("0b%b", value)
+	s, _ := g.literalGen().GenerateIntLiteral(gen.MakeIntLit(value, definition.IntBaseBin))
+	return s
 }
 
 // generateBoolLiteral renders `true` / `false` via the C literal generator.
 func (g *CGenerator) generateBoolLiteral(value bool) string {
-	s, _ := NewCLiteralGenerator().GenerateBoolLiteral(&definition.BoolLiteral{BoolValue: value})
+	s, _ := g.literalGen().GenerateBoolLiteral(&definition.BoolLiteral{BoolValue: value})
 	return s
+}
+
+// literalGen returns a fresh CLiteralGenerator that knows the current
+// generator options (so -decnum is handled in one place).
+func (g *CGenerator) literalGen() *CLiteralGenerator {
+	if g.GenCtx == nil {
+		return NewCLiteralGenerator(nil)
+	}
+	return NewCLiteralGenerator(g.GenCtx.GenOptions)
 }
 
 // generateCastExpr renders `(toType)expr` via the C expression generator.
@@ -2685,7 +2696,7 @@ func (g CGenerator) generateDecodeConstantField(field *definition.ConstantField,
 
 	decodeStmts = append(decodeStmts, stmts...)
 
-	literalValue, err := NewCLiteralGenerator().GenerateLiteral(field.FieldConstant)
+	literalValue, err := g.literalGen().GenerateLiteral(field.FieldConstant)
 	if err != nil {
 		return nil, err
 	}
@@ -3335,7 +3346,7 @@ func (g CExprGenerator) GenerateCastExpr(expr *definition.CastExpr) (string, err
 func (g CExprGenerator) GenerateConstantExpr(expr *definition.ConstantExpr) (string, error) {
 	generator := g.LiteralGenerator
 	if generator == nil {
-		generator = NewCLiteralGenerator()
+		generator = NewCLiteralGenerator(nil)
 	}
 	return g.AcceptLiteral(expr.ConstantValue, generator)
 }
@@ -3368,11 +3379,13 @@ func (g CExprGenerator) GenerateRawExpr(expr *definition.RawExpr) (string, error
 
 type CLiteralGenerator struct {
 	*gen.GenLiteralDispatcher
+	GenOptions *gen.GenOptions // for -decnum awareness; may be nil (assumed default)
 }
 
-func NewCLiteralGenerator() *CLiteralGenerator {
+func NewCLiteralGenerator(opts *gen.GenOptions) *CLiteralGenerator {
 	generator := &CLiteralGenerator{
 		GenLiteralDispatcher: nil,
+		GenOptions:           opts,
 	}
 	generator.GenLiteralDispatcher = gen.NewGenLiteralDispatcher(generator)
 	return generator
@@ -3386,8 +3399,11 @@ func (g CLiteralGenerator) GenerateBoolLiteral(literal *definition.BoolLiteral) 
 	return fmt.Sprintf("%t", literal.BoolValue), nil
 }
 
+// GenerateIntLiteral honors the literal's Base hint, falling back to decimal
+// when -decnum is set or the Base is Auto. Unsigned literals are formatted as
+// uint64 so values >= 2^63 (e.g. all-ones masks) survive.
 func (g CLiteralGenerator) GenerateIntLiteral(literal *definition.IntLiteral) (string, error) {
-	return fmt.Sprintf("%d", literal.IntValue), nil
+	return gen.FormatIntLiteral(literal, g.GenOptions), nil
 }
 
 func (g CLiteralGenerator) GenerateFloatLiteral(literal *definition.FloatLiteral) (string, error) {

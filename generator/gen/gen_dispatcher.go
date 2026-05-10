@@ -1,6 +1,8 @@
 package gen
 
 import (
+	"fmt"
+
 	"github.com/xaxys/bubbler/definition"
 )
 
@@ -11,6 +13,70 @@ type LiteralGeneratorImpl interface {
 	GenerateIntLiteral(literal *definition.IntLiteral) (string, error)
 	GenerateFloatLiteral(literal *definition.FloatLiteral) (string, error)
 	GenerateStringLiteral(literal *definition.StringLiteral) (string, error)
+}
+
+// MakeIntLit normalises any Go integer value into a *definition.IntLiteral
+// suitable for the per-language LiteralGeneratorImpl.GenerateIntLiteral. The
+// `base` hint is propagated to the generator (which still respects -decnum).
+//
+// Unsigned Go types (uint, uintN) survive the full uint64 range — the bit
+// pattern is preserved in IntValue with Unsigned=true, and each language
+// generator reinterprets it when formatting.
+func MakeIntLit(value any, base definition.IntBase) *definition.IntLiteral {
+	switch x := value.(type) {
+	case int:
+		return &definition.IntLiteral{IntValue: int64(x), Base: base}
+	case int8:
+		return &definition.IntLiteral{IntValue: int64(x), Base: base}
+	case int16:
+		return &definition.IntLiteral{IntValue: int64(x), Base: base}
+	case int32:
+		return &definition.IntLiteral{IntValue: int64(x), Base: base}
+	case int64:
+		return &definition.IntLiteral{IntValue: x, Base: base}
+	case uint:
+		return &definition.IntLiteral{IntValue: int64(x), Unsigned: true, Base: base}
+	case uint8:
+		return &definition.IntLiteral{IntValue: int64(x), Unsigned: true, Base: base}
+	case uint16:
+		return &definition.IntLiteral{IntValue: int64(x), Unsigned: true, Base: base}
+	case uint32:
+		return &definition.IntLiteral{IntValue: int64(x), Unsigned: true, Base: base}
+	case uint64:
+		return &definition.IntLiteral{IntValue: int64(x), Unsigned: true, Base: base}
+	default:
+		panic(fmt.Sprintf("MakeIntLit: unsupported type %T", value))
+	}
+}
+
+// FormatIntLiteral applies the Base + Unsigned + DecimalNumber rules in one
+// place. Each language's GenerateIntLiteral can call this for the common
+// hex/dec/bin output (and then add a language-specific suffix like ULL / n
+// / L / etc.).
+func FormatIntLiteral(literal *definition.IntLiteral, opts *GenOptions) string {
+	base := literal.Base
+	if base == definition.IntBaseAuto || (opts != nil && opts.DecimalNumber) {
+		base = definition.IntBaseDec
+	}
+	if literal.Unsigned {
+		u := uint64(literal.IntValue)
+		switch base {
+		case definition.IntBaseHex:
+			return fmt.Sprintf("0x%X", u)
+		case definition.IntBaseBin:
+			return fmt.Sprintf("0b%b", u)
+		default:
+			return fmt.Sprintf("%d", u)
+		}
+	}
+	switch base {
+	case definition.IntBaseHex:
+		return fmt.Sprintf("0x%X", literal.IntValue)
+	case definition.IntBaseBin:
+		return fmt.Sprintf("0b%b", literal.IntValue)
+	default:
+		return fmt.Sprintf("%d", literal.IntValue)
+	}
 }
 
 type GenLiteralDispatcher struct {
