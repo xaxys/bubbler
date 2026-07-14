@@ -151,6 +151,14 @@ func emitCpp_scenario(sc Scenario) string {
             fmt.Fprintf(&sb, "        CHECK_EQ((int)bb_encode(s, buf), (int)%s::size);\n", qual)
         }
 
+        if len(c.Wire) > 0 {
+            fmt.Fprintf(&sb, "        {\n")
+            fmt.Fprintf(&sb, "            static const uint8_t _wire[] = {%s};\n", cByteList(c.Wire))
+            fmt.Fprintf(&sb, "            CHECK_EQ(buf.size(), sizeof(_wire));\n")
+            fmt.Fprintf(&sb, "            CHECK(std::memcmp(buf.data(), _wire, sizeof(_wire)) == 0);\n")
+            fmt.Fprintf(&sb, "        }\n")
+        }
+
         if sc.StructName == "BigEndianFields" {
             sb.WriteString("        CHECK_EQ(buf[0], 0xBE);\n")
             sb.WriteString("        CHECK_EQ(buf[1], 0x12);\n")
@@ -329,7 +337,11 @@ func emitCpp_decodeSize(sc Scenario) string {
         for _, fv := range c.Setup {
             sb.WriteString(emitCpp_assignVal("_src."+fv.Name, fv.V, "        "))
         }
-        sb.WriteString("        std::vector<uint8_t> _full(_src.encode_size());\n")
+        if sc.IsDynamic {
+            sb.WriteString("        std::vector<uint8_t> _full(_src.encode_size());\n")
+        } else {
+            fmt.Fprintf(&sb, "        std::vector<uint8_t> _full(%s::size);\n", qual)
+        }
         sb.WriteString("        bb_encode(_src, _full);\n")
     }
     for _, ds := range sc.DecodeSizeChecks {

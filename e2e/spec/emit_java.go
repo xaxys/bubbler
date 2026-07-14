@@ -78,6 +78,10 @@ func emitJava_scenario(sc Scenario) string {
         if !sc.IsDynamic {
             fmt.Fprintf(&sb, "            check(buf.length == %s.size(), \"encode length\");\n", sc.StructName)
         }
+        if len(c.Wire) > 0 {
+            fmt.Fprintf(&sb, "            check(java.util.Arrays.equals(buf, new byte[]{%s}), \"golden wire\");\n",
+                javaByteList(c.Wire))
+        }
         if sc.StructName == "BigEndianFields" {
             sb.WriteString("            checkEq(Byte.toUnsignedInt(buf[0]), 0xBE, \"buf[0]=0xBE\");\n")
             sb.WriteString("            checkEq(Byte.toUnsignedInt(buf[1]), 0x12, \"buf[1]=0x12\");\n")
@@ -98,6 +102,8 @@ func emitJava_scenario(sc Scenario) string {
         for _, af := range c.resolveAssert() {
             sb.WriteString(emitJava_assertField("d", af, "            "))
         }
+        fmt.Fprintf(&sb, "            %s truncated = new %s();\n", sc.StructName, sc.StructName)
+        sb.WriteString("            check(truncated.decode(java.util.Arrays.copyOf(buf, buf.length - 1)) < 0, \"truncated decode rejected\");\n")
         for _, e := range c.Errors {
             fmt.Fprintf(&sb, "            /* decode-error: %s */\n", e.Name)
             sb.WriteString("            {\n")
@@ -185,6 +191,8 @@ func emitJava_setNamed(target, name string, v Val, indent string) string {
 
 func emitJava_setAt(target, setterAt string, i int, v Val, indent string) string {
     switch v.Kind {
+    case VKBool:
+        return fmt.Sprintf("%s%s.%s(%d, %s);\n", indent, target, setterAt, i, javaBool(v))
     case VKU8, VKI8:
         var n int64
         if v.Kind == VKU8 {
@@ -218,6 +226,13 @@ func emitJava_setAt(target, setterAt string, i int, v Val, indent string) string
     case VKEnum:
         return fmt.Sprintf("%s%s.%s(%d, %s.%s);\n", indent, target, setterAt, i,
             v.EnumType, v.EnumName)
+    case VKString:
+        return fmt.Sprintf("%s%s.%s(%d, %s);\n", indent, target, setterAt, i, javaStringLit(v.Str))
+    case VKBytes:
+        if len(v.Bytes) == 0 {
+            return fmt.Sprintf("%s%s.%s(%d, new byte[0]);\n", indent, target, setterAt, i)
+        }
+        return fmt.Sprintf("%s%s.%s(%d, new byte[]{%s});\n", indent, target, setterAt, i, javaByteList(v.Bytes))
     case VKStruct:
         var sb strings.Builder
         tmp := javaTempName(fmt.Sprintf("%s_%s_%d", target, setterAt, i))
@@ -312,6 +327,9 @@ func emitJava_assertNamed(target, name string, v Val, tol float64, indent string
 func emitJava_assertAt(target, getterAt string, i int, v Val, tol float64, indent, msg string) string {
     label := fmt.Sprintf("%s[%d]", msg, i)
     switch v.Kind {
+    case VKBool:
+        return fmt.Sprintf("%scheck(%s.%s(%d) == %s, \"%s\");\n",
+            indent, target, getterAt, i, javaBool(v), label)
     case VKU8:
         return fmt.Sprintf("%scheckEq(Byte.toUnsignedInt(%s.%s(%d)), %d, \"%s\");\n",
             indent, target, getterAt, i, uint8(v.U), label)
@@ -347,6 +365,16 @@ func emitJava_assertAt(target, getterAt string, i int, v Val, tol float64, inden
     case VKEnum:
         return fmt.Sprintf("%scheck(%s.%s(%d) == %s.%s, \"%s\");\n",
             indent, target, getterAt, i, v.EnumType, v.EnumName, label)
+    case VKString:
+        return fmt.Sprintf("%scheck(%s.equals(%s.%s(%d)), \"%s\");\n",
+            indent, javaStringLit(v.Str), target, getterAt, i, label)
+    case VKBytes:
+        if len(v.Bytes) == 0 {
+            return fmt.Sprintf("%scheck(%s.%s(%d).length == 0, \"%s empty\");\n",
+                indent, target, getterAt, i, label)
+        }
+        return fmt.Sprintf("%scheck(java.util.Arrays.equals(%s.%s(%d), new byte[]{%s}), \"%s\");\n",
+            indent, target, getterAt, i, javaByteList(v.Bytes), label)
     case VKStruct:
         var sb strings.Builder
         tmp := javaTempName(fmt.Sprintf("%s_g_%s_%d", target, getterAt, i))

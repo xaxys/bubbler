@@ -83,11 +83,11 @@ const _f64f = new Float64Array(_f64buf);
 function f64FromBits(b) { _f64u[0] = BigInt(b); return _f64f[0]; }
 function f64ToBits(f) { _f64f[0] = f; return _f64u[0]; }
 
-function decodeSizeDynamic(data, start = 0) {
-    if (typeof pkg.DynamicFields.decode_size === "function") {
-        return pkg.DynamicFields.decode_size(data, start);
+function decodeSizeDynamic(type, data, start = 0) {
+    if (typeof type.decode_size === "function") {
+        return type.decode_size(data, start);
     }
-    const inst = new pkg.DynamicFields();
+    const inst = new type();
     if (typeof inst.decode_size === "function") {
         return inst.decode_size(data, start);
     }
@@ -128,6 +128,12 @@ func emitJS_scenario(sc Scenario) string {
         if !sc.IsDynamic {
             fmt.Fprintf(&sb, "    check(buf.length === %s.%s.size(), \"encode length\");\n", nsPrefix, sc.StructName)
         }
+        if len(c.Wire) > 0 {
+            fmt.Fprintf(&sb, "    checkEq(buf.length, %d, \"golden wire length\");\n", len(c.Wire))
+            for i, value := range c.Wire {
+                fmt.Fprintf(&sb, "    checkEq(buf[%d], 0x%02X, \"golden wire[%d]\");\n", i, value, i)
+            }
+        }
         if sc.StructName == "BigEndianFields" {
             sb.WriteString("    checkEq(buf[0], 0xBE, \"buf[0]=0xBE\");\n")
             sb.WriteString("    checkEq(buf[1], 0x12, \"buf[1]=0x12\");\n")
@@ -148,6 +154,9 @@ func emitJS_scenario(sc Scenario) string {
         for _, af := range c.resolveAssert() {
             sb.WriteString(emitJS_assertField("d", af, "    ", nsPrefix))
         }
+        fmt.Fprintf(&sb, "    const truncated = new %s.%s();\n", nsPrefix, sc.StructName)
+        fmt.Fprintf(&sb, "    check(%s.%s.decode(truncated, Array.from(buf).slice(0, buf.length - 1)) < 0, \"truncated decode rejected\");\n",
+            nsPrefix, sc.StructName)
         for _, e := range c.Errors {
             fmt.Fprintf(&sb, "    // decode-error: %s\n", e.Name)
             sb.WriteString("    {\n")
@@ -358,14 +367,14 @@ func emitJS_decodeSize(sc Scenario, ns string) string {
         fmt.Fprintf(&sb, "    // %s\n", ds.Name)
         if ds.SourceCase != "" {
             if ds.Truncate == 0 {
-                sb.WriteString("    checkEq(decodeSizeDynamic(_full, 0), _full.length, \"complete\");\n")
+                fmt.Fprintf(&sb, "    checkEq(decodeSizeDynamic(%s.%s, _full, 0), _full.length, \"complete\");\n", ns, sc.StructName)
             } else {
-                fmt.Fprintf(&sb, "    checkEq(decodeSizeDynamic(Array.from(_full).slice(0, _full.length - %d), 0), -_full.length, \"truncate %d\");\n",
-                    ds.Truncate, ds.Truncate)
+                fmt.Fprintf(&sb, "    checkEq(decodeSizeDynamic(%s.%s, Array.from(_full).slice(0, _full.length - %d), 0), -_full.length, \"truncate %d\");\n",
+                    ns, sc.StructName, ds.Truncate, ds.Truncate)
             }
         } else {
-            fmt.Fprintf(&sb, "    checkEq(decodeSizeDynamic([%s], 0), %d, \"%s\");\n",
-                jsByteList(ds.Bytes), ds.Expected, ds.Name)
+            fmt.Fprintf(&sb, "    checkEq(decodeSizeDynamic(%s.%s, [%s], 0), %d, \"%s\");\n",
+                ns, sc.StructName, jsByteList(ds.Bytes), ds.Expected, ds.Name)
         }
     }
     sb.WriteString("}\n")

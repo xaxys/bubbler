@@ -1,12 +1,15 @@
 package main
 
-import "math"
+import (
+    "math"
+    "strings"
+)
 
 // AllScenarios is the single source of truth for every codec test case
 // emitted into per-language driver source. Adding a new struct or case is
 // a one-place edit here — every language driver picks it up on next run.
 func AllScenarios() *Spec {
-    return &Spec{
+    spec := &Spec{
         Scenarios: []Scenario{
             simpleScalars(),
             bitPacked(),
@@ -22,9 +25,32 @@ func AllScenarios() *Spec {
             largeArrays(),
             veryLargeArrays(),
             mixedArrays(),
+            codecArrays(),
             narrowBW(),
         },
     }
+    for i := range spec.Scenarios {
+        scenario := &spec.Scenarios[i]
+        if len(scenario.Cases) == 0 || len(scenario.Cases[0].Setup) == 0 {
+            continue
+        }
+        hasEncodedSourceCheck := false
+        for _, check := range scenario.DecodeSizeChecks {
+            if check.SourceCase != "" {
+                hasEncodedSourceCheck = true
+                break
+            }
+        }
+        if hasEncodedSourceCheck {
+            continue
+        }
+        source := scenario.Cases[0].Name
+        scenario.DecodeSizeChecks = append(scenario.DecodeSizeChecks,
+            DecodeSizeCheck{Name: "complete_packet", SourceCase: source},
+            DecodeSizeCheck{Name: "truncate_one_byte", SourceCase: source, Truncate: 1},
+        )
+    }
+    return spec
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -74,6 +100,15 @@ func simpleScalars() Scenario {
                 {Name: "flag_t", V: B(true)},
                 {Name: "flag_f", V: B(false)},
                 {Name: "color", V: E("Color", "BLUE")},
+            },
+            Wire: []byte{
+                0x00, 0xFF, 0x80, 0x7F, 0xEF, 0xBE, 0x2E, 0xFB,
+                0xEF, 0xBE, 0xAD, 0xDE, 0x60, 0x79, 0xFE, 0xFF,
+                0xEF, 0xBE, 0xAD, 0xDE, 0xBE, 0xBA, 0xFE, 0xCA,
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                0xD0, 0x0F, 0x49, 0x40,
+                0x69, 0x57, 0x14, 0x8B, 0x0A, 0xBF, 0x05, 0x40,
+                0x01, 0x00, 0x03,
             },
         }},
     }
@@ -150,6 +185,11 @@ func bigEndianFields() Scenario {
                 {Name: "f32", V: F32(3.14), Tol: 1e-3},
                 {Name: "arr", V: arr},
             },
+            Wire: []byte{
+                0xBE, 0x12, 0x34, 0xFF, 0xFF, 0xFF, 0xFF,
+                0x40, 0x48, 0xF5, 0xC3,
+                0x00, 0x64, 0xFF, 0x38, 0x01, 0x2C, 0xFE, 0x70,
+            },
         }},
     }
 }
@@ -225,6 +265,7 @@ func constantFields() Scenario {
         Cases: []Case{{
             Name:  "round_trip",
             Setup: []FieldVal{F("length", U16(1024))},
+            Wire:  []byte{0xAA, 0x02, 0x00, 0x04, 0x02},
             Errors: []DecodeError{
                 {Name: "bad_header", Patches: []BytePatch{{Offset: 0, Value: 0xFF}}, ExpectedRet: -1},
                 {Name: "bad_version", Patches: []BytePatch{{Offset: 1, Value: 0x00}}, ExpectedRet: -1},
@@ -513,6 +554,56 @@ func mixedArrays() Scenario {
                     U64(0x5555555555555555))),
             },
         }},
+    }
+}
+
+func codecArrays() Scenario {
+    stringsValue := A(VKString, "",
+        S(""),
+        S("ascii"),
+        S("中文"),
+        S("quote=\" slash=\\"),
+        S(strings.Repeat("x", 130)),
+    )
+    blobsValue := A(VKBytes, "",
+        Bs(nil),
+        Bs([]byte{0}),
+        Bs([]byte{0x00, 0x7F, 0x80, 0xFF}),
+        Bs(seq(127)),
+        Bs(seq(128)),
+    )
+    recordsValue := A(VKStruct, "BlobRecord",
+        Struct("BlobRecord", F("code", U16(0)), F("label", S("")), F("payload", Bs(nil))),
+        Struct("BlobRecord", F("code", U16(1)), F("label", S("one")), F("payload", Bs([]byte{1}))),
+        Struct("BlobRecord", F("code", U16(0x7FFF)), F("label", S("中文")), F("payload", Bs(seq(3)))),
+        Struct("BlobRecord", F("code", U16(0x8000)), F("label", S("boundary127")), F("payload", Bs(seq(127)))),
+        Struct("BlobRecord", F("code", U16(0xFFFF)), F("label", S("boundary128")), F("payload", Bs(seq(128)))),
+    )
+    return Scenario{
+        BBFile:     "testcase",
+        Package:    "testpkg",
+        StructName: "CodecArrays",
+        IsDynamic:  true,
+        Notes:      "Every array element category, including strings, bytes and dynamic structs",
+        Cases: []Case{{
+            Name: "round_trip",
+            Setup: []FieldVal{
+                F("bools", A(VKBool, "", B(false), B(true), B(true), B(false), B(true))),
+                F("i8s", A(VKI8, "", I8(-128), I8(-1), I8(0), I8(1), I8(127))),
+                F("u16s", A(VKU16, "", U16(0), U16(1), U16(0x7FFF), U16(0x8000), U16(0xFFFF))),
+                F("i32s", A(VKI32, "", I32(-2147483648), I32(-1), I32(0), I32(1), I32(2147483647))),
+                F("u32s", A(VKU32, "", U32(0), U32(1), U32(0x7FFFFFFF), U32(0x80000000), U32(0xFFFFFFFF))),
+                F("f32s", A(VKF32, "", F32Bits(0x80000000), F32(1.5), F32(-2.25), F32Bits(0x7F800000), F32Bits(0x7FC00000))),
+                F("f64s", A(VKF64, "", F64Bits(0x8000000000000000), F64(math.Pi), F64(-math.E), F64Bits(0x7FF0000000000000), F64Bits(0x7FF8000000000000))),
+                F("strings", stringsValue),
+                F("blobs", blobsValue),
+                F("records", recordsValue),
+            },
+        }},
+        DecodeSizeChecks: []DecodeSizeCheck{
+            {Name: "complete_packet", SourceCase: "round_trip"},
+            {Name: "truncate_one_byte", SourceCase: "round_trip", Truncate: 1},
+        },
     }
 }
 

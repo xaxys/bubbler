@@ -141,6 +141,14 @@ func emitC_case(sc Scenario, c Case) string {
             sc.StructName, sc.StructName)
     }
 
+    if len(c.Wire) > 0 {
+        fmt.Fprintf(&sb, "        {\n")
+        fmt.Fprintf(&sb, "            static const uint8_t _wire[] = {%s};\n", cByteList(c.Wire))
+        fmt.Fprintf(&sb, "            CHECK_EQ((int)sizeof(_wire), %d);\n", len(c.Wire))
+        fmt.Fprintf(&sb, "            CHECK(memcmp(buf, _wire, sizeof(_wire)) == 0);\n")
+        fmt.Fprintf(&sb, "        }\n")
+    }
+
     // Special case: BigEndianFields case checks raw byte layout
     if sc.StructName == "BigEndianFields" {
         sb.WriteString("        CHECK_EQ(buf[0], 0xBE);\n")

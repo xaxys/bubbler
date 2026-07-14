@@ -1677,8 +1677,6 @@ func (g JavaGenerator) generateEncodeNormalField(field *definition.NormalField, 
 			encodeStmts = append(encodeStmts, loopStmts...)
 		} else if shouldUseLoop {
 			// Fixed-bit-width element loop using bbWriteFieldBits.
-			g.GenState.UseBitHelpers = true
-
 			bigEndianStr := g.generateBoolLiteral(gen.MatchOption(field.FieldOptions, "order", "big"))
 
 			bitBaseExpr := fmt.Sprintf("%d + _i * %dL", from, elemBitSize)
@@ -1706,6 +1704,7 @@ func (g JavaGenerator) generateEncodeNormalField(field *definition.NormalField, 
 				common["DataExpr"] = "data, " + offsetExpr
 				stmt = util.ExecuteTemplate(fieldEncoderTemplate, "encodeArrayLoopStruct", nil, common)
 			case *definition.BasicType:
+				g.GenState.UseBitHelpers = true
 				switch elemTyT.GetTypeID() {
 				case definition.TypeID_Float32:
 					// `Float.floatToRawIntBits(x)` is an API call, not a basic-type cast.
@@ -1719,6 +1718,7 @@ func (g JavaGenerator) generateEncodeNormalField(field *definition.NormalField, 
 				}
 				stmt = util.ExecuteTemplate(fieldEncoderTemplate, "encodeArrayLoopBasicSimple", nil, common)
 			case *definition.Enum:
+				g.GenState.UseBitHelpers = true
 				// `enumValue.getNumber()` is an API call, not a basic-type cast.
 				common["ValueExpr"] = g.generateCastExpr(&definition.Int64, fmt.Sprintf("%s[_i].getNumber()", name))
 				stmt = util.ExecuteTemplate(fieldEncoderTemplate, "encodeArrayLoopBasicSimple", nil, common)
@@ -1739,6 +1739,14 @@ func (g JavaGenerator) generateEncodeNormalField(field *definition.NormalField, 
 			case *definition.BasicType:
 				nameIndex = func(index int64) string {
 					return fmt.Sprintf("%s[%d]", name, index)
+				}
+				if ty.ElementType.GetTypeID().IsBool() {
+					tempName := g.generateEncodeTempVarName(startBits)
+					declData := map[string]any{"TyUint": tyUint, "TempName": tempName}
+					declStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarDeclOnly", nil, declData)
+					encodeStmts = append(encodeStmts, declStr)
+					nameIndex = func(_ int64) string { return tempName }
+					elemTy = definition.GetBasicType(tyUintID)
 				}
 				// same as enum
 				if ty.ElementType.GetTypeID().IsFloat() {
@@ -1785,7 +1793,14 @@ func (g JavaGenerator) generateEncodeNormalField(field *definition.NormalField, 
 
 				switch ty.ElementType.(type) {
 				case *definition.BasicType:
-					if ty.ElementType.GetTypeID().IsFloat() {
+					if ty.ElementType.GetTypeID().IsBool() {
+						assignData := map[string]any{
+							"TempName":  subName,
+							"FieldName": fmt.Sprintf("%s[%d]", name, i),
+						}
+						assignStr := util.ExecuteTemplate(fieldEncoderTemplate, "encodeNormalFieldTempVarAssignBoolCast", nil, assignData)
+						encodeStmts = append(encodeStmts, assignStr)
+					} else if ty.ElementType.GetTypeID().IsFloat() {
 						encodeNormalFieldTempVarAssignFloatCastData := map[string]any{
 							"TempName":  subName,
 							"FieldName": fmt.Sprintf("%s[%d]", name, i),
@@ -2090,6 +2105,7 @@ var decoderTemplate = `
      * @return -1 if the decoding failed, otherwise the number of bytes decoded
      */
     public int decode(byte[] data, int start) {
+        if (this.decodeSize(data, start) < 0) return -1;
         {{- if .Dynamic }}
         int offset = 0;
         {{- end }}
@@ -2417,7 +2433,7 @@ var fieldDecoderTemplate = `
 
 {{- define "decodeArrayLoopStruct" -}}
 for (int _i = 0; _i < {{ .Length }}; _i++) {
-    {{ .ArrayName }}[_i].decode({{ .DataExpr }});
+    if ({{ .ArrayName }}[_i].decode({{ .DataExpr }}) < 0) return -1;
 }
 {{- end -}}
 
@@ -2698,8 +2714,6 @@ func (g JavaGenerator) generateDecodeNormalField(field *definition.NormalField, 
 			decodeStmts = append(decodeStmts, loopStmts...)
 		} else if shouldUseLoop {
 			// Fixed-bit-width element loop using bbReadFieldBits.
-			g.GenState.UseBitHelpers = true
-
 			bigEndianStr := g.generateBoolLiteral(gen.MatchOption(field.FieldOptions, "order", "big"))
 
 			bitBaseExpr := fmt.Sprintf("%d + _i * %dL", from, elemBitSize)
@@ -2727,9 +2741,11 @@ func (g JavaGenerator) generateDecodeNormalField(field *definition.NormalField, 
 				common["DataExpr"] = "data, " + offsetExpr
 				stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopStruct", nil, common)
 			case *definition.BasicType:
+				g.GenState.UseBitHelpers = true
 				common["Expr"] = g.decodeBasicValueExpr(elemTyT, elemTySize, elemBitSize)
 				stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopBasic", nil, common)
 			case *definition.Enum:
+				g.GenState.UseBitHelpers = true
 				// `EnumName.forNumber(int)` is an API call; cast `(int)_v` is a basic-type cast.
 				common["Expr"] = fmt.Sprintf("%s.forNumber(%s)", elemTyT.EnumName, g.generateCastExpr(&definition.Int32, "_v"))
 				stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopBasic", nil, common)

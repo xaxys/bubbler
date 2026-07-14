@@ -77,6 +77,10 @@ func emitGo_scenario(sc Scenario) string {
         if !sc.IsDynamic {
             fmt.Fprintf(&sb, "        if int(s.Size()) != len(buf) { t.Fatalf(\"encode size = %%d, want %%d\", len(buf), s.Size()) }\n")
         }
+        if len(c.Wire) > 0 {
+            fmt.Fprintf(&sb, "        if want := []byte{%s}; !bytes.Equal(buf, want) { t.Fatalf(\"wire mismatch: got %% X, want %% X\", buf, want) }\n",
+                goByteList(c.Wire))
+        }
 
         if sc.StructName == "BigEndianFields" {
             sb.WriteString("        if buf[0] != 0xBE { t.Errorf(\"buf[0]: got 0x%X\", buf[0]) }\n")
@@ -98,6 +102,11 @@ func emitGo_scenario(sc Scenario) string {
         for _, af := range c.resolveAssert() {
             sb.WriteString(emitGo_assertVal("d."+pascalCase(af.Name), af.V, af.Tol, "        "))
         }
+
+        sb.WriteString("        if len(buf) > 0 {\n")
+        fmt.Fprintf(&sb, "            var truncated %s\n", sc.StructName)
+        sb.WriteString("            if got := truncated.Decode(buf[:len(buf)-1]); got >= 0 { t.Errorf(\"truncated decode succeeded: %d\", got) }\n")
+        sb.WriteString("        }\n")
 
         for _, e := range c.Errors {
             fmt.Fprintf(&sb, "        // decode-error: %s\n", e.Name)

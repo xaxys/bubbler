@@ -1746,13 +1746,23 @@ var encoderTemplate = `
                                     {{- if $shouldUseLoop }}
                     for (let _i = 0; _i < {{ $field.FieldType.Length }}; _i++) {
                         size += obj.{{ $fieldName }}[_i].length;
-                        size += 1{{ range $j := iterate 1 5 }} + Boolean(obj.{{ $fieldName }}[_i].length >> {{ calc $j "*" 7 }}){{ end }};
+                        var _length = obj.{{ $fieldName }}[_i].length;
+                        do {
+                            size++;
+                            _length = Math.floor(_length / 128);
+                        } while (_length > 0);
                     }
                                     {{- else }}
-                                    {{- range $i := iterate 0 $field.FieldType.Length }}
+                    {{- range $i := iterate 0 $field.FieldType.Length }}
                     size += obj.{{ $fieldName }}[{{ $i }}].length;
-                    size += 1{{ range $j := iterate 1 5 }} + Boolean(obj.{{ $fieldName }}[{{ $i }}].length >> {{ calc $j "*" 7 }}){{ end }};
-                                    {{- end }}
+                    {
+                        var _length = obj.{{ $fieldName }}[{{ $i }}].length;
+                        do {
+                            size++;
+                            _length = Math.floor(_length / 128);
+                        } while (_length > 0);
+                    }
+                    {{- end }}
                                     {{- end }}
                                 {{- end }}
                             {{- else if $field.FieldType.GetTypeID.IsStruct }}
@@ -1761,9 +1771,15 @@ var encoderTemplate = `
                                 {{- end }}
                             {{- else if $field.FieldType.GetTypeID.IsString }}
                     size += stringToUTF8BytesCount(obj.{{ $fieldName }}) + 1;
-                            {{- else if $field.FieldType.GetTypeID.IsBytes }}
+                {{- else if $field.FieldType.GetTypeID.IsBytes }}
                     size += obj.{{ $fieldName }}.length;
-                    size += 1{{ range $j := iterate 1 5 }} + Boolean(obj.{{ $fieldName }}.length >> {{ calc $j "*" 7 }}){{ end }};
+                    {
+                        var _length = obj.{{ $fieldName }}.length;
+                        do {
+                            size++;
+                            _length = Math.floor(_length / 128);
+                        } while (_length > 0);
+                    }
                             {{- end }}
                         {{- end }}
                     {{- end }}
@@ -1941,21 +1957,25 @@ var fieldEncoderTemplate = `
 {{- end -}}
 
 {{- define "encodeNormalFieldString" -}}
-                    (function() {
+                    {
                         var {{ .TempName }} = stringToUTF8Bytes({{ .FieldName }}, data, offset + start + {{ .FromByte }});
                         data[offset + start + {{ .FromByte }} + {{ .TempName }}] = 0;
                         offset += {{ .TempName }} + 1;
-                    })();
+                    }
 {{- end -}}
 
 {{- define "encodeNormalFieldBytes" -}}
-                    (function() {
+                    {
                         var {{ .TempName }} = {{ .FieldName }}.length;
-                        do { data[offset + start + {{ .FromByte }}] = {{ .TempName }} & {{ .GetMask }} | {{ .SetMask }}; offset++; {{ .TempName }} >>= {{ .Shift }}; } while ({{ .TempName }} > 0);
-                        data[offset - 1 + start + {{ .FromByte }}] &= ~{{ .SetMask }};
+                        do {
+                            var _byte = {{ .TempName }} % 128;
+                            {{ .TempName }} = Math.floor({{ .TempName }} / 128);
+                            data[offset + start + {{ .FromByte }}] = _byte | ({{ .TempName }} > 0 ? {{ .SetMask }} : 0);
+                            offset++;
+                        } while ({{ .TempName }} > 0);
                         for (var i = 0; i < {{ .FieldName }}.length; i++) data[offset + start + {{ .FromByte }} + i] = {{ .FieldName }}[i];
                         offset += {{ .FieldName }}.length;
-                    })();
+                    }
 {{- end -}}
 
 {{- define "encodeImpl" -}}
@@ -2604,6 +2624,7 @@ var decoderTemplate = `
                     if (obj === undefined) return -1;
                     if (data === undefined) return -1;
                     if (start === undefined) start = 0;
+                    if ({{ $structName }}.decode_size(data, start) < 0) return -1;
                     {{- if .Dynamic }}
                     var offset = 0;
                     {{- end }}
@@ -2669,14 +2690,16 @@ var decoderTemplate = `
                         if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
                         let _length = 0;
                         let _shift = 0;
-                        while ((data[offset + start + {{ $fromByte }}] & 0x80) !== 0) {
-                            _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
-                            _shift += 7;
+                        while (true) {
+                            let _byte = data[offset + start + {{ $fromByte }}] & 0xFF;
+                            if (_shift === 28 && (_byte & 0xF0) !== 0) return -1;
+                            _length += (_byte & 0x7F) * Math.pow(2, _shift);
                             offset++;
+                            if ((_byte & 0x80) === 0) break;
+                            _shift += 7;
+                            if (_shift > 28) return -1;
                             if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
                         }
-                        _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
-                        offset++;
                         if (data.length - start < offset + {{ $fromByte }} + _length) return -(offset + {{ $fromByte }} + _length);
                         offset += _length;
                     }
@@ -2686,14 +2709,16 @@ var decoderTemplate = `
                         if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
                         let _length = 0;
                         let _shift = 0;
-                        while ((data[offset + start + {{ $fromByte }}] & 0x80) !== 0) {
-                            _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
-                            _shift += 7;
+                        while (true) {
+                            let _byte = data[offset + start + {{ $fromByte }}] & 0xFF;
+                            if (_shift === 28 && (_byte & 0xF0) !== 0) return -1;
+                            _length += (_byte & 0x7F) * Math.pow(2, _shift);
                             offset++;
+                            if ((_byte & 0x80) === 0) break;
+                            _shift += 7;
+                            if (_shift > 28) return -1;
                             if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
                         }
-                        _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
-                        offset++;
                         if (data.length - start < offset + {{ $fromByte }} + _length) return -(offset + {{ $fromByte }} + _length);
                         offset += _length;
                     }
@@ -2734,14 +2759,16 @@ var decoderTemplate = `
                         if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
                         let _length = 0;
                         let _shift = 0;
-                        while ((data[offset + start + {{ $fromByte }}] & 0x80) !== 0) {
-                            _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
-                            _shift += 7;
+                        while (true) {
+                            let _byte = data[offset + start + {{ $fromByte }}] & 0xFF;
+                            if (_shift === 28 && (_byte & 0xF0) !== 0) return -1;
+                            _length += (_byte & 0x7F) * Math.pow(2, _shift);
                             offset++;
+                            if ((_byte & 0x80) === 0) break;
+                            _shift += 7;
+                            if (_shift > 28) return -1;
                             if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
                         }
-                        _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
-                        offset++;
                         if (data.length - start < offset + {{ $fromByte }} + _length) return -(offset + {{ $fromByte }} + _length);
                         offset += _length;
                     }
@@ -2897,11 +2924,11 @@ var fieldDecoderTemplate = `
 {{- define "decodeNormalFieldStruct" -}}
 {{- $packagePrefix := call .GenerateStructPackagePrefix .FieldStruct -}}
 {{- if .FieldStruct.GetTypeDynamic -}}
-                    (function() {
+                    {
                         var {{ .TempName }} = {{ $packagePrefix }}.decode({{ .FieldName }}, data, offset + start + {{ .FromByte }});
                         if ({{ .TempName }} < 0) return -1;
                         offset += {{ .TempName }};
-                    })();
+                    }
 {{- else -}}
     if ({{ $packagePrefix }}.decode({{ .FieldName }}, data, {{ if .Dynamic }}offset + {{ end }}start + {{ .FromByte }}) < 0) return -1;
 {{- end -}}
@@ -2929,23 +2956,35 @@ var fieldDecoderTemplate = `
 {{- end -}}
 
 {{- define "decodeNormalFieldString" -}}
-                    (function() {
-                        var result = stringFromUTF8Bytes(data, offset + start + {{ .FromByte }});
+                    {
+                        var _fieldStart = offset + start + {{ .FromByte }};
+                        var result = stringFromUTF8Bytes(data, _fieldStart);
+                        if (_fieldStart + result[1] >= data.length || data[_fieldStart + result[1]] !== 0) return -1;
                         {{ .FieldName }} = result[0];
                         offset += result[1] + 1;
-                    })();
+                    }
 {{- end -}}
 
 {{- define "decodeNormalFieldBytes" -}}
-                    (function() {
+                    {
                         var {{ .TempName }} = 0;
                         var shift = 0;
-                        while ((data[offset + start + {{ .FromByte }}] & {{ .SetMask }}) !== 0) { {{ .TempName }} |= (data[offset + start + {{ .FromByte }}] & {{ .GetMask }}) << shift; shift += {{ .Shift }}; offset++; }
-                        {{ .TempName }} |= (data[offset + start + {{ .FromByte }}] & {{ .GetMask }}) << shift; offset++;
+                        while (true) {
+                            var _index = offset + start + {{ .FromByte }};
+                            if (_index >= data.length) return -1;
+                            var _byte = data[_index] & 0xFF;
+                            if (shift === 28 && (_byte & 0xF0) !== 0) return -1;
+                            {{ .TempName }} += (_byte & {{ .GetMask }}) * Math.pow(2, shift);
+                            offset++;
+                            if ((_byte & {{ .SetMask }}) === 0) break;
+                            shift += {{ .Shift }};
+                            if (shift > 28) return -1;
+                        }
+                        if ({{ .TempName }} > data.length - (offset + start + {{ .FromByte }})) return -1;
                         {{ .FieldName }} = new {{ if .GenOptions.CompatibleMode }}Array{{ else }}Uint8Array{{ end }}({{ .TempName }});
                         for (var i = 0; i < {{ .TempName }}; i++) {{ .FieldName }}[i] = data[offset + start + {{ .FromByte }} + i];
                         offset += {{ .TempName }};
-                    })();
+                    }
 {{- end -}}
 
 {{- define "decodeData" -}}
@@ -2970,7 +3009,7 @@ var fieldDecoderTemplate = `
 
 {{- define "decodeArrayLoopStruct" -}}
 for (let _i = 0; _i < {{ .Length }}; _i++) {
-    {{ .ArrayName }}[_i].decode({{ .DataExpr }});
+    if ({{ .ArrayName }}[_i].decode({{ .DataExpr }}) < 0) return -1;
 }
 {{- end -}}
 

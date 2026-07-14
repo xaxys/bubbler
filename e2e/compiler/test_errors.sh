@@ -96,6 +96,36 @@ expect_fail \
     -t c -o "$TMPDIR_BASE/dup_pkg/" errors/dup_pkg/entry.bb
 
 ##############################################################################
+# 5. CLI validation
+##############################################################################
+echo
+echo "=== #5: CLI validation ==="
+expect_fail \
+    "no input file" \
+    "no input file specified" \
+    -t c -o "$TMPDIR_BASE/no_input/"
+
+expect_fail \
+    "multiple input files" \
+    "only one input file" \
+    -t c testcase.bb features/bitwid.bb
+
+expect_fail \
+    "unknown target" \
+    "not supported" \
+    -t does-not-exist testcase.bb
+
+expect_fail \
+    "invalid sign extension method" \
+    "signext" \
+    -t c -signext=does-not-exist testcase.bb
+
+expect_fail \
+    "unroll below -1" \
+    "unroll" \
+    -t c -unroll=-2 testcase.bb
+
+##############################################################################
 # Summary
 ##############################################################################
 echo

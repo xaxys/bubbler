@@ -41,6 +41,8 @@ from testcase_bb import (
     LargeArrays,
     VeryLargeArrays,
     MixedArrays,
+    BlobRecord,
+    CodecArrays,
 )
 from bitwid_bb import NarrowBWTest
 
@@ -94,6 +96,10 @@ func emitPy_scenario(sc Scenario) string {
         if !sc.IsDynamic {
             fmt.Fprintf(&sb, "        self.assertEqual(len(buf), %s.size(), \"encode size\")\n", sc.StructName)
         }
+        if len(c.Wire) > 0 {
+            fmt.Fprintf(&sb, "        self.assertEqual(bytes(buf), bytes([%s]), \"golden wire\")\n",
+                pyByteList(c.Wire))
+        }
         if sc.StructName == "BigEndianFields" {
             sb.WriteString("        self.assertEqual(buf[0], 0xBE)\n")
             sb.WriteString("        self.assertEqual(buf[1], 0x12)\n")
@@ -113,6 +119,9 @@ func emitPy_scenario(sc Scenario) string {
         for _, af := range c.resolveAssert() {
             sb.WriteString(emitPy_assertVal("d."+af.Name, af.V, af.Tol, "        "))
         }
+        fmt.Fprintf(&sb, "        truncated = %s()\n", sc.StructName)
+        sb.WriteString("        truncated_ok, _ = truncated.decode(bytes(buf[:-1]))\n")
+        sb.WriteString("        self.assertFalse(truncated_ok, \"truncated decode rejected\")\n")
         for _, e := range c.Errors {
             fmt.Fprintf(&sb, "        # decode-error: %s\n", e.Name)
             sb.WriteString("        bad = bytearray(buf)\n")
@@ -347,6 +356,11 @@ func pyValueExpr(v Val) string {
         return fmt.Sprintf("%s.%s", v.EnumType, v.EnumName)
     case VKString:
         return pyStringLit(v.Str)
+    case VKBytes:
+        if len(v.Bytes) == 0 {
+            return "b\"\""
+        }
+        return fmt.Sprintf("bytes([%s])", pyByteList(v.Bytes))
     }
     return ""
 }

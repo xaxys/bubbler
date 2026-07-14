@@ -228,3 +228,27 @@ struct MixedArrays {
     uint32<4>  quad;
     uint64<8>  octet;
 }
+
+// ============================================================
+// Test 15: Complete array element-type coverage
+// Includes variable-size elements and a dynamic struct array. The element
+// count is 5 so the default -unroll=4 path must use generated loops.
+// ============================================================
+struct BlobRecord {
+    uint16 code;
+    string label;
+    bytes payload;
+}
+
+struct CodecArrays {
+    bool<5>       bools;
+    int8<5>       i8s;
+    uint16<5>     u16s;
+    int32<5>      i32s;
+    uint32<5>     u32s;
+    float32<5>    f32s;
+    float64<5>    f64s;
+    string<5>     strings;
+    bytes<5>      blobs;
+    BlobRecord<5> records;
+}

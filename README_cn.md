@@ -52,7 +52,7 @@ bubbler [options] <input file>
   - `c` / `cpp`：`bb_write_field_bits` / `bb_read_field_bits`（文件私有；C++ 中位于源文件的匿名命名空间内）。
   - `go`：`bbWriteFieldBits` / `bbReadFieldBits`（包私有）。
   - `python`：`_bb_write_field_bits` / `_bb_read_field_bits`（模块顶层）。
-  - `java` / `csharp`：`bbWriteFieldBits` / `bbReadFieldBits`（生成类内的 private static 方法；仅在确实使用的类内发出）。
+  - `java`：`bbWriteFieldBits` / `bbReadFieldBits`；`csharp`：`BbWriteFieldBits` / `BbReadFieldBits`（生成类内的 private static 方法；仅在确实使用的类内发出）。
   - `commonjs` / `esmodule`：`bbWriteFieldBits` / `bbReadFieldBits`（基于 BigInt；按需在模块顶部发出）。
 
   助手仅在该编译单元（Java / C# 在类级）确实存在「需要循环且元素为定长位宽」的数组时才会生成，纯展开的文件不会引入助手代码。
@@ -93,6 +93,7 @@ Targets:
   
     **警告**：在不使用`-memcpy`的情况下生成的`decode`函数，虽然参数类型仍然是`const void*`，但此处的**CONST**语义可能会被**破坏**，因为解码后的结构体中的某些字段会直接引用原始缓冲区。你**必须**确保原始缓冲区在整个过程中保持**生命周期有效**且**不被修改**，并且需要注意，修改结构体字段的值也会**改变**原始缓冲区的内容。
   - 使用 `-relpath`：生成相对路径导入（如 `#include "./foo_bb.h"`或`#include "../foo_bb.h"`）。
+  - 使用 `-unroll`：长度超过阈值的数组使用普通 `for` 循环。定长循环使用文件私有的 `bb_write_field_bits` / `bb_read_field_bits`；动态数组在循环中推进运行时字节偏移。
 
 - `cpp`：C++ 语言，为每个 `.bb` 文件输出一个 `.bb.hpp` 文件和一个 `.bb.cpp` 文件。
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。生成的文件夹结构不会受到 `cpp_namespace` 选项的影响。
@@ -102,11 +103,13 @@ Targets:
   
     **警告**：在不使用`-memcpy`的情况下生成的`decode`函数，虽然参数类型仍然是`const void*`，但此处的**CONST**语义可能会被**破坏**，因为解码后的结构体中的某些字段会直接引用原始缓冲区。你**必须**确保原始缓冲区在整个过程中保持**生命周期有效**且**不被修改**，并且需要注意，修改结构体字段的值也会**改变**原始缓冲区的内容。
   - 使用 `-relpath`：生成相对路径导入（如 `#include "./foo_bb.hpp"`或`#include "../foo_bb.hpp"`）。
+  - 使用 `-unroll`：长度超过阈值的数组使用普通 `for` 循环。定长循环使用生成源文件匿名命名空间内的 `bb_write_field_bits` / `bb_read_field_bits`。
 
 - `csharp`：C# 语言，为每个 `.bb` 文件输出一个 `.bb.cs` 文件。
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。生成的文件夹结构不会受到 `csharp_namespace` 选项的影响。
   - 使用 `-memcpy`：使用 `byte[]` 作为 `bytes` 字段的类型。编码和解码方法将仅兼容 `byte[]` 类型参数。旧版 .NET Framework 应使用此选项。
   - 不使用 `-memcpy`：使用 `Memory<byte>` 作为 `bytes` 字段的类型。编码和解码方法将兼容 `byte[]`、`Memory<byte>` 和 `Span<byte>`（仅编码）类型参数。此情况下需要 `System.Memory` 包。
+  - 使用 `-unroll`：长度超过阈值的数组使用普通 `for` 循环。定长循环使用生成类中的 private static `BbWriteFieldBits` / `BbReadFieldBits`。
 
 - `commonjs`：CommonJS模块，为每个 `.bb` 文件输出一个 `.bb.js` 文件。（请注意，`int64` 和 `uint64` 字段使用了 `BigInt`，在某些环境中可能不支持）
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
@@ -114,6 +117,7 @@ Targets:
   - 使用 `-compat`：使用 `Array` 代替 `Uint8Array` 作为编码缓冲区和 `bytes` 字段的类型，最大化对旧环境的兑容性。
   - 强制启用：`-memcpy`。
   - 强制启用：`-relpath`：生成相对路径引用（如 `require("./foo_bb")`或`require("../foo_bb")`）。
+  - 使用 `-unroll`：定长数组使用模块私有、基于 BigInt 的 bit 助手；`string`、`bytes` 和动态结构体数组使用字节偏移循环。
 
 - `esmodule`：ES6模块，为每个 `.bb` 文件输出一个 `.bb.js` 文件。使用原生 ES6 `import`/`export` 语法，适用于现代浏览器和 Node.js ESM。（请注意，`int64` 和 `uint64` 字段使用了 `BigInt`，在某些环境中可能不支持）
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
@@ -121,21 +125,29 @@ Targets:
   - 使用 `-compat`：使用 `Array` 代替 `Uint8Array` 作为编码缓冲区和 `bytes` 字段的类型，最大化对旧环境的兼容性。
   - 强制启用：`-memcpy`。
   - 强制启用：`-relpath`：生成相对路径导入（如 `import X from "./foo_bb.mjs"`或`import X from "../foo_bb.mjs"`）。
+  - 使用 `-unroll`：与 CommonJS 语义一致，使用普通 `for` 循环和模块私有、基于 BigInt 的 bit 助手。
 
 - `go`：Go 语言，为每个 `.bb` 文件输出一个 `.bb.go` 文件。生成的文件夹结构将受到 `go_package` 选项的影响。例如，`github.com/xaxys/bubbler` 将在 `github.com/xaxys/bubbler` 目录中生成。
   - 使用 `-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。包名由输入 `.bb` 文件的包名声明确定。
   - 使用 `-memcpy`：解码时复制 `bytes` 字段。`string` 字段将始终被复制。
   - 不使用 `-memcpy`：将原始缓冲区的切片分配给 `bytes` 字段。`string` 字段将始终被复制。
   - 使用 `-relpath`：生成相对路径导入（如 `import "./foo_bb"` 或 `import "../subpkg/foo_bb"`）。对于设置了 `go_package` 的情况，生成的相对路径将基于 `go_package` 定义的包路径进行计算。
+  - 使用 `-unroll`：定长循环使用包私有的 `bbWriteFieldBits` / `bbReadFieldBits`；解码器会在读取前验证输入长度。
   **注意！**生成相对路径时不会考虑 `-rmpath` 选项。即假如 A 的包路径为 `github.com/xaxys/a`，B 的包路径为 `gitlab.com/user/b`，而 `-rmpath=github.com/xaxys`，则 A 的生成路径为 `a`，B 的生成路径为 `gitlab.com/user/b`，但 B 中导入 A 的路径仍然会被计算为 `../../github.com/xaxys/a`，而不是 `../../a`。
 
 - `java`：Java 语言，为每个 `.bb` 文件中定义的每个数据结构生成一个 `.java` 文件。生成的文件夹结构将受到 `java_package` 选项的影响。例如，`com.example.rovlink` 将在 `com/example/rovlink` 目录中生成。
   - 强制启用：`-memcpy`。
+  - 使用 `-unroll`：定长循环使用生成类中的 private static `bbWriteFieldBits` / `bbReadFieldBits`。
 
 - `python`：Python 语言，为每个 `.bb` 文件输出一个 `_bb.py` 文件。
   - 使用`-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
   - 强制启用：`-memcpy`。
   - 使用 `-relpath`：生成相对路径引用（如 `from .foo_bb import *`或`from ..foo_bb import *`）。
+  - 使用 `-unroll`：定长循环使用模块私有的 `_bb_write_field_bits` / `_bb_read_field_bits`；动态数组使用字节偏移循环。
+
+### E2E 测试矩阵
+
+`make e2e` 会对所有可用语言运行统一的 spec 驱动矩阵，覆盖各语言适用的生成选项，以及 `-unroll` 值 `-1、0、1、2、3、4、5、6、7、8、31、32`。数组场景覆盖全部元素类别、动态结构体、UTF-8 字符串、bytes 长度边界、窄位宽、畸形/截断输入和跨语言 golden wire。Linux 中 C# 仅测试 .NET 8；.NET Framework 4.7.2 保留为 Windows CI 专项。
 
 ## 协议语法
 

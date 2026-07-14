@@ -84,6 +84,7 @@ type Case struct {
     Name        string
     Setup       []FieldVal
     Assert      []AssertField
+    Wire        []byte
     Errors      []DecodeError
     Accessors   []AccessorRoundTrip
 }

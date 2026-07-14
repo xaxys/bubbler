@@ -35,6 +35,7 @@ static decode(obj, data, start) {
     if (obj === undefined) return -1;
     if (data === undefined) return -1;
     if (start === undefined) start = 0;
+    if ({{ $structName }}.decode_size(data, start) < 0) return -1;
     {{- if .Dynamic }}
     let offset = 0;
     {{- end }}
@@ -100,14 +101,16 @@ decode(data, start) {
         if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
         let _length = 0;
         let _shift = 0;
-        while ((data[offset + start + {{ $fromByte }}] & 0x80) !== 0) {
-            _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
-            _shift += 7;
+        while (true) {
+            const _byte = data[offset + start + {{ $fromByte }}] & 0xFF;
+            if (_shift === 28 && (_byte & 0xF0) !== 0) return -1;
+            _length += (_byte & 0x7F) * Math.pow(2, _shift);
             offset++;
+            if ((_byte & 0x80) === 0) break;
+            _shift += 7;
+            if (_shift > 28) return -1;
             if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
         }
-        _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
-        offset++;
         if (data.length - start < offset + {{ $fromByte }} + _length) return -(offset + {{ $fromByte }} + _length);
         offset += _length;
     }
@@ -117,14 +120,16 @@ decode(data, start) {
         if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
         let _length = 0;
         let _shift = 0;
-        while ((data[offset + start + {{ $fromByte }}] & 0x80) !== 0) {
-            _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
-            _shift += 7;
+        while (true) {
+            const _byte = data[offset + start + {{ $fromByte }}] & 0xFF;
+            if (_shift === 28 && (_byte & 0xF0) !== 0) return -1;
+            _length += (_byte & 0x7F) * Math.pow(2, _shift);
             offset++;
+            if ((_byte & 0x80) === 0) break;
+            _shift += 7;
+            if (_shift > 28) return -1;
             if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
         }
-        _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
-        offset++;
         if (data.length - start < offset + {{ $fromByte }} + _length) return -(offset + {{ $fromByte }} + _length);
         offset += _length;
     }
@@ -165,14 +170,16 @@ decode(data, start) {
         if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
         let _length = 0;
         let _shift = 0;
-        while ((data[offset + start + {{ $fromByte }}] & 0x80) !== 0) {
-            _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
-            _shift += 7;
+        while (true) {
+            const _byte = data[offset + start + {{ $fromByte }}] & 0xFF;
+            if (_shift === 28 && (_byte & 0xF0) !== 0) return -1;
+            _length += (_byte & 0x7F) * Math.pow(2, _shift);
             offset++;
+            if ((_byte & 0x80) === 0) break;
+            _shift += 7;
+            if (_shift > 28) return -1;
             if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
         }
-        _length |= (data[offset + start + {{ $fromByte }}] & 0x7F) << _shift;
-        offset++;
         if (data.length - start < offset + {{ $fromByte }} + _length) return -(offset + {{ $fromByte }} + _length);
         offset += _length;
     }
@@ -323,11 +330,11 @@ var fieldDecoderTemplate = `
 {{- define "decodeNormalFieldStruct" -}}
 {{- $packagePrefix := call .GenerateStructPackagePrefix .FieldStruct -}}
 {{- if .FieldStruct.GetTypeDynamic -}}
-    (function() {
+    {
         const {{ .TempName }} = {{ $packagePrefix }}.decode({{ .FieldName }}, data, offset + start + {{ .FromByte }});
         if ({{ .TempName }} < 0) return -1;
         offset += {{ .TempName }};
-    })();
+    }
 {{- else -}}
     if ({{ $packagePrefix }}.decode({{ .FieldName }}, data, {{ if .Dynamic }}offset + {{ end }}start + {{ .FromByte }}) < 0) return -1;
 {{- end -}}
@@ -355,23 +362,35 @@ var fieldDecoderTemplate = `
 {{- end -}}
 
 {{- define "decodeNormalFieldString" -}}
-    (function() {
-        const result = stringFromUTF8Bytes(data, offset + start + {{ .FromByte }});
+    {
+        const _fieldStart = offset + start + {{ .FromByte }};
+        const result = stringFromUTF8Bytes(data, _fieldStart);
+        if (_fieldStart + result[1] >= data.length || data[_fieldStart + result[1]] !== 0) return -1;
         {{ .FieldName }} = result[0];
         offset += result[1] + 1;
-    })();
+    }
 {{- end -}}
 
 {{- define "decodeNormalFieldBytes" -}}
-    (function() {
+    {
         let {{ .TempName }} = 0;
         let shift = 0;
-        while ((data[offset + start + {{ .FromByte }}] & {{ .SetMask }}) !== 0) { {{ .TempName }} |= (data[offset + start + {{ .FromByte }}] & {{ .GetMask }}) << shift; shift += {{ .Shift }}; offset++; }
-        {{ .TempName }} |= (data[offset + start + {{ .FromByte }}] & {{ .GetMask }}) << shift; offset++;
+        while (true) {
+            const _index = offset + start + {{ .FromByte }};
+            if (_index >= data.length) return -1;
+            const _byte = data[_index] & 0xFF;
+            if (shift === 28 && (_byte & 0xF0) !== 0) return -1;
+            {{ .TempName }} += (_byte & {{ .GetMask }}) * Math.pow(2, shift);
+            offset++;
+            if ((_byte & {{ .SetMask }}) === 0) break;
+            shift += {{ .Shift }};
+            if (shift > 28) return -1;
+        }
+        if ({{ .TempName }} > data.length - (offset + start + {{ .FromByte }})) return -1;
         {{ .FieldName }} = new {{ if .GenOptions.CompatibleMode }}Array{{ else }}Uint8Array{{ end }}({{ .TempName }});
         for (let i = 0; i < {{ .TempName }}; i++) {{ .FieldName }}[i] = data[offset + start + {{ .FromByte }} + i];
         offset += {{ .TempName }};
-    })();
+    }
 {{- end -}}
 
 {{- define "decodeData" -}}
@@ -396,7 +415,7 @@ var fieldDecoderTemplate = `
 
 {{- define "decodeArrayLoopStruct" -}}
 for (let _i = 0; _i < {{ .Length }}; _i++) {
-    {{ .ArrayName }}[_i].decode({{ .DataExpr }});
+    if ({{ .ArrayName }}[_i].decode({{ .DataExpr }}) < 0) return -1;
 }
 {{- end -}}
 

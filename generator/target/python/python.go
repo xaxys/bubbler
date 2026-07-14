@@ -130,86 +130,30 @@ def _bb_write_field_bits(data: bytearray, bit_from: int, bit_size: int, value: i
 	if bit_size <= 0:
 		return
 	value &= (1 << bit_size) - 1
-	bit_to = bit_from + bit_size
-	i = bit_from
-	while i < bit_to:
-		next_i = min(bit_to, (i + 8) & (~7))
-		data_mask = ((1 << (((next_i - 1) & 7) + 1)) - 1) & (~((1 << (i & 7)) - 1))
-
-		begin = i - bit_from
-		end = next_i - bit_from
-
-		j = begin
-		part = 0
-
-		if j < end:
-			next_j = min(end, (j + 8) & (~7))
-			field_mask = ((1 << (((next_j - 1) & 7) + 1)) - 1) & (~((1 << (j & 7)) - 1))
-			shift_right = j % 8
-			src_byte_index = j // 8
-			if big_endian:
-				src_shift = max(0, bit_size - 8 * (src_byte_index + 1))
-			else:
-				src_shift = 8 * src_byte_index
-			src_byte = (value >> src_shift) & 0xFF
-			part = ((src_byte & field_mask) >> shift_right)
-			j = next_j
-
-		if j < end:
-			next_j = min(end, (j + 8) & (~7))
-			field_mask = ((1 << (((next_j - 1) & 7) + 1)) - 1) & (~((1 << (j & 7)) - 1))
-			shift_left = 8 - (next_j % 8)
-			src_byte_index = j // 8
-			if big_endian:
-				src_shift = max(0, bit_size - 8 * (src_byte_index + 1))
-			else:
-				src_shift = 8 * src_byte_index
-			src_byte = (value >> src_shift) & 0xFF
-			part |= ((src_byte & field_mask) << shift_left)
-
-		shift_left = i % 8
-		part = (part << shift_left) & data_mask
-		if data_mask == 0xFF:
-			data[i // 8] = part
-		else:
-			data[i // 8] |= part
-		i = (i + 8) & (~7)
+	for field_bit in range(bit_size):
+		value_bit = field_bit
+		if big_endian:
+			byte_index = field_bit // 8
+			value_bit = max(field_bit % 8, bit_size - 8 * (byte_index + 1) + field_bit % 8)
+		data_bit = bit_from + field_bit
+		mask = 1 << (data_bit & 7)
+		data[data_bit // 8] &= ~mask
+		if value & (1 << value_bit):
+			data[data_bit // 8] |= mask
 
 
 def _bb_read_field_bits(data: Union[bytes, bytearray], bit_from: int, bit_size: int, big_endian: bool) -> int:
 	if bit_size <= 0:
 		return 0
-	bit_to = bit_from + bit_size
 	out = 0
-	i = bit_from
-	out_byte_index = 0
-
-	while i < bit_to:
-		begin = i
-		end = min(bit_to, i + 8)
-		width = end - begin
-
-		sep = min(end, (begin + 8) & (~7))
-		part = 0
-
-		if begin < sep:
-			field_mask = ((1 << (((sep - 1) & 7) + 1)) - 1) & (~((1 << (begin & 7)) - 1))
-			shift_right = begin % 8
-			part = (data[begin // 8] & field_mask) >> shift_right
-
-		if sep < end:
-			field_mask = ((1 << (((end - 1) & 7) + 1)) - 1) & (~((1 << (sep & 7)) - 1))
-			shift_left = width - (end % 8)
-			part |= (data[sep // 8] & field_mask) << shift_left
-
+	for field_bit in range(bit_size):
+		value_bit = field_bit
 		if big_endian:
-			dst_shift = max(0, bit_size - 8 * (out_byte_index + 1))
-		else:
-			dst_shift = 8 * out_byte_index
-		out |= (part << dst_shift)
-
-		i += 8
-		out_byte_index += 1
+			byte_index = field_bit // 8
+			value_bit = max(field_bit % 8, bit_size - 8 * (byte_index + 1) + field_bit % 8)
+		data_bit = bit_from + field_bit
+		if data[data_bit // 8] & (1 << (data_bit & 7)):
+			out |= 1 << value_bit
 
 	return out
 {{- end -}}
@@ -1336,6 +1280,7 @@ func (g PythonGenerator) generateEncodeNormalField(field *definition.NormalField
 			}
 
 			for _, stmt := range stmts {
+				stmt = strings.ReplaceAll(stmt, "\n        ", "\n")
 				bodyStmts = append(bodyStmts, util.IndentSpace(stmt, 4))
 			}
 
@@ -1590,125 +1535,45 @@ func (g PythonGenerator) generateEncodeNormalFieldImpl(fieldNameStr string, fiel
 //	fieldData(3) -> ((structPtr->intField >> 0) & 0xff)
 func (g PythonGenerator) generateEncodeImpl(from, to int64, fieldData func(int64) string, structDynamic bool) []string {
 	encodeStmts := []string{}
-	// generate encode implentation from 'from' bit to 'to' bit and align to 8 bits
-	// e.g. from = 3, to = 11 -> loop 2 times: 3-7, 8-11
-	for i := from; i < to; i = (i + 8) & (^7) {
-		// nextI is the right bound of current encode expression
-		// use nextI to calculate the mask of current encode expression
-		nextI := min(to, (i+8)&(^7))
-		dataMask := ((1 << (((nextI - 1) & 7) + 1)) - 1) & (^((1 << (i & 7)) - 1))
+	fieldBitSize := to - from
+	for fieldFrom := int64(0); fieldFrom < fieldBitSize; {
+		dataFrom := from + fieldFrom
+		chunkSize := min(fieldBitSize-fieldFrom, 8-(dataFrom&7))
+		dataMask := ((int64(1) << chunkSize) - 1) << (dataFrom & 7)
 
-		// operator is '=' if is filling the whole byte, otherwise is '|='
-		operator := ""
-		if i%8 == 0 {
-			operator = exprOpToString[definition.ExprOp_ASSIGN] // "="
-		} else {
-			operator = exprOpToString[definition.ExprOp_BOR] + exprOpToString[definition.ExprOp_ASSIGN] // "|="
-		}
-
-		// we use 'from' and 'to' to denote the bit position in encoded data
-		// we use 'begin' and 'end' to denote the bit position in raw field data
-		begin := i - from
-		end := nextI - from
-
-		var expr definition.Expr
-
-		// 'i' is the start bit position in encoded data
-		// 'j' is the start bit position in raw field data
-		j := begin
-		// first half
-		// e.g. j = 3, end = 11
-		//      j = 3, nextJ = 8, fieldMask = 0b11111000, shiftRight = 3
-		if j < end {
-			// nextJ is the right bound of current field data (aligned to 8 bits)
-			nextJ := min(end, (j+8)&(^7))
-			fieldMask := ((1 << (((nextJ - 1) & 7) + 1)) - 1) & (^((1 << (j & 7)) - 1))
-			shiftRight := j % 8
-			// expr = (fieldData(j/8) & fieldMask) >> j%8
-			expr = &definition.BinopExpr{
-				Op: definition.ExprOp_SHR,
-				Expr1: &definition.BinopExpr{
-					Op: definition.ExprOp_BAND,
-					Expr1: &definition.RawExpr{
-						Expr: fieldData(j / 8),
-					},
-					Expr2: &definition.RawExpr{
-						Expr: g.generateBin(fieldMask),
-					},
-				},
-				Expr2: &definition.RawExpr{
-					Expr: fmt.Sprintf("%d", shiftRight),
-				},
+		parts := []string{}
+		consumed := int64(0)
+		for consumed < chunkSize {
+			sourceBit := fieldFrom + consumed
+			partSize := min(chunkSize-consumed, 8-(sourceBit&7))
+			partMask := (int64(1) << partSize) - 1
+			part := fmt.Sprintf("(((%s) >> %d) & %s)", fieldData(sourceBit/8), sourceBit&7, g.generateHex(partMask))
+			shift := (dataFrom & 7) + consumed
+			if shift != 0 {
+				part = fmt.Sprintf("(%s << %d)", part, shift)
 			}
-
-			// jump to second half
-			j = nextJ
-		}
-		// second half (if exists)
-		// e.g. j = 8, end = 11
-		//      j = 8, nextJ = 11, fieldMask = 0b00000111, shiftLeft = 5
-		if j < end {
-			nextJ := min(end, (j+8)&(^7))
-			fieldMask := ((1 << (((nextJ - 1) & 7) + 1)) - 1) & (^((1 << (j & 7)) - 1))
-			shiftLeft := 8 - nextJ%8
-			// expr = expr | (fieldData(j/8) & fieldMask) << (8 - nextJ%8)
-			expr = &definition.BinopExpr{
-				Op:    definition.ExprOp_BOR,
-				Expr1: expr,
-				Expr2: &definition.BinopExpr{
-					Op: definition.ExprOp_SHL,
-					Expr1: &definition.BinopExpr{
-						Op: definition.ExprOp_BAND,
-						Expr1: &definition.RawExpr{
-							Expr: fieldData(j / 8),
-						},
-						Expr2: &definition.RawExpr{
-							Expr: g.generateBin(fieldMask),
-						},
-					},
-					Expr2: &definition.RawExpr{
-						Expr: fmt.Sprintf("%d", shiftLeft),
-					},
-				},
-			}
-
-			j = nextJ
+			parts = append(parts, part)
+			consumed += partSize
 		}
 
-		// shift expr to match the bit position in encoded data (concerning 'i')
-		shiftLeft := i % 8
-		// expr = (expr << i%8) & dataMask
-		expr = &definition.BinopExpr{
-			Op: definition.ExprOp_BAND,
-			Expr1: &definition.BinopExpr{
-				Op:    definition.ExprOp_SHL,
-				Expr1: expr,
-				Expr2: &definition.RawExpr{
-					Expr: fmt.Sprintf("%d", shiftLeft),
-				},
-			},
-			Expr2: &definition.RawExpr{
-				Expr: g.generateBin(dataMask),
-			},
+		bytePos := dataFrom / 8
+		dataExpr := fmt.Sprintf("data[%d]", bytePos)
+		if structDynamic {
+			dataExpr = fmt.Sprintf("data[offset+%d]", bytePos)
 		}
+		packed := strings.Join(parts, " | ")
+		exprStr := fmt.Sprintf("(%s & ~%s) | ((%s) & %s)", dataExpr, g.generateHex(dataMask), packed, g.generateHex(dataMask))
 
-		// generate encode expression
-		exprStr, err := g.GenerateExpr(expr, "")
-		if err != nil {
-			panic(fmt.Errorf("internal error: %s", err))
-		}
-
-		// generate encode statement
 		encodeImplData := map[string]any{
 			"TyUint8":   typeMap[definition.TypeID_Uint8],
-			"BytePos":   i / 8,
-			"Operator":  operator,
+			"BytePos":   bytePos,
+			"Operator":  exprOpToString[definition.ExprOp_ASSIGN],
 			"FieldData": exprStr,
 			"Dynamic":   structDynamic,
 		}
-
 		encodeStmt := util.ExecuteTemplate(fieldEncoderTemplate, "encodeImpl", nil, encodeImplData)
 		encodeStmts = append(encodeStmts, encodeStmt)
+		fieldFrom += chunkSize
 	}
 	return encodeStmts
 }
@@ -1729,6 +1594,8 @@ var decoderTemplate = `
     def decode(self, data: Union[bytes, bytearray, memoryview]) -> Tuple[bool, int]:
         if not isinstance(data, memoryview):
             data = memoryview(data)
+        if self.decode_size(data) < 0:
+            return False, -1
         {{- if .Dynamic }}
         offset = 0
         {{- end }}
@@ -1777,10 +1644,12 @@ var decoderTemplate = `
             _length = 0
             _shift = 0
             while data[offset + {{ $fromByte }}] & 0x80:
+                if _shift >= 63: return -1
                 _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift
                 _shift += 7
                 offset += 1
                 if len(data) <= offset + {{ $fromByte }}: return -(offset + {{ $fromByte }} + 1)
+            if _shift >= 63: return -1
             _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift
             offset += 1
             if len(data) < offset + {{ $fromByte }} + _length: return -(offset + {{ $fromByte }} + _length)
@@ -1792,10 +1661,12 @@ var decoderTemplate = `
         _length = 0
         _shift = 0
         while data[offset + {{ $fromByte }}] & 0x80:
+            if _shift >= 63: return -1
             _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift
             _shift += 7
             offset += 1
             if len(data) <= offset + {{ $fromByte }}: return -(offset + {{ $fromByte }} + 1)
+        if _shift >= 63: return -1
         _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift
         offset += 1
         if len(data) < offset + {{ $fromByte }} + _length: return -(offset + {{ $fromByte }} + _length)
@@ -1833,10 +1704,12 @@ var decoderTemplate = `
         _length = 0
         _shift = 0
         while data[offset + {{ $fromByte }}] & 0x80:
+            if _shift >= 63: return -1
             _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift
             _shift += 7
             offset += 1
             if len(data) <= offset + {{ $fromByte }}: return -(offset + {{ $fromByte }} + 1)
+        if _shift >= 63: return -1
         _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift
         offset += 1
         if len(data) < offset + {{ $fromByte }} + _length: return -(offset + {{ $fromByte }} + _length)
@@ -2012,7 +1885,9 @@ for _i in range({{ .Length }}):
 {{- end -}}
 
 {{- define "decodeStructFieldLoop" -}}
-	{{ if .FieldStruct.GetTypeDynamic }}offset += {{ end }}{{ .FieldName }}.decode(data[{{ .ByteBaseExpr }}:])
+success, _ = {{ .FieldName }}.decode(data[{{ .ByteBaseExpr }}:])
+if not success:
+    return False, -1
 {{- end -}}
 
 {{- define "decodeData" -}}
@@ -2174,6 +2049,7 @@ func (g PythonGenerator) generateDecodeNormalField(field *definition.NormalField
 			}
 
 			for _, stmt := range stmts {
+				stmt = strings.ReplaceAll(stmt, "\n        ", "\n")
 				bodyStmts = append(bodyStmts, util.IndentSpace(stmt, 4))
 			}
 
@@ -2481,78 +2357,24 @@ func (g PythonGenerator) generateDecodeNormalFieldImpl(fieldNameStr string, fiel
 //	fieldProcessor(exprOfExtract4thByteFromEncodedData, 3) -> (*(uint32_t*)(&(structPtr->intField))) |= (exprOfExtract4thByteFromEncodedData << 24)
 func (g PythonGenerator) generateDecodeImpl(from, to int64, fieldProcessor func(string, int64) string, dataData func(int64) string) []string {
 	decodeStmts := []string{}
-	// generate decode implentation from 'from' bit to 'to' bit per 8 bits
-	// e.g. from = 3, to = 19 -> loop 2 times: 3-10, 11-19 (not aligned to 8 bits!!!)
-	for i := from; i < to; i += 8 {
-
-		// we use 'from' and 'to' to denote the bit position in encoded data
-		begin := i
-		end := min(to, i+8)
-		width := end - begin
-
-		var expr definition.Expr
-
-		// separator to check if is aligned to 8 bits
-		sep := min(end, (begin+8)&(^7))
-		// first half
-		// e.g. begin = 3, end = 10
-		//      sep = 8, fieldMask = 0b11111000, shiftRight = 3
-		if begin < sep { // always true, just for beauty
-			fieldMask := ((1 << (((sep - 1) & 7) + 1)) - 1) & (^((1 << (begin & 7)) - 1))
-			shiftRight := begin % 8
-			// expr = (((data[begin/8] & fieldMask) >> shiftRight)
-			expr = &definition.BinopExpr{
-				Op: definition.ExprOp_SHR,
-				Expr1: &definition.BinopExpr{
-					Op: definition.ExprOp_BAND,
-					Expr1: &definition.RawExpr{
-						Expr: dataData(begin / 8),
-					},
-					Expr2: &definition.RawExpr{
-						Expr: g.generateBin(fieldMask),
-					},
-				},
-				Expr2: &definition.RawExpr{
-					Expr: fmt.Sprintf("%d", shiftRight),
-				},
+	fieldBitSize := to - from
+	for fieldFrom := int64(0); fieldFrom < fieldBitSize; fieldFrom += 8 {
+		chunkSize := min(int64(8), fieldBitSize-fieldFrom)
+		parts := []string{}
+		consumed := int64(0)
+		for consumed < chunkSize {
+			dataBit := from + fieldFrom + consumed
+			partSize := min(chunkSize-consumed, 8-(dataBit&7))
+			partMask := (int64(1) << partSize) - 1
+			part := fmt.Sprintf("(((%s) >> %d) & %s)", dataData(dataBit/8), dataBit&7, g.generateHex(partMask))
+			if consumed != 0 {
+				part = fmt.Sprintf("(%s << %d)", part, consumed)
 			}
+			parts = append(parts, part)
+			consumed += partSize
 		}
-		// second half
-		// e.g. begin = 8, end = 10
-		//      sep = 8, fieldMask = 0b00000111, shiftLeft = 5
-		if sep < end {
-			fieldMask := ((1 << (((end - 1) & 7) + 1)) - 1) & (^((1 << (sep & 7)) - 1))
-			shiftLeft := width - end%8
-			// expr = expr | (((data[sep/8] & fieldMask) << shiftLeft)
-			expr = &definition.BinopExpr{
-				Op:    definition.ExprOp_BOR,
-				Expr1: expr,
-				Expr2: &definition.BinopExpr{
-					Op: definition.ExprOp_SHL,
-					Expr1: &definition.BinopExpr{
-						Op: definition.ExprOp_BAND,
-						Expr1: &definition.RawExpr{
-							Expr: dataData(sep / 8),
-						},
-						Expr2: &definition.RawExpr{
-							Expr: g.generateBin(fieldMask),
-						},
-					},
-					Expr2: &definition.RawExpr{
-						Expr: fmt.Sprintf("%d", shiftLeft),
-					},
-				},
-			}
-		}
-
-		// generate decode expression
-		exprStr, err := g.GenerateExpr(expr, "")
-		if err != nil {
-			panic(fmt.Errorf("internal error: %s", err))
-		}
-
-		// generate decode statement
-		decodeStmt := fieldProcessor(exprStr, (i-from)/8)
+		exprStr := strings.Join(parts, " | ")
+		decodeStmt := fieldProcessor(exprStr, fieldFrom/8)
 		decodeStmts = append(decodeStmts, decodeStmt)
 	}
 	return decodeStmts

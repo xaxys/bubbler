@@ -1897,8 +1897,6 @@ func (g CGenerator) generateEncodeNormalField(field *definition.NormalField, sta
 			encodeStmts = append(encodeStmts, loopStmts...)
 		} else if shouldUseLoop {
 			// Fixed-bit-width element loop using bb_write_field_bits.
-			g.GenState.UseBitHelpers = true
-
 			bigEndianStr := g.generateBoolLiteral(gen.MatchOption(field.FieldOptions, "order", "big"))
 
 			// bit_from = from + _i * elemBitSize, plus offset*8 if struct is dynamic.
@@ -1933,6 +1931,7 @@ func (g CGenerator) generateEncodeNormalField(field *definition.NormalField, sta
 				common["DataExpr"] = dataPtrExpr + " + " + offsetExpr
 				stmt = util.ExecuteTemplate(fieldEncoderTemplate, "encodeArrayLoopStruct", nil, common)
 			case *definition.BasicType:
+				g.GenState.UseBitHelpers = true
 				if elemTyT.GetTypeID().IsFloat() {
 					g.GenState.UseStringH = true
 					if elemTyT.GetTypeBitSize() == 32 {
@@ -1946,6 +1945,7 @@ func (g CGenerator) generateEncodeNormalField(field *definition.NormalField, sta
 					stmt = util.ExecuteTemplate(fieldEncoderTemplate, "encodeArrayLoopBasicSimple", nil, common)
 				}
 			case *definition.Enum:
+				g.GenState.UseBitHelpers = true
 				_ = elemTyT
 				common["ValueExpr"] = g.generateCastExpr(&definition.Uint64, fmt.Sprintf("((%s)[_i])", name))
 				stmt = util.ExecuteTemplate(fieldEncoderTemplate, "encodeArrayLoopBasicSimple", nil, common)
@@ -2610,7 +2610,7 @@ var fieldDecoderTemplate = `
 
 {{- define "decodeArrayLoopStruct" -}}
 for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
-    {{ .StructName }}_decode({{ .DataExpr }}, &((({{ .ArrayName }})[_i])));
+    if ({{ .StructName }}_decode({{ .DataExpr }}, &((({{ .ArrayName }})[_i]))) < 0) return -1;
 }
 {{- end -}}
 
@@ -2846,8 +2846,6 @@ func (g CGenerator) generateDecodeNormalField(field *definition.NormalField, sta
 			// Fixed-bit-width element loop using bb_read_field_bits. Each branch
 			// picks one self-contained loop template. Sign-extend / cast fragments
 			// also have their own templates so the cast syntax stays in templates.
-			g.GenState.UseBitHelpers = true
-
 			bigEndianStr := g.generateBoolLiteral(gen.MatchOption(field.FieldOptions, "order", "big"))
 
 			bitBaseExpr := fmt.Sprintf("%d + _i * %d", from, elemBitSize)
@@ -2878,6 +2876,7 @@ func (g CGenerator) generateDecodeNormalField(field *definition.NormalField, sta
 				common["DataExpr"] = "(const void*)(" + dataPtrExpr + " + " + offsetExpr + ")"
 				stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopStruct", nil, common)
 			case *definition.BasicType:
+				g.GenState.UseBitHelpers = true
 				if elemTyT.GetTypeID().IsFloat() {
 					g.GenState.UseStringH = true
 					if elemTyT.GetTypeBitSize() == 32 {
@@ -2891,6 +2890,7 @@ func (g CGenerator) generateDecodeNormalField(field *definition.NormalField, sta
 					stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopBasicSimple", nil, common)
 				}
 			case *definition.Enum:
+				g.GenState.UseBitHelpers = true
 				// `(enum Name)_v` is a tagged-type cast not modeled by CastExpr.
 				common["Expr"] = fmt.Sprintf("(enum %s)_v", elemTyT.EnumName)
 				stmt = util.ExecuteTemplate(fieldDecoderTemplate, "decodeArrayLoopBasicSimple", nil, common)

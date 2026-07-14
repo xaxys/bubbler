@@ -24,6 +24,16 @@ fi
 WORK_DIR="tests/empty_matrix"
 SRC="features/empty.bb"
 
+cleanup() {
+    local status=$?
+    if [[ "${KEEP_E2E_WORK:-0}" == "1" || "$status" -ne 0 ]]; then
+        echo "[empty] keeping work directory: $WORK_DIR"
+    else
+        rm -rf "$WORK_DIR"
+    fi
+}
+trap cleanup EXIT
+
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"/{c,cpp,go,java,py,cs,cjs,mjs}
 

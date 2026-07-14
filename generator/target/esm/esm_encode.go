@@ -65,12 +65,22 @@ static encode_size(obj) {
                     {{- if $shouldUseLoop }}
     for (let _i = 0; _i < {{ $field.FieldType.Length }}; _i++) {
         size += obj.{{ $fieldName }}[_i].length;
-        size += 1{{ range $j := iterate 1 5 }} + Boolean(obj.{{ $fieldName }}[_i].length >> {{ calc $j "*" 7 }}){{ end }};
+        let _length = obj.{{ $fieldName }}[_i].length;
+        do {
+            size++;
+            _length = Math.floor(_length / 128);
+        } while (_length > 0);
     }
                     {{- else }}
                     {{- range $i := iterate 0 $field.FieldType.Length }}
     size += obj.{{ $fieldName }}[{{ $i }}].length;
-    size += 1{{ range $j := iterate 1 5 }} + Boolean(obj.{{ $fieldName }}[{{ $i }}].length >> {{ calc $j "*" 7 }}){{ end }};
+    {
+        let _length = obj.{{ $fieldName }}[{{ $i }}].length;
+        do {
+            size++;
+            _length = Math.floor(_length / 128);
+        } while (_length > 0);
+    }
                     {{- end }}
                     {{- end }}
                 {{- end }}
@@ -82,7 +92,13 @@ static encode_size(obj) {
     size += stringToUTF8BytesCount(obj.{{ $fieldName }}) + 1;
             {{- else if $field.FieldType.GetTypeID.IsBytes }}
     size += obj.{{ $fieldName }}.length;
-    size += 1{{ range $j := iterate 1 5 }} + Boolean(obj.{{ $fieldName }}.length >> {{ calc $j "*" 7 }}){{ end }};
+    {
+        let _length = obj.{{ $fieldName }}.length;
+        do {
+            size++;
+            _length = Math.floor(_length / 128);
+        } while (_length > 0);
+    }
         {{- end }}
         {{- end }}
     {{- end }}
@@ -254,21 +270,25 @@ var fieldEncoderTemplate = `
 {{- end -}}
 
 {{- define "encodeNormalFieldString" -}}
-    (function() {
+    {
         const {{ .TempName }} = stringToUTF8Bytes({{ .FieldName }}, data, offset + start + {{ .FromByte }});
         data[offset + start + {{ .FromByte }} + {{ .TempName }}] = 0;
         offset += {{ .TempName }} + 1;
-    })();
+    }
 {{- end -}}
 
 {{- define "encodeNormalFieldBytes" -}}
-    (function() {
+    {
         let {{ .TempName }} = {{ .FieldName }}.length;
-        do { data[offset + start + {{ .FromByte }}] = {{ .TempName }} & {{ .GetMask }} | {{ .SetMask }}; offset++; {{ .TempName }} >>= {{ .Shift }}; } while ({{ .TempName }} > 0);
-        data[offset - 1 + start + {{ .FromByte }}] &= ~{{ .SetMask }};
+        do {
+            const _byte = {{ .TempName }} % 128;
+            {{ .TempName }} = Math.floor({{ .TempName }} / 128);
+            data[offset + start + {{ .FromByte }}] = _byte | ({{ .TempName }} > 0 ? {{ .SetMask }} : 0);
+            offset++;
+        } while ({{ .TempName }} > 0);
         for (let i = 0; i < {{ .FieldName }}.length; i++) data[offset + start + {{ .FromByte }} + i] = {{ .FieldName }}[i];
         offset += {{ .FieldName }}.length;
-    })();
+    }
 {{- end -}}
 
 {{- define "encodeImpl" -}}
@@ -469,8 +489,14 @@ func (g ESModuleGenerator) generateEncodeNormalField(field *definition.NormalFie
 				}
 				stmt = util.ExecuteTemplate(fieldEncoderTemplate, "encodeArrayLoopBasicSimple", nil, common)
 			case *definition.Enum:
-				_ = elemTyT
-				common["ValueExpr"] = g.generateCastExpr(&definition.Int64, fmt.Sprintf("%s[_i]", name))
+				inPackage := field.FieldBelongs.StructBelongs.LocalNames.Has(elemTyT.EnumName)
+				var lookupExpr string
+				if g.GenCtx.GenOptions.SingleFile || inPackage {
+					lookupExpr = fmt.Sprintf("(typeof %s[_i] === \"number\" ? %s[_i] : %s[%s[_i]])", name, name, elemTyT.EnumName, name)
+				} else {
+					lookupExpr = fmt.Sprintf("(typeof %s[_i] === \"number\" ? %s[_i] : $%s.%s[%s[_i]])", name, name, elemTyT.EnumBelongs.Package.PackageName, elemTyT.EnumName, name)
+				}
+				common["ValueExpr"] = g.generateCastExpr(&definition.Int64, lookupExpr)
 				stmt = util.ExecuteTemplate(fieldEncoderTemplate, "encodeArrayLoopBasicSimple", nil, common)
 			default:
 				return nil, fmt.Errorf("internal error: unsupported fixed-element array type %T", ty.ElementType)

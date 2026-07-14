@@ -65,10 +65,11 @@ func NewGenOptions(setter ...GenOptionSetter) *GenOptions {
 
 func RemovePath(path string) GenOptionSetter {
 	paths := strings.Split(path, ",")
-	for _, p := range paths {
+	for i, p := range paths {
 		for strings.HasSuffix(p, "/") {
 			p = p[:len(p)-1]
 		}
+		paths[i] = p
 	}
 	return func(options *GenOptions) {
 		options.RemovePath = paths

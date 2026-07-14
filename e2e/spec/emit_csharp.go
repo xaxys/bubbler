@@ -50,29 +50,56 @@ double F64FromBits(ulong b) => BitConverter.ToDouble(BitConverter.GetBytes(b), 0
 uint F32ToBits(float f) => BitConverter.ToUInt32(BitConverter.GetBytes(f), 0);
 ulong F64ToBits(double f) => BitConverter.ToUInt64(BitConverter.GetBytes(f), 0);
 
-// DynamicFields.Data type varies by -memcpy: byte[] vs Memory<byte> vs
-// ReadOnlyMemory<byte>. Keep one reflective helper instead of forking the
-// emitter on every codegen variant.
-void SetDynamicData(DynamicFields msg, byte[] data) {
-    var prop = typeof(DynamicFields).GetProperty("Data");
-    if (prop == null) throw new InvalidOperationException("DynamicFields.Data not found");
-    if (prop.PropertyType == typeof(byte[])) { prop.SetValue(msg, data); return; }
-    if (prop.PropertyType == typeof(Memory<byte>)) { prop.SetValue(msg, new Memory<byte>(data)); return; }
-    if (prop.PropertyType == typeof(ReadOnlyMemory<byte>)) { prop.SetValue(msg, new ReadOnlyMemory<byte>(data)); return; }
-    throw new InvalidOperationException($"Unsupported DynamicFields.Data type: {prop.PropertyType}");
+// bytes field types vary by -memcpy: byte[] vs Memory<byte> vs
+// ReadOnlyMemory<byte>. Reflection keeps the same generated driver valid for
+// every matrix variant, including nested structs and arrays of bytes.
+object BoxBytes(Type type, byte[] data) {
+    if (type == typeof(byte[])) return data;
+    if (type == typeof(Memory<byte>)) return new Memory<byte>(data);
+    if (type == typeof(ReadOnlyMemory<byte>)) return new ReadOnlyMemory<byte>(data);
+    throw new InvalidOperationException($"Unsupported bytes type: {type}");
 }
 
-byte[] GetDynamicData(DynamicFields msg) {
-    var prop = typeof(DynamicFields).GetProperty("Data");
-    var v = prop!.GetValue(msg);
+byte[] UnboxBytes(object? v, Type type) {
     if (v is byte[] arr) return arr;
     if (v is Memory<byte> mem) return mem.ToArray();
     if (v is ReadOnlyMemory<byte> rm) return rm.ToArray();
-    throw new InvalidOperationException($"Unsupported DynamicFields.Data type: {prop.PropertyType}");
+    throw new InvalidOperationException($"Unsupported bytes value for {type}");
 }
 
-int DecodeSizeDynamic(DynamicFields msg, byte[] data, int start = 0) {
-    var t = typeof(DynamicFields);
+void SetBytesProperty(object msg, string propertyName, byte[] data) {
+    var prop = msg.GetType().GetProperty(propertyName);
+    if (prop == null) throw new InvalidOperationException($"{msg.GetType().Name}.{propertyName} not found");
+    prop.SetValue(msg, BoxBytes(prop.PropertyType, data));
+}
+
+byte[] GetBytesProperty(object msg, string propertyName) {
+    var prop = msg.GetType().GetProperty(propertyName);
+    if (prop == null) throw new InvalidOperationException($"{msg.GetType().Name}.{propertyName} not found");
+    return UnboxBytes(prop.GetValue(msg), prop.PropertyType);
+}
+
+void SetBytesArrayProperty(object msg, string propertyName, byte[][] values) {
+    var prop = msg.GetType().GetProperty(propertyName);
+    if (prop == null) throw new InvalidOperationException($"{msg.GetType().Name}.{propertyName} not found");
+    var elementType = prop.PropertyType.GetElementType();
+    if (elementType == null) throw new InvalidOperationException($"{prop.PropertyType} is not an array");
+    var array = Array.CreateInstance(elementType, values.Length);
+    for (int i = 0; i < values.Length; i++) array.SetValue(BoxBytes(elementType, values[i]), i);
+    prop.SetValue(msg, array);
+}
+
+byte[] GetBytesArrayElement(object msg, string propertyName, int index) {
+    var prop = msg.GetType().GetProperty(propertyName);
+    if (prop == null) throw new InvalidOperationException($"{msg.GetType().Name}.{propertyName} not found");
+    var array = (Array?)prop.GetValue(msg);
+    var elementType = prop.PropertyType.GetElementType();
+    if (array == null || elementType == null) throw new InvalidOperationException($"{propertyName} is not a bytes array");
+    return UnboxBytes(array.GetValue(index), elementType);
+}
+
+int DecodeSizeDynamic(object msg, byte[] data, int start = 0) {
+    var t = msg.GetType();
     var m2 = t.GetMethod("DecodeSize", new[] { typeof(byte[]), typeof(int) });
     if (m2 != null) { return (int)m2.Invoke(msg, new object[] { data, start })!; }
     var m1 = t.GetMethod("DecodeSize", new[] { typeof(byte[]) });
@@ -117,6 +144,10 @@ func emitCs_scenario(sc Scenario) string {
         if !sc.IsDynamic {
             fmt.Fprintf(&sb, "        Check(buf.Length == %s.Size, \"encode length\");\n", csQual(sc))
         }
+        if len(c.Wire) > 0 {
+            fmt.Fprintf(&sb, "        Check(buf.SequenceEqual(new byte[]{%s}), \"golden wire\");\n",
+                csByteList(c.Wire))
+        }
         if sc.StructName == "BigEndianFields" {
             sb.WriteString("        CheckEq(buf[0], (byte)0xBE, \"buf[0]=0xBE\");\n")
             sb.WriteString("        CheckEq(buf[1], (byte)0x12, \"buf[1]=0x12\");\n")
@@ -138,6 +169,8 @@ func emitCs_scenario(sc Scenario) string {
         for _, af := range c.resolveAssert() {
             sb.WriteString(emitCs_assertField(sc, "d", af, "        "))
         }
+        fmt.Fprintf(&sb, "        var truncated = new %s();\n", csQual(sc))
+        sb.WriteString("        Check(truncated.Decode(buf.Take(buf.Length - 1).ToArray()) < 0, \"truncated decode rejected\");\n")
         for _, e := range c.Errors {
             fmt.Fprintf(&sb, "        /* decode-error: %s */\n", e.Name)
             sb.WriteString("        {\n")
@@ -169,16 +202,6 @@ func emitCs_setField(sc Scenario, target string, fv FieldVal, indent string) str
 
 func emitCs_setNamed(sc Scenario, target, name string, v Val, indent string) string {
     prop := pascalCase(name)
-    // Special: DynamicFields.Data must go through SetDynamicData()
-    if sc.StructName == "DynamicFields" && name == "data" {
-        if v.Kind == VKBytes {
-            if len(v.Bytes) == 0 {
-                return fmt.Sprintf("%sSetDynamicData(%s, new byte[0]);\n", indent, target)
-            }
-            return fmt.Sprintf("%sSetDynamicData(%s, new byte[]{%s});\n",
-                indent, target, csByteList(v.Bytes))
-        }
-    }
 
     switch v.Kind {
     case VKBool:
@@ -209,9 +232,10 @@ func emitCs_setNamed(sc Scenario, target, name string, v Val, indent string) str
         return fmt.Sprintf("%s%s.%s = %s;\n", indent, target, prop, csStringLit(v.Str))
     case VKBytes:
         if len(v.Bytes) == 0 {
-            return fmt.Sprintf("%s%s.%s = new byte[0];\n", indent, target, prop)
+            return fmt.Sprintf("%sSetBytesProperty(%s, \"%s\", new byte[0]);\n", indent, target, prop)
         }
-        return fmt.Sprintf("%s%s.%s = new byte[]{%s};\n", indent, target, prop, csByteList(v.Bytes))
+        return fmt.Sprintf("%sSetBytesProperty(%s, \"%s\", new byte[]{%s});\n",
+            indent, target, prop, csByteList(v.Bytes))
     case VKStruct:
         var sb strings.Builder
         tmp := csTempName(target + "_" + name)
@@ -230,6 +254,19 @@ func emitCs_setNamed(sc Scenario, target, name string, v Val, indent string) str
 func emitCs_setArray(sc Scenario, target, prop string, v Val, indent string) string {
     elemKind := v.Array.ElemKind
     var sb strings.Builder
+    if elemKind == VKBytes {
+        values := make([]string, len(v.Array.Items))
+        for i, item := range v.Array.Items {
+            if len(item.Bytes) == 0 {
+                values[i] = "new byte[0]"
+            } else {
+                values[i] = fmt.Sprintf("new byte[]{%s}", csByteList(item.Bytes))
+            }
+        }
+        fmt.Fprintf(&sb, "%sSetBytesArrayProperty(%s, \"%s\", new byte[][]{%s});\n",
+            indent, target, prop, strings.Join(values, ", "))
+        return sb.String()
+    }
     // For arrays of struct: build each element via temp variable.
     if elemKind == VKStruct {
         tmp := csTempName(target + "_" + prop)
@@ -277,6 +314,8 @@ func emitCs_setArray(sc Scenario, target, prop string, v Val, indent string) str
         elemType = v.Array.ElemType
     case VKBool:
         elemType = "bool"
+    case VKString:
+        elemType = "string"
     }
     fmt.Fprintf(&sb, "%s%s.%s = new %s[]{%s};\n", indent, target, prop, elemType, strings.Join(items, ", "))
     return sb.String()
@@ -290,13 +329,13 @@ func emitCs_assertNamed(sc Scenario, target, name string, v Val, tol float64, in
     prop := pascalCase(name)
     msg := name
 
-    // Special: DynamicFields.Data must go through GetDynamicData()
-    if sc.StructName == "DynamicFields" && name == "data" && v.Kind == VKBytes {
+    if v.Kind == VKBytes {
         if len(v.Bytes) == 0 {
-            return fmt.Sprintf("%sCheck(GetDynamicData(%s).Length == 0, \"%s empty\");\n", indent, target, msg)
+            return fmt.Sprintf("%sCheck(GetBytesProperty(%s, \"%s\").Length == 0, \"%s empty\");\n",
+                indent, target, prop, msg)
         }
-        return fmt.Sprintf("%sCheck(GetDynamicData(%s).SequenceEqual(new byte[]{%s}), \"%s\");\n",
-            indent, target, csByteList(v.Bytes), msg)
+        return fmt.Sprintf("%sCheck(GetBytesProperty(%s, \"%s\").SequenceEqual(new byte[]{%s}), \"%s\");\n",
+            indent, target, prop, csByteList(v.Bytes), msg)
     }
 
     switch v.Kind {
@@ -400,6 +439,15 @@ func emitCs_assertNamed_index(sc Scenario, target, prop string, i int, v Val, to
             indent, accessor, v.U, label)
     case VKEnum:
         return fmt.Sprintf("%sCheckEq(%s, %s.%s, \"%s\");\n", indent, accessor, v.EnumType, v.EnumName, label)
+    case VKString:
+        return fmt.Sprintf("%sCheckEq(%s, %s, \"%s\");\n", indent, accessor, csStringLit(v.Str), label)
+    case VKBytes:
+        if len(v.Bytes) == 0 {
+            return fmt.Sprintf("%sCheck(GetBytesArrayElement(%s, \"%s\", %d).Length == 0, \"%s empty\");\n",
+                indent, target, prop, i, label)
+        }
+        return fmt.Sprintf("%sCheck(GetBytesArrayElement(%s, \"%s\", %d).SequenceEqual(new byte[]{%s}), \"%s\");\n",
+            indent, target, prop, i, csByteList(v.Bytes), label)
     case VKStruct:
         var sb strings.Builder
         tmp := csTempName(fmt.Sprintf("%s_%s_%d", target, prop, i))
@@ -541,6 +589,8 @@ func csValueExpr(v Val) string {
         return fmt.Sprintf("F64FromBits(0x%016XUL)", v.U)
     case VKEnum:
         return fmt.Sprintf("%s.%s", v.EnumType, v.EnumName)
+    case VKString:
+        return csStringLit(v.Str)
     }
     return ""
 }

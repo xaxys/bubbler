@@ -52,7 +52,7 @@ bubbler [options] <input file>
   - `c` / `cpp`: `bb_write_field_bits` / `bb_read_field_bits` (file-private; in C++ they live in an anonymous namespace within the source file).
   - `go`: `bbWriteFieldBits` / `bbReadFieldBits` (package-private).
   - `python`: `_bb_write_field_bits` / `_bb_read_field_bits` (module-level).
-  - `java` / `csharp`: `bbWriteFieldBits` / `bbReadFieldBits` (private static methods on the generated class; emitted only on classes that actually use them).
+  - `java`: `bbWriteFieldBits` / `bbReadFieldBits`; `csharp`: `BbWriteFieldBits` / `BbReadFieldBits` (private static methods on the generated class; emitted only on classes that actually use them).
   - `commonjs` / `esmodule`: `bbWriteFieldBits` / `bbReadFieldBits` (BigInt-based; emitted at module top when needed).
 
   Helpers are emitted only when at least one struct in the unit (or class, for Java / C#) actually rolls a fixed-bit-width array; files that exclusively unroll arrays do not pay the helper-size cost.
@@ -93,6 +93,7 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
   
     **Warning**: Decoding function generated without `-memcpy` will still accept `const void*` as input, but this CONST may be VIOLATED, since the decoded struct will reference the original buffer for some fields. You MUST ensure that the original buffer remains VALID and UNCHANGED, and changing the value from the struct will also CHANGE the content in the buffer.
   - With `-relpath`: Generate relative path imports (e.g. `#include "./foo_bb.h"` or `#include "../foo_bb.h"`).
+  - With `-unroll`: Arrays longer than the threshold use ordinary `for` loops. Fixed-width loops use file-private `bb_write_field_bits` / `bb_read_field_bits`; dynamic arrays advance the runtime byte offset in the loop.
 
 - `cpp`: C++ language, output one `.bb.hpp` file and one `.bb.cpp` file for each `.bb` file. The folder structure will not be affected by the `cpp_namespace` option.
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
@@ -102,11 +103,13 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
 
     **Warning**: Decoding function generated without `-memcpy` will still accept `const void*` as input, but this CONST may be VIOLATED, since the decoded struct will reference the original buffer for some fields. You MUST ensure that the original buffer remains VALID and UNCHANGED, and changing the value from the struct will also CHANGE the content in the buffer.
   - With `-relpath`: Generate relative path imports (e.g. `#include "./foo_bb.hpp"` or `#include "../foo_bb.hpp"`).
+  - With `-unroll`: Arrays longer than the threshold use ordinary `for` loops. Fixed-width loops use `bb_write_field_bits` / `bb_read_field_bits` in the generated source file's anonymous namespace.
 
 - `csharp`: C# language, output one `.cs` file for each structure defined in each `.bb` file. The folder structure will not be affected by the `csharp_namespace` option.
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
   - With `-memcpy`: Use `byte[]` as the type for `bytes` fields. Encode and decode methods will only be compatible with `byte[]` parameters. Older .NET Framework versions should use this option.
   - Without `-memcpy`: Use `Memory<byte>` as the type for `bytes` fields. Encode and decode methods will be compatible with `byte[]`, `Memory<byte>` and `Span<byte>` (encode only) parameters. The `System.Memory` package is required for this case.
+  - With `-unroll`: Arrays longer than the threshold use ordinary `for` loops. Fixed-width loops use private static `BbWriteFieldBits` / `BbReadFieldBits` helpers on the generated class.
 
 - `commonjs`: CommonJS module, output one `.bb.js` file for each `.bb` file. (Please note that `BigInt` is used for `int64` and `uint64` fields, which is not supported in some environments.)
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
@@ -114,6 +117,7 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
   - With `-compat`: Use `Array` instead of `Uint8Array` for encode buffers and `bytes` fields, maximizing compatibility with older environments.
   - Force enabled: `-memcpy`.
   - Force enabled: Relative paths are always used via `require()`. `-relpath` is implicitly enabled.
+  - With `-unroll`: Fixed-width arrays use module-private BigInt bit helpers; string, bytes and dynamic-struct arrays use byte-offset loops.
 
 - `esmodule`: ES6 module, output one `.bb.js` file for each `.bb` file. Uses native `import`/`export` syntax, suitable for modern browsers and Node.js ESM. (Please note that `BigInt` is used for `int64` and `uint64` fields, which is not supported in some environments.)
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
@@ -121,21 +125,29 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
   - With `-compat`: Use `Array` instead of `Uint8Array` for encode buffers and `bytes` fields, maximizing compatibility with older environments.
   - Force enabled: `-memcpy`.
   - Force enabled: Relative paths are always used via `import`. `-relpath` is implicitly enabled.
+  - With `-unroll`: Same semantics as CommonJS, using ordinary `for` loops and module-private BigInt bit helpers.
 
 - `go`: Go language, output one `.bb.go` file for each `.bb` file. The folder structure will be affected by the `go_package` option. (i.e., `github.com/xaxys/bubbler` will generate in the `github.com/xaxys/bubbler` directory)
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option. The package name is determined by the package statement of the input `.bb` file.
   - With `-memcpy`: Make a copy of the `bytes` field when decoding. The `string` field will always be copied.
   - Without `-memcpy`: A slice of the original buffer will be assigned to the `bytes` field. The `string` field will always be copied.
   - With `-relpath`: Generate relative path imports (e.g. `import "./foo_bb"` or `import "../subpkg/foo_bb"`). If `go_package` is set, the generated relative path will be calculated based on the package path defined by `go_package`.
+  - With `-unroll`: Fixed-width loops use package-private `bbWriteFieldBits` / `bbReadFieldBits`; decoders validate the input size before reading.
   **Notice!** The `-rmpath` option is NOT considered when calculating relative paths between modules for Go. That is, if the package path of A is `github.com/xaxys/a`, the package path of B is `gitlab.com/user/b`, and `-rmpath=github.com/xaxys` is set, then the output path of A will be `a`, the output path of B will be `gitlab.com/user/b`, but the imported path of A inside B will still be calculated as `../../github.com/xaxys/a`, instead of `../../a`.
 
 - `java`: Java language, output one `.java` file for each structure defined in each `.bb` file. The folder structure will be affected by the `java_package` option. (i.e., `com.example.rovlink` will generate in the `com/example/rovlink` directory)
   - Force enabled: `-memcpy`.
+  - With `-unroll`: Fixed-width loops use private static `bbWriteFieldBits` / `bbReadFieldBits` helpers on the generated class.
 
 - `python`: Python language, output one `_bb.py` file for each `.bb` file.
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
   - Force enabled: `-memcpy`.
   - With `-relpath`: Generate relative path imports (e.g. `from .foo_bb import *` or `from ..foo_bb import *`).
+  - With `-unroll`: Fixed-width loops use module-private `_bb_write_field_bits` / `_bb_read_field_bits`; dynamic arrays use byte-offset loops.
+
+### E2E test matrix
+
+`make e2e` runs the unified spec-driven matrix for every available language. It covers language-specific generator options plus `-unroll` values `-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 31, 32`. Array cases include every element category, dynamic structures, UTF-8 strings, bytes length boundaries, narrow bit widths, malformed/truncated input and cross-language golden wire vectors. On Linux, C# is tested on .NET 8; .NET Framework 4.7.2 remains a Windows CI-only job.
 
 ## Protocol Syntax
 
