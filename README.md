@@ -46,13 +46,13 @@ bubbler [options] <input file>
 - `-compat`: Generate Compatible Code (Use `Array` instead of typed arrays like `Uint8Array` for buffers and `bytes` fields in CommonJS target. By default, `Uint8Array` is used for better performance.)
 - `-unroll <threshold>`: Loop Unroll Threshold for Array Codec (Default: `4`). When an array length is greater than this threshold, the generated `encode`/`decode` and `encode_size`/`decode_size` code will use a `for` loop instead of inlining each iteration. Set to `-1` to always unroll arrays regardless of size, or to `0` to always loop. For example, `-unroll=1` will use loops for all arrays with more than 1 element, while `-unroll=8` will only use loops for arrays with more than 8 elements.
 
-  Fully supported for every element type (basic, enum, fixed/dynamic struct, string, bytes) in all targets: `c`, `cpp`, `csharp`, `commonjs`, `esmodule`, `go`, `java`, `python`. For fixed-bit-width elements, a per-file (or per-class in Java/C#) bit-helper pair is emitted on demand to write/read elements at arbitrary bit offsets. Sub-byte arrays such as `int16<4> narrow12 [6]` (12-bit elements) are correctly handled.
+  Fully supported for every element type (basic, enum, fixed/dynamic struct, string, bytes) in all targets: `c`, `cpp`, `csharp`, `commonjs`, `esmodule`, `go`, `java`, `kotlin`, `python`. For fixed-bit-width elements, generated bit helpers write/read elements at arbitrary bit offsets. Sub-byte arrays such as `int16<4> narrow12 [6]` (12-bit elements) are correctly handled.
 
   Per-language helper names:
   - `c` / `cpp`: `bb_write_field_bits` / `bb_read_field_bits` (file-private; in C++ they live in an anonymous namespace within the source file).
   - `go`: `bbWriteFieldBits` / `bbReadFieldBits` (package-private).
   - `python`: `_bb_write_field_bits` / `_bb_read_field_bits` (module-level).
-  - `java`: `bbWriteFieldBits` / `bbReadFieldBits`; `csharp`: `BbWriteFieldBits` / `BbReadFieldBits` (private static methods on the generated class; emitted only on classes that actually use them).
+  - `java` and `kotlin`: `bbWriteFieldBits` / `bbReadFieldBits`; `csharp`: `BbWriteFieldBits` / `BbReadFieldBits` (private methods on the generated class/companion).
   - `commonjs` / `esmodule`: `bbWriteFieldBits` / `bbReadFieldBits` (BigInt-based; emitted at module top when needed).
 
   Helpers are emitted only when at least one struct in the unit (or class, for Java / C#) actually rolls a fixed-bit-width array; files that exclusively unroll arrays do not pay the helper-size cost.
@@ -79,6 +79,7 @@ Targets:
   esmodule [javascript, js, mjs, esm]
   go
   java
+  kotlin [kt]
   python [py]
 
 ```
@@ -139,6 +140,15 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
   - Force enabled: `-memcpy`.
   - With `-unroll`: Fixed-width loops use private static `bbWriteFieldBits` / `bbReadFieldBits` helpers on the generated class.
 
+- `kotlin`: Kotlin/JVM 1.9.24 (JVM target 17), with alias `kt`. Generates one `.kt` file for every enum and struct. `kotlin_package` controls the package and output directory; when omitted, the `.bb` package is used. It is independent from `java_package`.
+  - Unsigned fields use native `UByte`, `UShort`, `UInt`, and `ULong` types and their primitive array counterparts.
+  - Enum properties are nullable. Unknown wire values decode to `null` without failing the whole frame.
+  - Normal fields are mutable properties. `-minimal` makes raw properties private while preserving custom properties.
+  - Force enabled: `-memcpy`; `bytes` values are represented by copied `ByteArray` instances.
+  - `-unroll`, `-decnum`, and both sign-extension modes are supported. `-relpath`, `-inner`, and `-single` are ignored with a warning.
+
+  > **Warning:** Kotlin does not support write-only properties. A custom accessor group containing a setter without a getter cannot be generated for the Kotlin target and results in a generation error. Add a getter with the same name and type, or redesign the schema accessor.
+
 - `python`: Python language, output one `_bb.py` file for each `.bb` file.
   - With `-single`: Output one file that includes all definitions for all `.bb` files. The output file name (including the extension) is determined by the `-o` option.
   - Force enabled: `-memcpy`.
@@ -147,7 +157,7 @@ When selecting the target language, you can use the aliases inside `[]`. For exa
 
 ### E2E test matrix
 
-`make e2e` runs the unified spec-driven matrix for every available language. It covers language-specific generator options plus `-unroll` values `-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 31, 32`. Array cases include every element category, dynamic structures, UTF-8 strings, bytes length boundaries, narrow bit widths, malformed/truncated input and cross-language golden wire vectors. On Linux, C# is tested on .NET 8; .NET Framework 4.7.2 remains a Windows CI-only job.
+`make e2e` runs the unified spec-driven matrix for all nine target languages, including Kotlin. It covers language-specific generator options plus `-unroll` values `-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 31, 32`. Array cases include every element category, dynamic structures, UTF-8 strings, bytes length boundaries, narrow bit widths, malformed/truncated input, `decodeSize`, and cross-language golden wire vectors. On Linux, C# is tested on .NET 8; .NET Framework 4.7.2 remains a Windows CI-only job.
 
 ## Protocol Syntax
 
@@ -177,6 +187,7 @@ option go_package = "example.com/rovlink";
 option cpp_namespace = "com::example::rovlink";
 option csharp_namespace = "Example.Rovlink";
 option java_package = "com.example.rovlink";
+option kotlin_package = "com.example.rovlink";
 ```
 
 The option statement cannot be duplicated in a `.bb` file.
@@ -223,6 +234,10 @@ If `csharp_namespace` is set, the generated code will use the specified namespac
 ##### `java_package`
 
 If `java_package` is set, the generated code will use the specified package name in the generated Java code. The generated folder structure will be based on the package name.
+
+##### `kotlin_package`
+
+If `kotlin_package` is set, Kotlin output uses that JVM package and matching folder structure. If it is omitted, Kotlin uses the `.bb` package declaration. This option is independent from `java_package`.
 
 ### Import Statements
 
@@ -607,6 +622,16 @@ public int decodeSize(byte[] data);
 public int decodeSize(byte[] data, int start);
 ```
 
+### Kotlin
+
+```kotlin
+fun encode(): ByteArray
+fun encode(data: ByteArray, start: Int = 0): Int
+fun decode(data: ByteArray, start: Int = 0): Int
+fun encodeSize(): Int
+fun decodeSize(data: ByteArray, start: Int = 0): Int
+```
+
 ### Python
 
 ```python
@@ -732,11 +757,11 @@ make e2e            # runs the complete suite (uses Docker on Windows)
 make e2e-docker     # always runs inside Docker
 ```
 
-Per-language test drivers (`tests/c/main.c`, `tests/java/Main.java`,
+Per-language test drivers (`tests/c/main.c`, `tests/java/Main.java`, `tests/kotlin/Main.kt`,
 `tests/python/test_main.py`, `tests/cjs/test.mjs`, etc.) are **generated**
 from a single Go spec at [e2e/spec/](e2e/spec/) before each compile step.
 To add a test case, edit [e2e/spec/scenarios.go](e2e/spec/scenarios.go); the
-generator emits all eight language drivers on the next run. See
+generator emits all nine language drivers on the next run. See
 [e2e/spec/README.md](e2e/spec/README.md) for the full guide.
 
 ## License

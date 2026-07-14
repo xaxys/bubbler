@@ -15,6 +15,7 @@ services:
     # SKIP_GO:   "1"
     # SKIP_PY:   "1"
     # SKIP_JAVA: "1"
+    # SKIP_KOTLIN: "1"
     # SKIP_CS:   "1"
     # SKIP_CJS:  "1"
     volumes:

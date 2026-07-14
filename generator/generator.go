@@ -13,6 +13,7 @@ import (
 	"github.com/xaxys/bubbler/generator/target/esm"
 	"github.com/xaxys/bubbler/generator/target/golang"
 	"github.com/xaxys/bubbler/generator/target/java"
+	"github.com/xaxys/bubbler/generator/target/kotlin"
 	"github.com/xaxys/bubbler/generator/target/python"
 	"github.com/xaxys/bubbler/util"
 )
@@ -32,6 +33,7 @@ func init() {
 	esmGen := esm.NewESModuleGenerator()
 	goGen := golang.NewGoGenerator()
 	javaGen := java.NewJavaGenerator()
+	kotlinGen := kotlin.NewKotlinGenerator()
 	pythonGen := python.NewPythonGenerator()
 
 	TargetMap = util.NewOrderedMap[string, Generator]()
@@ -49,6 +51,8 @@ func init() {
 	TargetMap.Put("esm", esmGen)
 	TargetMap.Put("go", goGen)
 	TargetMap.Put("java", javaGen)
+	TargetMap.Put("kotlin", kotlinGen)
+	TargetMap.Put("kt", kotlinGen)
 	TargetMap.Put("python", pythonGen)
 	TargetMap.Put("py", pythonGen)
 }

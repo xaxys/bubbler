@@ -39,7 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Python
     python3 python3-pip \
     # Node.js (from NodeSource 18.x LTS)
-    curl ca-certificates gnupg \
+    curl ca-certificates gnupg unzip \
     # .NET prerequisites
     libicu70 \
     # Mono (for running .NET Framework 4.7 binaries)
@@ -54,6 +54,15 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
 # .NET 8 SDK
 RUN curl -fsSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 8.0 \
     && ln -s /root/.dotnet/dotnet /usr/local/bin/dotnet
+
+# Kotlin/JVM 1.9.24
+ARG KOTLIN_VERSION=1.9.24
+RUN curl -fsSL -o /tmp/kotlin-compiler.zip \
+        "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip" \
+    && unzip -q /tmp/kotlin-compiler.zip -d /opt \
+    && rm /tmp/kotlin-compiler.zip \
+    && /opt/kotlinc/bin/kotlinc -version
+ENV PATH="/opt/kotlinc/bin:${PATH}"
 
 # Go (for running go tests)
 COPY --from=golang:1.22 /usr/local/go /usr/local/go

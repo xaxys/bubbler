@@ -46,13 +46,13 @@ bubbler [options] <input file>
 - `-compat`: 生成兼容性代码（在 CommonJS 目标中使用 `Array` 代替 `Uint8Array` 等 typed array 作为缓冲區和 `bytes` 字段的类型。默认使用 `Uint8Array` 以提高性能）
 - `-unroll <threshold>`: 数组编解码代码的循环展开阈值（默认值: `4`）。当数组长度大于此阈值时，生成的 `encode`/`decode` 与 `encode_size`/`decode_size` 代码将使用 `for` 循环，否则将每次迭代展开内联在生成的代码中。设置为 `-1` 始终展开（无论数组大小），设置为 `0` 始终循环。例如：`-unroll=1` 将对所有长度超过 1 的数组使用循环；`-unroll=8` 仅对长度超过 8 的数组使用循环。
 
-  所有目标（`c`、`cpp`、`csharp`、`commonjs`、`esmodule`、`go`、`java`、`python`）已对全部元素类型（基本类型、枚举、定长 / 不定长结构体、`string`、`bytes`）完整支持。对于定长位宽的元素，会按需在文件级（Java / C# 在类级）生成一对 bit 助手函数用于在任意比特偏移处写入 / 读取。诸如 `int16<4> narrow12 [6]`（12 位元素）这类亚字节数组也能正确处理。
+  所有目标（`c`、`cpp`、`csharp`、`commonjs`、`esmodule`、`go`、`java`、`kotlin`、`python`）已对全部元素类型（基本类型、枚举、定长 / 不定长结构体、`string`、`bytes`）完整支持。对于定长位宽的元素，生成的 bit 助手函数可在任意比特偏移处写入 / 读取。诸如 `int16<4> narrow12 [6]`（12 位元素）这类亚字节数组也能正确处理。
 
   各语言 bit 助手函数命名：
   - `c` / `cpp`：`bb_write_field_bits` / `bb_read_field_bits`（文件私有；C++ 中位于源文件的匿名命名空间内）。
   - `go`：`bbWriteFieldBits` / `bbReadFieldBits`（包私有）。
   - `python`：`_bb_write_field_bits` / `_bb_read_field_bits`（模块顶层）。
-  - `java`：`bbWriteFieldBits` / `bbReadFieldBits`；`csharp`：`BbWriteFieldBits` / `BbReadFieldBits`（生成类内的 private static 方法；仅在确实使用的类内发出）。
+  - `java` 和 `kotlin`：`bbWriteFieldBits` / `bbReadFieldBits`；`csharp`：`BbWriteFieldBits` / `BbReadFieldBits`（生成类或 companion 内的 private 方法）。
   - `commonjs` / `esmodule`：`bbWriteFieldBits` / `bbReadFieldBits`（基于 BigInt；按需在模块顶部发出）。
 
   助手仅在该编译单元（Java / C# 在类级）确实存在「需要循环且元素为定长位宽」的数组时才会生成，纯展开的文件不会引入助手代码。
@@ -79,6 +79,7 @@ Targets:
   esmodule [javascript, js, mjs, esm]
   go
   java
+  kotlin [kt]
   python [py]
 
 ```
@@ -139,6 +140,15 @@ Targets:
   - 强制启用：`-memcpy`。
   - 使用 `-unroll`：定长循环使用生成类中的 private static `bbWriteFieldBits` / `bbReadFieldBits`。
 
+- `kotlin`：Kotlin/JVM 1.9.24（JVM target 17），别名为 `kt`。每个枚举和结构体生成一个 `.kt` 文件。`kotlin_package` 控制 package 和输出目录；未设置时使用 `.bb` 的 package 声明，并且不受 `java_package` 影响。
+  - 无符号字段使用原生 `UByte`、`UShort`、`UInt`、`ULong` 及对应的 primitive array。
+  - 枚举 property 为可空类型；未知线上枚举值解码为 `null`，不会使整个帧解码失败。
+  - 普通字段生成 mutable property。`-minimal` 会隐藏 raw property，但保留 custom property。
+  - 强制启用 `-memcpy`，`bytes` 使用独立复制的 `ByteArray`。
+  - 支持 `-unroll`、`-decnum` 和两种符号扩展方式；`-relpath`、`-inner`、`-single` 会给出警告并忽略。
+
+  > **警告：** Kotlin 不支持只写 property。若自定义 accessor 组只有 setter 而没有同名 getter，Kotlin 目标会在生成阶段报错。请增加同名同类型 getter，或重新设计 schema accessor。
+
 - `python`：Python 语言，为每个 `.bb` 文件输出一个 `_bb.py` 文件。
   - 使用`-single`：输出单个文件，其中包含所有 `.bb` 文件的所有定义。输出文件名（包括扩展名）由 `-o` 选项确定。
   - 强制启用：`-memcpy`。
@@ -147,7 +157,7 @@ Targets:
 
 ### E2E 测试矩阵
 
-`make e2e` 会对所有可用语言运行统一的 spec 驱动矩阵，覆盖各语言适用的生成选项，以及 `-unroll` 值 `-1、0、1、2、3、4、5、6、7、8、31、32`。数组场景覆盖全部元素类别、动态结构体、UTF-8 字符串、bytes 长度边界、窄位宽、畸形/截断输入和跨语言 golden wire。Linux 中 C# 仅测试 .NET 8；.NET Framework 4.7.2 保留为 Windows CI 专项。
+`make e2e` 会对包括 Kotlin 在内的 9 种目标语言运行统一的 spec 驱动矩阵，覆盖各语言适用的生成选项，以及 `-unroll` 值 `-1、0、1、2、3、4、5、6、7、8、31、32`。数组场景覆盖全部元素类别、动态结构体、UTF-8 字符串、bytes 长度边界、窄位宽、畸形/截断输入、`decodeSize` 和跨语言 golden wire。Linux 中 C# 仅测试 .NET 8；.NET Framework 4.7.2 保留为 Windows CI 专项。
 
 ## 协议语法
 
@@ -179,6 +189,7 @@ option go_package = "example.com/rovlink";
 option cpp_namespace = "com::example::rovlink";
 option csharp_namespace = "Example.Rovlink";
 option java_package = "com.example.rovlink";
+option kotlin_package = "com.example.rovlink";
 ```
 
 在 `.bb` 文件中，选项语句不能重复。
@@ -225,6 +236,10 @@ import "sensor.bb";
 ##### `java_package`
 
 如果设置了 `java_package`，生成的代码将在生成的 Java 代码中使用指定的包名，并且生成的文件夹结构将会根据该包名生成。
+
+##### `kotlin_package`
+
+如果设置了 `kotlin_package`，Kotlin 输出会使用指定的 JVM package 和对应目录结构；未设置时使用 `.bb` 的 package 声明。该选项与 `java_package` 相互独立。
 
 ### 导入语句
 
@@ -603,6 +618,16 @@ public int decodeSize(byte[] data);
 public int decodeSize(byte[] data, int start);
 ```
 
+### Kotlin
+
+```kotlin
+fun encode(): ByteArray
+fun encode(data: ByteArray, start: Int = 0): Int
+fun decode(data: ByteArray, start: Int = 0): Int
+fun encodeSize(): Int
+fun decodeSize(data: ByteArray, start: Int = 0): Int
+```
+
 ### Python
 
 ```python
@@ -727,10 +752,10 @@ make e2e            # 运行完整测试套件（Windows 下使用 Docker）
 make e2e-docker     # 始终在 Docker 中运行
 ```
 
-各语言测试驱动（`tests/c/main.c`、`tests/java/Main.java`、
+各语言测试驱动（`tests/c/main.c`、`tests/java/Main.java`、`tests/kotlin/Main.kt`、
 `tests/python/test_main.py`、`tests/cjs/test.mjs` 等）都是在每次编译步骤之前
 **由 [e2e/spec/](e2e/spec/) 中的统一 Go spec 生成的**。新增测试用例只需编辑
-[e2e/spec/scenarios.go](e2e/spec/scenarios.go)，下次运行时所有 8 种语言驱动会
+[e2e/spec/scenarios.go](e2e/spec/scenarios.go)，下次运行时所有 9 种语言驱动会
 自动同步。详见 [e2e/spec/README.md](e2e/spec/README.md)。
 
 ## 许可证

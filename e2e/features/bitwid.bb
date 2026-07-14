@@ -12,6 +12,7 @@ package bitwid;
 
 option go_package       = "bitwid";
 option java_package     = "com.example.bitwid";
+option kotlin_package   = "com.example.bitwid";
 option csharp_namespace = "Bitwid";
 
 // ============================================================

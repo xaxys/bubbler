@@ -35,13 +35,14 @@ cleanup() {
 trap cleanup EXIT
 
 rm -rf "$WORK_DIR"
-mkdir -p "$WORK_DIR"/{c,cpp,go,java,py,cs,cjs,mjs}
+mkdir -p "$WORK_DIR"/{c,cpp,go,java,kotlin,py,cs,cjs,mjs}
 
 echo "[empty] generate all targets"
 "$BUBBLER" -t c   -o "$WORK_DIR/c"                  "$SRC"
 "$BUBBLER" -t cpp -single -o "$WORK_DIR/cpp/empty.bb.hpp" "$SRC"
 "$BUBBLER" -t go  -o "$WORK_DIR/go"                 "$SRC"
 "$BUBBLER" -t java -o "$WORK_DIR/java"              "$SRC"
+"$BUBBLER" -t kotlin -o "$WORK_DIR/kotlin"          "$SRC"
 "$BUBBLER" -t py  -single -o "$WORK_DIR/py/empty_bb.py"    "$SRC"
 "$BUBBLER" -t cs  -single -o "$WORK_DIR/cs/empty.bb.cs"    "$SRC"
 "$BUBBLER" -t cjs -single -o "$WORK_DIR/cjs/empty.bb.js"   "$SRC"
@@ -92,6 +93,12 @@ echo "[empty] Java empty-output policy check"
 # We assert the behavior so regressions are visible.
 if find "$WORK_DIR/java" -type f | grep -q .; then
     echo "[FAIL] Java empty schema should not emit files under current policy" >&2
+    exit 1
+fi
+
+echo "[empty] Kotlin empty-output policy check"
+if find "$WORK_DIR/kotlin" -type f | grep -q .; then
+    echo "[FAIL] Kotlin empty schema should not emit files under current policy" >&2
     exit 1
 fi
 

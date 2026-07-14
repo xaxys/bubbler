@@ -5,6 +5,7 @@ package types;
 
 option go_package       = "types";
 option java_package     = "com.example.types";
+option kotlin_package   = "com.example.types";
 option csharp_namespace = "Example.Types";
 
 enum Direction[1] {

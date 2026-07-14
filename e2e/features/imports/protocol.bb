@@ -6,6 +6,7 @@ package protocol;
 
 option go_package       = "github.com/example/protocol";
 option java_package     = "com.example.protocol";
+option kotlin_package   = "com.example.protocol";
 option csharp_namespace = "Example.Protocol";
 
 import "types.bb";

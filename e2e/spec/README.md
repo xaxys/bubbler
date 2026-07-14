@@ -3,7 +3,7 @@
 `e2e/spec` is the single source of truth for codec tests. It owns:
 
 - language-neutral values and scenarios (`spec.go`, `scenarios.go`);
-- generated test drivers for C, C++, Go, Java, Python, C#, CommonJS and ESM;
+- generated test drivers for C, C++, Go, Java, Kotlin, Python, C#, CommonJS and ESM;
 - the language/toolchain adapters used to generate, compile and run code;
 - generator option variants and the `-unroll` threshold matrix;
 - structural checks proving loop counts follow the configured threshold.
@@ -18,6 +18,7 @@ Generate one compatible driver (the original interface is preserved):
 ```sh
 go run ./e2e/spec -lang=c -out=e2e/tests/c/main.c
 go run ./e2e/spec -lang=go -out=e2e/tests/go
+go run ./e2e/spec -lang=kotlin -out=e2e/tests/kotlin/Main.kt
 ```
 
 Run the unified matrix:
@@ -35,7 +36,7 @@ Profiles:
 
 Use `-langs=c,go,python` to select languages and `-keep-work` to retain the
 generated work directory. Existing `SKIP_C`, `SKIP_CPP`, `SKIP_GO`,
-`SKIP_PY`, `SKIP_JAVA`, `SKIP_CS`, `SKIP_CJS`/`SKIP_JS` and `SKIP_ESM`
+`SKIP_PY`, `SKIP_JAVA`, `SKIP_KOTLIN`, `SKIP_CS`, `SKIP_CJS`/`SKIP_JS` and `SKIP_ESM`
 environment variables are supported.
 
 Linux runs C# on .NET 8 only. .NET Framework 4.7.2 remains a Windows CI

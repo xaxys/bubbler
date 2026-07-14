@@ -16,6 +16,7 @@ func init() {
 	FileOptionValidator.AddOption("cpp_namespace", definition.LiteralKindID_String)
 	FileOptionValidator.AddOption("go_package", definition.LiteralKindID_String)
 	FileOptionValidator.AddOption("java_package", definition.LiteralKindID_String)
+	FileOptionValidator.AddOption("kotlin_package", definition.LiteralKindID_String)
 
 	FieldOptionValidator = NewOptionValidator()
 	FieldOptionValidator.AddOption("order", definition.LiteralKindID_String, "big", "little")

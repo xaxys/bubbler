@@ -21,6 +21,7 @@ on:
 
 env:
   GO_VERSION: "1.22"
+  KOTLIN_VERSION: "1.9.24"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Job 1a: Build the bubbler binary
@@ -240,6 +241,48 @@ jobs:
           javac -encoding UTF-8 -cp out -d out Main.java
           java -cp out Main
 
+  test-kotlin:
+    name: Test - Kotlin
+    needs: build-linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Kotlin 1.9.24
+        run: |
+          curl -fsSL -o /tmp/kotlin.zip "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip"
+          sudo unzip -q /tmp/kotlin.zip -d /opt
+          echo "/opt/kotlinc/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/download-artifact@v4
+        with: { name: bubbler-linux }
+
+      - run: chmod +x bubbler
+
+      - name: Generate Kotlin code and test driver
+        run: |
+          mkdir -p e2e/tests/kotlin/gen
+          ./bubbler -t kotlin -o e2e/tests/kotlin/gen/ e2e/testcase.bb
+          ./bubbler -t kotlin -o e2e/tests/kotlin/gen/ e2e/features/bitwid.bb
+          go run ./e2e/spec -lang=kotlin -out e2e/tests/kotlin/Main.kt
+
+      - name: Compile and run
+        run: |
+          cd e2e/tests/kotlin
+          mapfile -t sources < <(find gen -name '*.kt' -print)
+          kotlinc "${sources[@]}" Main.kt -jvm-target 17 -include-runtime -d tests.jar
+          java -jar tests.jar
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Job 7a: C# codec tests
 # ─────────────────────────────────────────────────────────────────────────────
@@ -410,6 +453,12 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
+      - name: Install Kotlin 1.9.24
+        run: |
+          curl -fsSL -o /tmp/kotlin.zip "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip"
+          sudo unzip -q /tmp/kotlin.zip -d /opt
+          echo "/opt/kotlinc/bin" >> "$GITHUB_PATH"
+
       - name: Install C/C++ toolchain
         run: |
           sudo apt-get update
@@ -457,6 +506,12 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
+
+      - name: Install Kotlin 1.9.24
+        run: |
+          curl -fsSL -o /tmp/kotlin.zip "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip"
+          sudo unzip -q /tmp/kotlin.zip -d /opt
+          echo "/opt/kotlinc/bin" >> "$GITHUB_PATH"
 
       - name: Install toolchain dependencies
         run: |

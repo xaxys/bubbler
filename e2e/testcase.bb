@@ -4,6 +4,7 @@
 package testpkg;
 
 option java_package     = "com.example.testpkg";
+option kotlin_package   = "com.example.testpkg";
 option go_package       = "testpkg";
 option csharp_namespace = "Testpkg";
 
