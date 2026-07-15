@@ -487,7 +487,8 @@ func (g CSharpGenerator) GenerateArrayDefaultValue(array *definition.Array) (str
 
 var structTemplate = `
 {{- define "bitHelpers" -}}
-        private static void BbWriteFieldBits(Span<byte> data, long bitFrom, long bitSize, ulong value, bool bigEndian) {
+        private static void BbWriteFieldBits(Span<byte> data, long bitFrom, long bitSize, ulong value, bool bigEndian)
+        {
             if (bitSize <= 0) return;
             if (bitSize < 64) value &= ((ulong)1 << (int)bitSize) - 1UL;
             long bitTo = bitFrom + bitSize;
@@ -545,7 +546,8 @@ var structTemplate = `
             }
         }
 
-        private static ulong BbReadFieldBits(ReadOnlySpan<byte> data, long bitFrom, long bitSize, bool bigEndian) {
+        private static ulong BbReadFieldBits(ReadOnlySpan<byte> data, long bitFrom, long bitSize, bool bigEndian)
+        {
             if (bitSize <= 0) return 0;
             long bitTo = bitFrom + bitSize;
             ulong outVal = 0;
@@ -616,16 +618,17 @@ var structTemplate = `
         {{ .DecoderStr }}
 
         {{- if .UseBitHelpers }}
-{{ template "bitHelpers" . }}
+        {{ template "bitHelpers" . }}
         {{- end }}
 
 #if NET5_0_OR_GREATER || NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
 #nullable enable
-        public override bool Equals(object? obj) {
+        public override bool Equals(object? obj)
 #nullable restore
 #else
-        public override bool Equals(Object obj) {
+        public override bool Equals(Object obj)
 #endif
+        {
             if (this == obj) return true;
             if (obj == null) return false;
             if (this.GetType() != obj.GetType()) return false;
@@ -645,7 +648,8 @@ var structTemplate = `
             return true;
         }
 
-        public override int GetHashCode() {
+        public override int GetHashCode()
+        {
             int result = 17;
         {{- $memoryCopy := .GenOptions.MemoryCopy }}
         {{- range $field := $structDef.StructFields.Values }}
@@ -1164,7 +1168,8 @@ var encoderTemplate = `
          * Calculate the size of the encoded data.
          * @return the size of the encoded data in bytes.
          */
-        public int EncodeSize() {
+        public int EncodeSize()
+        {
             {{- if .StructDef.StructDynamic }}
             int size = {{ calc .StructDef.StructBitSize "/" 8 }};
             {{- range $field := .StructDef.StructFields.Values }}
@@ -2202,7 +2207,7 @@ var decoderTemplate = `
 {{- if $f.FieldType.GetTypeID.IsArray -}}
 {{- $shouldUseLoop := and (ge $loopUnroll 0) (gt $f.FieldType.Length $loopUnroll) -}}
     {{- if $f.FieldType.ElementType.GetTypeID.IsString -}}
-        {{- if $shouldUseLoop -}}
+        {{- if $shouldUseLoop }}
             for (int _i = 0; _i < {{ $f.FieldType.Length }}; _i++)
             {
                 {{- if $memcpy }}
@@ -2222,7 +2227,7 @@ var decoderTemplate = `
                 {{- end }}
                 offset += _length + 1;
             }
-        {{- else -}}
+        {{- else }}
         {{- range $i := iterate 0 $f.FieldType.Length }}
             {   // {{ $f }}: [{{ $i }}]
                 {{- if $memcpy }}
@@ -2245,7 +2250,7 @@ var decoderTemplate = `
         {{- end -}}
         {{- end -}}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsBytes -}}
-        {{- if $shouldUseLoop -}}
+        {{- if $shouldUseLoop }}
             for (int _i = 0; _i < {{ $f.FieldType.Length }}; _i++)
             {
                 {{- if $memcpy }}
@@ -2277,7 +2282,7 @@ var decoderTemplate = `
                 {{- end }}
                 offset += _length;
             }
-        {{- else -}}
+        {{- else }}
         {{- range $i := iterate 0 $f.FieldType.Length }}
             {   // {{ $f }}: [{{ $i }}]
                 {{- if $memcpy }}
@@ -2313,7 +2318,7 @@ var decoderTemplate = `
         {{- end -}}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsStruct -}}
         {{- if $f.FieldType.ElementType.GetTypeDynamic -}}
-            {{- if $shouldUseLoop -}}
+            {{- if $shouldUseLoop }}
             for (int _i = 0; _i < {{ $f.FieldType.Length }}; _i++)
             {
                 {{- if $memcpy }}
@@ -2324,7 +2329,7 @@ var decoderTemplate = `
                 if (_subSize < 0) return -(offset + {{ $fromByte }}) + _subSize;
                 offset += _subSize;
             }
-            {{- else -}}
+            {{- else }}
             {{- range $i := iterate 0 $f.FieldType.Length }}
             {   // {{ $f }}: [{{ $i }}]
                 {{- if $memcpy }}

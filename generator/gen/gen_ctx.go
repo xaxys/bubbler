@@ -16,14 +16,34 @@ type GenCtx struct {
 }
 
 func normalizeGeneratedIndent(text string) string {
-	// Enforce space-based indentation in generated outputs.
-	return strings.ReplaceAll(text, "\t", "    ")
+	// Keep generated files deterministic and editor-friendly without relying
+	// on a language formatter after generation.
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\t", "    ")
+
+	lines := strings.Split(text, "\n")
+	normalized := make([]string, 0, len(lines))
+	blankLines := 0
+	for _, line := range lines {
+		line = strings.TrimRight(line, " \t")
+		if line == "" {
+			blankLines++
+			if blankLines > 2 {
+				continue
+			}
+		} else {
+			blankLines = 0
+		}
+		normalized = append(normalized, line)
+	}
+
+	return strings.TrimRight(strings.Join(normalized, "\n"), "\n") + "\n"
 }
 
 func (ctx *GenCtx) WritePackage(pkg *definition.Package, ext string, text string) error {
 	text = normalizeGeneratedIndent(text)
 	if ctx.OutputPath == "" {
-		fmt.Println(text)
+		fmt.Print(text)
 		return nil
 	}
 
@@ -43,7 +63,7 @@ func (ctx *GenCtx) WriteFile(file string, text string) error {
 		}
 	}
 	if ctx.OutputPath == "" {
-		fmt.Println(text)
+		fmt.Print(text)
 		return nil
 	}
 	path := filepath.Join(ctx.OutputPath, file)
@@ -53,7 +73,7 @@ func (ctx *GenCtx) WriteFile(file string, text string) error {
 func (ctx *GenCtx) WriteFileAbs(path string, text string) error {
 	text = normalizeGeneratedIndent(text)
 	if path == "" {
-		fmt.Println(text)
+		fmt.Print(text)
 		return nil
 	}
 

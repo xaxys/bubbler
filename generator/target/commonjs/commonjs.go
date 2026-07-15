@@ -296,11 +296,15 @@ var fileTemplate = `
         return mergeDeep(target, ...sources);
     });
 
-    $root = mergeDeep({},
+    {{- if gt .Unit.LocalImports.Len 0 }}
+    var $root = mergeDeep({},
         {{- range $unit := .Unit.LocalImports.Values }}
         require("{{ $curUnit.Package.ToRelativePathStrict $unit.Package ".bb" }}"),
         {{- end }}
     );
+    {{- else }}
+    var $root = {};
+    {{- end }}
 
     module.exports = factory($root);
 
@@ -2661,7 +2665,7 @@ var decoderTemplate = `
 {{- if $f.FieldType.GetTypeID.IsArray -}}
 {{- $shouldUseLoop := and (ge $loopUnroll 0) (gt $f.FieldType.Length $loopUnroll) -}}
     {{- if $f.FieldType.ElementType.GetTypeID.IsString -}}
-        {{- if $shouldUseLoop -}}
+        {{- if $shouldUseLoop }}
                     for (let _i = 0; _i < {{ $f.FieldType.Length }}; _i++) {
                         if (data.length - start <= offset + {{ $fromByte }}) return -(offset + {{ $fromByte }} + 1);
                         let _length = 0;
@@ -2671,7 +2675,7 @@ var decoderTemplate = `
                         }
                         offset += _length + 1;
                     }
-        {{- else -}}
+        {{- else }}
         {{- range $i := iterate 0 $f.FieldType.Length }}
                     {   // {{ $f }}: [{{ $i }}]
                         if (data.length - start <= offset + {{ $fromByte }}) return -(offset + {{ $fromByte }} + 1);
@@ -2685,7 +2689,7 @@ var decoderTemplate = `
         {{- end -}}
         {{- end -}}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsBytes -}}
-        {{- if $shouldUseLoop -}}
+        {{- if $shouldUseLoop }}
                     for (let _i = 0; _i < {{ $f.FieldType.Length }}; _i++) {
                         if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
                         let _length = 0;
@@ -2703,7 +2707,7 @@ var decoderTemplate = `
                         if (data.length - start < offset + {{ $fromByte }} + _length) return -(offset + {{ $fromByte }} + _length);
                         offset += _length;
                     }
-        {{- else -}}
+        {{- else }}
         {{- range $i := iterate 0 $f.FieldType.Length }}
                     {   // {{ $f }}: [{{ $i }}]
                         if (data.length - start <= offset + {{ $fromByte }}) { return -(offset + {{ $fromByte }} + 1); }
@@ -2727,13 +2731,13 @@ var decoderTemplate = `
     {{- else if $f.FieldType.ElementType.GetTypeID.IsStruct -}}
         {{- if $f.FieldType.ElementType.GetTypeDynamic -}}
             {{- $pkgPrefix := FieldStructPkgPrefix $f -}}
-            {{- if $shouldUseLoop -}}
+            {{- if $shouldUseLoop }}
                     for (let _i = 0; _i < {{ $f.FieldType.Length }}; _i++) {
                         let _subSize = {{ $pkgPrefix }}.decode_size(data, offset + start + {{ $fromByte }});
                         if (_subSize < 0) { return -(offset + {{ $fromByte }}) + _subSize; }
                         offset += _subSize;
                     }
-            {{- else -}}
+            {{- else }}
             {{- range $i := iterate 0 $f.FieldType.Length }}
                     {   // {{ $f }}: [{{ $i }}]
                         let _subSize = {{ $pkgPrefix }}.decode_size(data, offset + start + {{ $fromByte }});

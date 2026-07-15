@@ -2190,7 +2190,7 @@ var decoderTemplate = `
         {{- end }}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsStruct -}}
         {{- if $f.FieldType.ElementType.GetTypeDynamic -}}
-            {{- if $shouldUseLoop -}}
+            {{- if $shouldUseLoop }}
         for (int _i = 0; _i < {{ $f.FieldType.Length }}; _i++) {
             int _subSize = this.{{ TocamelCase $f.FieldName }}[_i].decodeSize(data, offset + start + {{ $fromByte }});
             if (_subSize < 0) return -(offset + {{ $fromByte }}) + _subSize;

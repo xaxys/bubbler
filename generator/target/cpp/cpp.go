@@ -1577,6 +1577,17 @@ func typeSizeToIntStr(size int64) string {
 	return typeMap[ty]
 }
 
+// normalizeCppGeneratedBlock removes the function-level indentation already
+// present in a standalone generated statement. Array loop templates then add
+// the indentation appropriate for a nested loop exactly once.
+func normalizeCppGeneratedBlock(code string) string {
+	lines := strings.Split(strings.TrimSpace(code), "\n")
+	for i := 1; i < len(lines); i++ {
+		lines[i] = strings.TrimPrefix(lines[i], "        ")
+	}
+	return strings.Join(lines, "\n")
+}
+
 // ==================== GenerateEncoder ====================
 
 var encoderTemplate = `
@@ -1802,9 +1813,9 @@ var fieldEncoderTemplate = `
 
 {{- define "arrayControlBlock" -}}
 {{- if eq .Kind "dynamic_loop" -}}
-	for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
+for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
 {{ .Body }}
-	}
+}
 {{- else if eq .Kind "fixed_switch" -}}
 	for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
 		switch (_i) {
@@ -2014,13 +2025,13 @@ func (g CppGenerator) generateEncodeNormalField(field *definition.NormalField, s
 			}
 
 			for _, stmt := range stmts {
-				bodyStmts = append(bodyStmts, util.IndentSpace(stmt, 4))
+				bodyStmts = append(bodyStmts, normalizeCppGeneratedBlock(stmt))
 			}
 
 			loopBlock := util.ExecuteTemplate(fieldEncoderTemplate, "arrayControlBlock", nil, map[string]any{
 				"Kind":   "dynamic_loop",
 				"Length": ty.Length,
-				"Body":   strings.Join(bodyStmts, "\n"),
+				"Body":   util.IndentSpace(strings.Join(bodyStmts, "\n"), 4),
 			})
 			encodeStmts = append(encodeStmts, strings.Split(loopBlock, "\n")...)
 		} else if shouldUseLoop {
@@ -2461,7 +2472,7 @@ var decoderTemplate = `
 {{- if $f.FieldType.GetTypeID.IsArray -}}
 {{- $shouldUseLoop := and (ge $loopUnroll 0) (gt $f.FieldType.Length $loopUnroll) -}}
     {{- if $f.FieldType.ElementType.GetTypeID.IsString -}}
-        {{- if $shouldUseLoop -}}
+        {{- if $shouldUseLoop }}
         for (int64_t _i = 0; _i < {{ $f.FieldType.Length }}; _i++) {
             if (size <= offset + {{ $fromByte }}) return -static_cast<int64_t>(offset + {{ $fromByte }} + 1);
             const uint8_t* p = static_cast<const uint8_t*>(data) + offset + {{ $fromByte }};
@@ -2469,7 +2480,7 @@ var decoderTemplate = `
             if (res == nullptr) return -static_cast<int64_t>(size + 1);
             offset += static_cast<uint64_t>(static_cast<const uint8_t*>(res) - p + 1);
         }
-        {{- else -}}
+        {{- else }}
         {{- range $i := iterate 0 $f.FieldType.Length }}
         {   // {{ $f }}: [{{ $i }}]
             if (size <= offset + {{ $fromByte }}) return -static_cast<int64_t>(offset + {{ $fromByte }} + 1);
@@ -2481,7 +2492,7 @@ var decoderTemplate = `
         {{- end }}
         {{- end }}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsBytes -}}
-        {{- if $shouldUseLoop -}}
+        {{- if $shouldUseLoop }}
         for (int64_t _i = 0; _i < {{ $f.FieldType.Length }}; _i++) {
             if (size <= offset + {{ $fromByte }}) return -static_cast<int64_t>(offset + {{ $fromByte }} + 1);
             uint64_t len = 0;
@@ -2497,7 +2508,7 @@ var decoderTemplate = `
             if (size < offset + {{ $fromByte }} + len) return -static_cast<int64_t>(offset + {{ $fromByte }} + len);
             offset += len;
         }
-        {{- else -}}
+        {{- else }}
         {{- range $i := iterate 0 $f.FieldType.Length }}
         {   // {{ $f }}: [{{ $i }}]
             if (size <= offset + {{ $fromByte }}) return -static_cast<int64_t>(offset + {{ $fromByte }} + 1);
@@ -2519,7 +2530,7 @@ var decoderTemplate = `
     {{- else if $f.FieldType.ElementType.GetTypeID.IsStruct -}}
         {{- $structType := $f.FieldType.ElementType -}}
         {{- if $structType.GetTypeDynamic -}}
-            {{- if $shouldUseLoop -}}
+            {{- if $shouldUseLoop }}
         for (int64_t _i = 0; _i < {{ $f.FieldType.Length }}; _i++) {
             uint64_t sub_offset = offset + {{ $fromByte }};
             uint64_t remaining = size > sub_offset ? size - sub_offset : 0;
@@ -2531,7 +2542,7 @@ var decoderTemplate = `
             if (sub_size < 0) return -static_cast<int64_t>(sub_offset) + sub_size;
             offset += static_cast<uint64_t>(sub_size);
         }
-            {{- else -}}
+            {{- else }}
             {{- range $i := iterate 0 $f.FieldType.Length }}
         {   // {{ $f }}: [{{ $i }}]
             uint64_t sub_offset = offset + {{ $fromByte }};
@@ -2606,7 +2617,7 @@ var decoderTemplate = `
         {{- $fixedStart := 0 }}
         {{- range $field := .StructDef.StructFields.Values }}
             {{- if and $field.GetFieldKind.IsNormal (lt $field.GetFieldBitSize 0) }}
-		{{- template "decoderSizeField" (dict "Field" $field "FromByte" (calc $fixedStart "/" 8) "GenOptions" $.GenOptions) }}
+{{ template "decoderSizeField" (dict "Field" $field "FromByte" (calc $fixedStart "/" 8) "GenOptions" $.GenOptions) }}
             {{- end }}
             {{- if ne $field.GetFieldBitSize -1 }}
         {{- $fixedStart = calc $fixedStart "+" $field.GetFieldBitSize }}
@@ -2635,7 +2646,7 @@ var decoderTemplate = `
         {{- $fixedStart := 0 }}
         {{- range $field := .StructDef.StructFields.Values }}
             {{- if and $field.GetFieldKind.IsNormal (lt $field.GetFieldBitSize 0) }}
-		{{- template "decoderSizeField" (dict "Field" $field "FromByte" (calc $fixedStart "/" 8) "GenOptions" $.GenOptions) }}
+{{ template "decoderSizeField" (dict "Field" $field "FromByte" (calc $fixedStart "/" 8) "GenOptions" $.GenOptions) }}
             {{- end }}
             {{- if ne $field.GetFieldBitSize -1 }}
         {{- $fixedStart = calc $fixedStart "+" $field.GetFieldBitSize }}
@@ -2827,9 +2838,9 @@ var fieldDecoderTemplate = `
 
 {{- define "arrayControlBlock" -}}
 {{- if eq .Kind "dynamic_loop" -}}
-	for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
+for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
 {{ .Body }}
-	}
+}
 {{- else if eq .Kind "fixed_switch" -}}
 	for (int64_t _i = 0; _i < {{ .Length }}; _i++) {
 		switch (_i) {
@@ -3062,7 +3073,7 @@ func (g CppGenerator) generateDecodeNormalField(field *definition.NormalField, s
 			}
 
 			for _, stmt := range stmts {
-				bodyStmts = append(bodyStmts, util.IndentSpace(stmt, 4))
+				bodyStmts = append(bodyStmts, normalizeCppGeneratedBlock(stmt))
 			}
 
 			switch ty.ElementType.(type) {
@@ -3074,14 +3085,14 @@ func (g CppGenerator) generateDecodeNormalField(field *definition.NormalField, s
 					"FieldName": fmt.Sprintf("((%s)[_i])", name),
 				}
 				assignStr := util.ExecuteTemplate(fieldDecoderTemplate, "decodeNormalFieldTempVarAssignEnum", nil, decodeNormalFieldTempVarAssignEnumData)
-				bodyStmts = append(bodyStmts, util.IndentSpace(assignStr, 4))
+				bodyStmts = append(bodyStmts, normalizeCppGeneratedBlock(assignStr))
 			default:
 			}
 
 			loopBlock := util.ExecuteTemplate(fieldDecoderTemplate, "arrayControlBlock", nil, map[string]any{
 				"Kind":   "dynamic_loop",
 				"Length": ty.Length,
-				"Body":   strings.Join(bodyStmts, "\n"),
+				"Body":   util.IndentSpace(strings.Join(bodyStmts, "\n"), 4),
 			})
 			decodeStmts = append(decodeStmts, strings.Split(loopBlock, "\n")...)
 		} else if shouldUseLoop {

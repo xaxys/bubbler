@@ -170,8 +170,6 @@ import struct
 from enum import Enum
 from typing import List, Tuple, Union, overload
 
-{{ template "runtimeHelpers" . }}
-
 {{ $curUnit := .Unit -}}
 {{ range $unit := .Unit.LocalImports.Values -}}
 {{ if $.GenOptions.RelativePath -}}
@@ -180,6 +178,10 @@ from {{ $curUnit.Package.ToPyRelativePath $unit.Package "_bb" }} import *
 from {{ $unit.Package.ToPath "." "_bb" }} import *
 {{ end -}}
 {{ end }}
+
+{{ template "runtimeHelpers" . }}
+
+
 {{ range $entry := .GenTypes.Entries -}}
 {{- $type := $entry.Value -}}
 # ====================== {{ $entry.Key }} ======================
@@ -187,6 +189,7 @@ from {{ $unit.Package.ToPath "." "_bb" }} import *
 {{ $type.GeneratedDef }}
 {{ end }}
 # ==================== End {{ $entry.Key }} ====================
+
 
 {{ end }}
 {{- end -}}
@@ -205,6 +208,7 @@ from typing import List, Tuple, Union, overload
 
 {{ template "runtimeHelpers" . }}
 
+
 {{ range $entry := .GenTypes.Entries -}}
 {{- $type := $entry.Value -}}
 # ====================== {{ $entry.Key }} ======================
@@ -212,6 +216,7 @@ from typing import List, Tuple, Union, overload
 {{ $type.GeneratedDef }}
 {{ end }}
 # ==================== End {{ $entry.Key }} ====================
+
 
 {{ end }}
 {{- end -}}
@@ -336,7 +341,7 @@ func (g PythonGenerator) GenerateBytes(bytes *definition.Bytes) (string, error) 
 // ==================== GenerateBytesDefaultValue ====================
 
 func (g PythonGenerator) GenerateBytesDefaultValue(bytes *definition.Bytes) (string, error) {
-	return `""`, nil
+	return "bytearray()", nil
 }
 
 // ==================== GenerateArray ====================
@@ -1620,56 +1625,70 @@ var decoderTemplate = `
     {{- if $f.FieldType.ElementType.GetTypeID.IsString -}}
         {{- if $shouldUseLoop }}
         for _i in range({{ $f.FieldType.Length }}):
-            if len(data) <= offset + {{ $fromByte }}: return -(offset + {{ $fromByte }} + 1)
+            if len(data) <= offset + {{ $fromByte }}:
+                return -(offset + {{ $fromByte }} + 1)
             _length = 0
             while data[offset + {{ $fromByte }} + _length] != 0:
                 _length += 1
-                if len(data) <= offset + {{ $fromByte }} + _length: return -(offset + {{ $fromByte }} + _length + 1)
+                if len(data) <= offset + {{ $fromByte }} + _length:
+                    return -(offset + {{ $fromByte }} + _length + 1)
             offset += _length + 1
         {{- else }}
         {{- range $i := iterate 0 $f.FieldType.Length }}
         # {{ $f }}: [{{ $i }}]
-        if len(data) <= offset + {{ $fromByte }}: return -(offset + {{ $fromByte }} + 1)
+        if len(data) <= offset + {{ $fromByte }}:
+            return -(offset + {{ $fromByte }} + 1)
         _length = 0
         while data[offset + {{ $fromByte }} + _length] != 0:
             _length += 1
-            if len(data) <= offset + {{ $fromByte }} + _length: return -(offset + {{ $fromByte }} + _length + 1)
+            if len(data) <= offset + {{ $fromByte }} + _length:
+                return -(offset + {{ $fromByte }} + _length + 1)
         offset += _length + 1
         {{- end }}
         {{- end }}
     {{- else if $f.FieldType.ElementType.GetTypeID.IsBytes -}}
         {{- if $shouldUseLoop }}
         for _i in range({{ $f.FieldType.Length }}):
-            if len(data) <= offset + {{ $fromByte }}: return -(offset + {{ $fromByte }} + 1)
+            if len(data) <= offset + {{ $fromByte }}:
+                return -(offset + {{ $fromByte }} + 1)
             _length = 0
             _shift = 0
             while data[offset + {{ $fromByte }}] & 0x80:
-                if _shift >= 63: return -1
+                if _shift >= 63:
+                    return -1
                 _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift
                 _shift += 7
                 offset += 1
-                if len(data) <= offset + {{ $fromByte }}: return -(offset + {{ $fromByte }} + 1)
-            if _shift >= 63: return -1
+                if len(data) <= offset + {{ $fromByte }}:
+                    return -(offset + {{ $fromByte }} + 1)
+            if _shift >= 63:
+                return -1
             _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift
             offset += 1
-            if len(data) < offset + {{ $fromByte }} + _length: return -(offset + {{ $fromByte }} + _length)
+            if len(data) < offset + {{ $fromByte }} + _length:
+                return -(offset + {{ $fromByte }} + _length)
             offset += _length
         {{- else }}
         {{- range $i := iterate 0 $f.FieldType.Length }}
         # {{ $f }}: [{{ $i }}]
-        if len(data) <= offset + {{ $fromByte }}: return -(offset + {{ $fromByte }} + 1)
+        if len(data) <= offset + {{ $fromByte }}:
+            return -(offset + {{ $fromByte }} + 1)
         _length = 0
         _shift = 0
         while data[offset + {{ $fromByte }}] & 0x80:
-            if _shift >= 63: return -1
+            if _shift >= 63:
+                return -1
             _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift
             _shift += 7
             offset += 1
-            if len(data) <= offset + {{ $fromByte }}: return -(offset + {{ $fromByte }} + 1)
-        if _shift >= 63: return -1
+            if len(data) <= offset + {{ $fromByte }}:
+                return -(offset + {{ $fromByte }} + 1)
+        if _shift >= 63:
+            return -1
         _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift
         offset += 1
-        if len(data) < offset + {{ $fromByte }} + _length: return -(offset + {{ $fromByte }} + _length)
+        if len(data) < offset + {{ $fromByte }} + _length:
+            return -(offset + {{ $fromByte }} + _length)
         offset += _length
         {{- end }}
         {{- end }}
@@ -1678,13 +1697,15 @@ var decoderTemplate = `
             {{- if $shouldUseLoop }}
         for _i in range({{ $f.FieldType.Length }}):
             _sub_size = self._{{ Tosnake_case $f.FieldName }}[_i].decode_size(data[offset + {{ $fromByte }}:])
-            if _sub_size < 0: return -(offset + {{ $fromByte }}) + _sub_size
+            if _sub_size < 0:
+                return -(offset + {{ $fromByte }}) + _sub_size
             offset += _sub_size
             {{- else }}
             {{- range $i := iterate 0 $f.FieldType.Length }}
         # {{ $f }}: [{{ $i }}]
         _sub_size = self._{{ Tosnake_case $f.FieldName }}[{{ $i }}].decode_size(data[offset + {{ $fromByte }}:])
-        if _sub_size < 0: return -(offset + {{ $fromByte }}) + _sub_size
+        if _sub_size < 0:
+            return -(offset + {{ $fromByte }}) + _sub_size
         offset += _sub_size
             {{- end }}
             {{- end }}
@@ -1692,33 +1713,41 @@ var decoderTemplate = `
     {{- end -}}
 {{- else if $f.FieldType.GetTypeID.IsString }}
         # {{ $f }}
-        if len(data) <= offset + {{ $fromByte }}: return -(offset + {{ $fromByte }} + 1)
+        if len(data) <= offset + {{ $fromByte }}:
+            return -(offset + {{ $fromByte }} + 1)
         _length = 0
         while data[offset + {{ $fromByte }} + _length] != 0:
             _length += 1
-            if len(data) <= offset + {{ $fromByte }} + _length: return -(offset + {{ $fromByte }} + _length + 1)
+            if len(data) <= offset + {{ $fromByte }} + _length:
+                return -(offset + {{ $fromByte }} + _length + 1)
         offset += _length + 1
 {{- else if $f.FieldType.GetTypeID.IsBytes }}
         # {{ $f }}
-        if len(data) <= offset + {{ $fromByte }}: return -(offset + {{ $fromByte }} + 1)
+        if len(data) <= offset + {{ $fromByte }}:
+            return -(offset + {{ $fromByte }} + 1)
         _length = 0
         _shift = 0
         while data[offset + {{ $fromByte }}] & 0x80:
-            if _shift >= 63: return -1
+            if _shift >= 63:
+                return -1
             _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift
             _shift += 7
             offset += 1
-            if len(data) <= offset + {{ $fromByte }}: return -(offset + {{ $fromByte }} + 1)
-        if _shift >= 63: return -1
+            if len(data) <= offset + {{ $fromByte }}:
+                return -(offset + {{ $fromByte }} + 1)
+        if _shift >= 63:
+            return -1
         _length |= (data[offset + {{ $fromByte }}] & 0x7F) << _shift
         offset += 1
-        if len(data) < offset + {{ $fromByte }} + _length: return -(offset + {{ $fromByte }} + _length)
+        if len(data) < offset + {{ $fromByte }} + _length:
+            return -(offset + {{ $fromByte }} + _length)
         offset += _length
 {{- else if $f.FieldType.GetTypeID.IsStruct -}}
     {{- if $f.FieldType.GetTypeDynamic }}
         # {{ $f }}
         _sub_size = self._{{ Tosnake_case $f.FieldName }}.decode_size(data[offset + {{ $fromByte }}:])
-        if _sub_size < 0: return -(offset + {{ $fromByte }}) + _sub_size
+        if _sub_size < 0:
+            return -(offset + {{ $fromByte }}) + _sub_size
         offset += _sub_size
     {{- end -}}
 {{- end -}}
@@ -1745,10 +1774,12 @@ var decoderTemplate = `
         {{- $fixedStart = calc $fixedStart "+" $field.GetFieldBitSize }}
             {{- end }}
         {{- end }}
-        if len(data) < offset + {{ $structBytes }}: return -(offset + {{ $structBytes }})
+        if len(data) < offset + {{ $structBytes }}:
+            return -(offset + {{ $structBytes }})
         return offset + {{ $structBytes }}
         {{- else }}
-        if len(data) < {{ $structBytes }}: return -{{ $structBytes }}
+        if len(data) < {{ $structBytes }}:
+            return -{{ $structBytes }}
         return {{ $structBytes }}
         {{- end }}
 {{- end -}}
@@ -1824,17 +1855,20 @@ var fieldDecoderTemplate = `
 {{- end -}}
 
 {{- define "decodeConstantField" -}}
-    if {{ .TempName }} != {{ .ConstantValue }}: return False, 0
+    if {{ .TempName }} != {{ .ConstantValue }}:
+            return False, 0
 {{- end -}}
 
 {{- define "decodeNormalFieldStruct" -}}
 {{- if .FieldStruct.GetTypeDynamic -}}
         success, {{ .TempName }} = {{ .FieldName }}.decode(data[offset+{{ .FromByte }}:])
-        if not success: return False, 0
+        if not success:
+            return False, 0
         offset += {{ .TempName }}
 {{- else -}}
         success, _ = {{ .FieldName }}.decode(data[{{ if .Dynamic }}offset+{{ end }}{{ .FromByte }}:])
-        if not success: return False, 0
+        if not success:
+            return False, 0
 {{- end -}}
 {{- end -}}
 
@@ -1848,7 +1882,8 @@ var fieldDecoderTemplate = `
 
 {{- define "decodeNormalFieldString" -}}
         {{ .TempName }} = offset
-        while data[{{ .TempName }}+{{ .FromByte }}] != 0: {{ .TempName }} += 1
+        while data[{{ .TempName }}+{{ .FromByte }}] != 0:
+            {{ .TempName }} += 1
         {{ .FieldName }} = str(data[offset+{{ .FromByte }}:{{ .TempName }}+{{ .FromByte }}], 'utf-8')
         offset = {{ .TempName }} + 1
 {{- end -}}
